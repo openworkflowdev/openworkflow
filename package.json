@@ -1,6 +1,10 @@
 {
   "name": "openworkflow",
   "version": "0.0.1",
+  "scripts": {
+    "format": "prettier --check . --ignore-path .gitignore",
+    "format:fix": "prettier --write . --ignore-path .gitignore"
+  },
   "devDependencies": {
     "prettier": "^3.6.2"
   }
