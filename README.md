@@ -49,6 +49,8 @@ const runResult = await run.result();
 
 **Future:**
 
+- Signals / hooks
+- Workflow versioning
 - User project scaffolding
 - Publish a spec
 - Create implementations in other languages using the spec
