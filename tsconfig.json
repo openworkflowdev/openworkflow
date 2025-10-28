@@ -1,0 +1,10 @@
+{
+  "extends": [
+    "@tsconfig/strictest/tsconfig.json", // https://www.npmjs.com/package/@tsconfig/strictest
+    "@tsconfig/node22/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/node22
+  ],
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": ["**/*.ts"]
+}

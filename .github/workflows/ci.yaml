@@ -16,3 +16,4 @@ jobs:
           node-version-file: package.json
       - run: npm ci
       - run: npm run format
+      - run: npm run build
