@@ -12,34 +12,33 @@ Workflows can pause for seconds or months, survive crashes and deploys, and resu
 
 ```ts
 // Define a workflow to summarize documents
-const summarizeDoc = defineWorkflow("summarizeDoc", async ({ run, step }) => {
-  const text = await step.run("extractText", async () => {
-    // 1. Extract text from uploaded PDF or doc
-    console.log(run.input.docURL);
+const summarizeDoc = workflow("summarizeDoc", async ({ input, step }) => {
+  const extracted = await step("extractText", async () => {
+    console.log(input.docUrl);
   });
 
-  const cleaned = await step.run("cleanText", async () => {
-    // 2. Remove boilerplate, signatures, etc.
+  const cleaned = await step("cleanText", async () => {
+    // Remove boilerplate, signatures, etc.
   });
 
-  const aiSummary = await step.run("generateSummary", async () => {
-    // 3. Call OpenAI / LLM for summary
+  const summarized = await step("summarizeText", async () => {
+    // Call OpenAI / LLM for summary
   });
 
-  const summary = await step.run("storeResult", async () => {
-    // 4. Save summary + metadata in DB
+  const summaryId = await step("saveSummary", async () => {
+    // Save summary + metadata in DB
   });
 
-  return summary;
+  return summaryId;
 });
 
-// Start the workflow
-const run = await startWorkflow(summarizeDoc, {
-  docURL: "https://example.com/mydoc.pdf",
+// Run the workflow
+const run = await summarizeDoc.run({
+  docUrl: "https://example.com/mydoc.pdf",
 });
 
 // Wait for result (optional)
-const runResult = await run.result();
+const result = await run.result(); // result === summaryId
 ```
 
 ## Roadmap
