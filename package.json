@@ -1,6 +1,7 @@
 {
   "name": "openworkflow",
   "version": "0.0.1",
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "format": "prettier --check . --ignore-path .gitignore",
