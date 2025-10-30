@@ -14,6 +14,7 @@ Workflows can pause for seconds or months, survive crashes and deploys, and resu
 // Define a workflow to summarize documents
 const summarizeDoc = workflow("summarizeDoc", async ({ input, step }) => {
   const extracted = await step("extractText", async () => {
+    // Extract text from the document
     console.log(input.docUrl);
   });
 
