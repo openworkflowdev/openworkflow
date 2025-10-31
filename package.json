@@ -15,7 +15,7 @@
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.6",
     "@types/node": "^24.9.2",
-    "eslint": "^9.38.0",
+    "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^62.0.0",
