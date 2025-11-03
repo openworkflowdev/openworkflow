@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v5
         with:
-          node-version-file: package.json
+          node-version: 20 # EOL: Apr 30, 2026
       - run: npm ci
       - run: npm run format
       - run: npm run build
