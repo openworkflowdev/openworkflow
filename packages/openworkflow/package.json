@@ -1,0 +1,14 @@
+{
+  "name": "openworkflow",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
+  }
+}
