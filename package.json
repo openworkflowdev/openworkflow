@@ -21,7 +21,7 @@
     "@trivago/prettier-plugin-sort-imports": "^6.0.0",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.7",
-    "@types/node": "^24.9.2",
+    "@types/node": "^24.10.0",
     "@vitest/coverage-v8": "^4.0.7",
     "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.1.8",
