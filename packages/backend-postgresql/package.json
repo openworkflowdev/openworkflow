@@ -1,8 +1,0 @@
-{
-  "name": "@openworkflow/backend-postgresql",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "tsc"
-  }
-}

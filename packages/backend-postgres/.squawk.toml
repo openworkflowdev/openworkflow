@@ -1,0 +1,4 @@
+excluded_rules = [
+    "prefer-bigint-over-smallint",
+    "require-timeout-settings",
+]

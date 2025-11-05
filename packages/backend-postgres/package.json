@@ -1,0 +1,17 @@
+{
+  "name": "@openworkflow/backend-postgres",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "db:migrate": "tsx ./scripts/db-migrate.ts",
+    "db:reset": "tsx ./scripts/db-reset.ts",
+    "squawk": "tsx ./scripts/squawk.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "squawk-cli": "^2.30.0"
+  }
+}
