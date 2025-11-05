@@ -3,7 +3,7 @@
 [![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
 [![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
 
-> **⚠️ In Development:** OpenWorkflow is in early development. Expect the first working version, v0.1, to be released on November 5.
+> **⚠️ In Development:** OpenWorkflow is in early development. Expect the first working version, v0.1, to be released on November 7.
 
 OpenWorkflow is a WIP open-source TypeScript framework for building durable, resumable workflows.
 
