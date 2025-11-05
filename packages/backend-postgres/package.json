@@ -1,5 +1,5 @@
 {
-  "name": "@openworkflow/backend",
+  "name": "@openworkflow/backend-postgres",
   "private": true,
   "type": "module",
   "scripts": {
