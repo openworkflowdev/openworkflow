@@ -47,9 +47,9 @@ export interface StepRun {
   status: StepRunStatus;
   output: JsonValue | null;
   error: JsonValue | null;
+  attempts: number;
   childWorkflowRunNamespaceId: string | null;
   childWorkflowRunId: string | null;
-  attempts: number;
   startedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
