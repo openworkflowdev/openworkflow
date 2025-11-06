@@ -2,6 +2,12 @@ import postgres from "postgres";
 
 export const DEFAULT_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
+
+// The default schema to use for OpenWorkflow data. This type is more for
+// documentation than for practical use. The only time we allow schema
+// customization is during testing, specifically for testing migrations.
+// Everywhere else uses the "openworkflow" schema directly for prepared
+// statements.
 export const DEFAULT_SCHEMA = "openworkflow";
 
 export type Postgres = ReturnType<typeof postgres>;
@@ -11,7 +17,7 @@ export type PostgresOptions = Parameters<typeof postgres>[1];
  * newPostgres creates a new Postgres client.
  */
 export function newPostgres(url: string, options?: PostgresOptions) {
-  return postgres(url, options);
+  return postgres(url, { ...options, transform: postgres.toCamel });
 }
 
 /**
