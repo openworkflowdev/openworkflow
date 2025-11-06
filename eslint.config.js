@@ -28,6 +28,7 @@ export default defineConfig(
     rules: {
       "@typescript-eslint/unified-signatures": "off", // Buggy rule, to be enabled later
       "func-style": ["error", "declaration"],
+      "unicorn/no-null": "off",
       "unicorn/prevent-abbreviations": "off",
     },
   },
