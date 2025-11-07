@@ -6,6 +6,7 @@
     "build": "tsc",
     "db:migrate": "tsx ./scripts/db-migrate.ts",
     "db:reset": "tsx ./scripts/db-reset.ts",
+    "pghero": "sh ./scripts/pghero.sh",
     "squawk": "tsx ./scripts/squawk.ts"
   },
   "dependencies": {
