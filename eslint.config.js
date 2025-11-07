@@ -14,7 +14,7 @@ export default defineConfig(
   unicorn.configs.recommended,
   prettier,
   {
-    ignores: ["dist", "eslint.config.js", "prettier.config.js"],
+    ignores: ["**/dist", "coverage", "eslint.config.js", "prettier.config.js"],
   },
   {
     languageOptions: {
