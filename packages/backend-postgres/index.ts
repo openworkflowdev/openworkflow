@@ -181,14 +181,12 @@ export class BackendPostgres implements Backend {
   async listStepAttempts(
     params: ListStepAttemptsParams,
   ): Promise<StepAttempt[]> {
-    // limit to 200 for now
     return this.pg<StepAttempt[]>`
       SELECT *
       FROM "openworkflow"."step_attempts"
       WHERE "namespace_id" = ${params.namespaceId}
       AND "workflow_run_id" = ${params.workflowRunId}
       ORDER BY "created_at"
-      LIMIT 200
     `;
   }
 
