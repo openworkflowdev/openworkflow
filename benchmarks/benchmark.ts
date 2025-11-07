@@ -5,7 +5,7 @@ import { Worker } from "../packages/worker/index.js";
 import { randomUUID } from "node:crypto";
 
 const WORKFLOW_RUN_COUNT = 1000;
-const WORKER_CONCURRENCY = 5;
+const WORKER_CONCURRENCY = 100;
 
 async function main() {
   const namespaceId = randomUUID();
