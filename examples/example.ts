@@ -100,7 +100,8 @@ async function main() {
   for (let i = 0; i < n; i++) {
     runCreatePromises.push(
       summarizeDoc.run({
-        input: { docUrl: "https://example.com/mydoc.pdf", num: String(i + 1) },
+        docUrl: "https://example.com/mydoc.pdf",
+        num: String(i + 1),
       }),
     );
     console.log(`Workflow run ${String(i + 1)} enqueued"`);

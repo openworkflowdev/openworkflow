@@ -92,7 +92,9 @@ export class WorkflowDefinition<Input, Output> {
   }
 
   async run(
-    options: WorkflowRunOptions<Input>,
+    input?: Input,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
@@ -102,7 +104,7 @@ export class WorkflowDefinition<Input, Output> {
       idempotencyKey: null,
       config: {},
       context: null,
-      input: options.input ?? null,
+      input: input ?? null,
       availableAt: null,
     });
 
@@ -156,9 +158,8 @@ export type StepFunction<Output> = () =>
  * Options for creating a new workflow run from a workflow definition when
  * calling `workflowDef.run()`.
  */
-export interface WorkflowRunOptions<Input> {
-  input: Input;
-}
+//eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface WorkflowRunOptions {}
 
 /**
  * Options for WorkflowHandle.

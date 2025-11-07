@@ -24,9 +24,7 @@ describe("OpenWorkflow", () => {
 
   test("enqueues workflow runs via backend", async () => {
     const workflow = client.defineWorkflow("enqueue-test", noopFn);
-    await workflow.run({
-      input: { docUrl: "https://example.com" },
-    });
+    await workflow.run({ docUrl: "https://example.com" });
 
     const workerId = "enqueue-worker";
     const claimed = await backend.claimWorkflowRun({
@@ -42,7 +40,7 @@ describe("OpenWorkflow", () => {
 
   test("result resolves when workflow succeeds", async () => {
     const workflow = client.defineWorkflow("result-success", noopFn);
-    const handle = await workflow.run({ input: { value: 1 } });
+    const handle = await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
     const claimed = await backend.claimWorkflowRun({
@@ -67,7 +65,7 @@ describe("OpenWorkflow", () => {
 
   test("result rejects when workflow fails", async () => {
     const workflow = client.defineWorkflow("result-failure", noopFn);
-    await workflow.run({ input: { value: 1 } });
+    await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
     const claimed = await backend.claimWorkflowRun({

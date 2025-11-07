@@ -32,9 +32,7 @@ describe("Worker", () => {
     });
 
     const payload = { value: 10 };
-    const handle = await workflow.run({
-      input: payload,
-    });
+    const handle = await workflow.run(payload);
     await worker.tick();
 
     const result = await handle.result();
@@ -52,7 +50,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: { value: 21 } });
+    const handle = await workflow.run({ value: 21 });
     await worker.tick();
 
     const result = await handle.result();
@@ -79,7 +77,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     await worker.tick();
 
     const result = await handle.result();
@@ -139,7 +137,7 @@ describe("Worker", () => {
     });
 
     // run the workflow
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
 
     // first attempt - will fail and reschedule
     await worker.tick();
@@ -188,7 +186,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     await worker.tick();
 
     const result = await handle.result();
@@ -218,7 +216,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     await worker.tick();
 
     const result = await handle.result();
@@ -252,7 +250,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     await worker.tick();
 
     const result = await handle.result();
@@ -280,11 +278,11 @@ describe("Worker", () => {
     // create 5 workflow runs, though only 2 (concurrency limit) should be
     // completed per tick
     const handles = await Promise.all([
-      workflow.run({ input: {} }),
-      workflow.run({ input: {} }),
-      workflow.run({ input: {} }),
-      workflow.run({ input: {} }),
-      workflow.run({ input: {} }),
+      workflow.run(),
+      workflow.run(),
+      workflow.run(),
+      workflow.run(),
+      workflow.run(),
     ]);
 
     await worker.tick();
@@ -314,7 +312,7 @@ describe("Worker", () => {
     });
 
     await worker.start();
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     await sleep(200);
     await worker.stop();
 
@@ -351,7 +349,7 @@ describe("Worker", () => {
       workflows: client.listWorkflowDefinitions(),
     });
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
 
     // first attempt will fail
     await worker.tick();
@@ -373,7 +371,7 @@ describe("Worker", () => {
   test("reclaims workflow run when heartbeat stops (known slow test)", async () => {
     const workflow = client.defineWorkflow("heartbeat-test", () => "done");
 
-    const handle = await workflow.run({ input: {} });
+    const handle = await workflow.run();
     const workerId = randomUUID();
 
     const claimed = await backend.claimWorkflowRun({
@@ -403,9 +401,9 @@ describe("Worker", () => {
     const workflow = client.defineWorkflow("count-test", () => "result");
 
     // enqueue 3 workflows
-    await workflow.run({ input: {} });
-    await workflow.run({ input: {} });
-    await workflow.run({ input: {} });
+    await workflow.run();
+    await workflow.run();
+    await workflow.run();
 
     const worker = new Worker({
       backend,
@@ -433,7 +431,7 @@ describe("Worker", () => {
 
     // enqueue 10 workflows
     for (let i = 0; i < 10; i++) {
-      await workflow.run({ input: {} });
+      await workflow.run();
     }
 
     const worker = new Worker({
@@ -466,7 +464,7 @@ describe("Worker", () => {
     // enqueue many workflows
     const handles = [];
     for (let i = 0; i < 20; i++) {
-      handles.push(await workflow.run({ input: {} }));
+      handles.push(await workflow.run());
     }
 
     const worker = new Worker({
