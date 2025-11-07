@@ -14,7 +14,7 @@ import {
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
-} from "../backend/index.js";
+} from "../openworkflow/backend.js";
 import { newPostgres, Postgres } from "./postgres.js";
 
 export class BackendPostgres implements Backend {

@@ -2,7 +2,7 @@ import {
   calculateRetryDelayMs,
   DEFAULT_RETRY_POLICY,
   shouldRetry,
-} from "./index.js";
+} from "./backend.js";
 import { describe, expect, test } from "vitest";
 
 describe("calculateRetryDelayMs", () => {

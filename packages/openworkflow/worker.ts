@@ -1,15 +1,15 @@
-import {
+import type {
   Backend,
   JsonValue,
   StepAttempt,
   WorkflowRun,
-} from "../backend/index.js";
+} from "./backend.js";
 import {
   DEFAULT_NAMESPACE_ID,
   StepApi,
   StepFunction,
   WorkflowDefinition,
-} from "../openworkflow/index.js";
+} from "./client.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s

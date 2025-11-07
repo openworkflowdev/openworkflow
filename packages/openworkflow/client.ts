@@ -1,4 +1,4 @@
-import { Backend, WorkflowRun } from "../backend/index.js";
+import type { Backend, WorkflowRun } from "./backend.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
