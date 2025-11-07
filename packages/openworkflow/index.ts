@@ -1,1 +1,226 @@
-console.log("Hello, OpenWorkflow!");
+import { Backend, WorkflowRun } from "../backend/index.js";
+
+const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
+const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
+
+/**
+ * Options for the OpenWorkflow client.
+ */
+export interface OpenWorkflowOptions {
+  backend: Backend;
+  namespaceId?: string;
+}
+
+/**
+ * Client used to register workflows and start runs.
+ */
+export class OpenWorkflow {
+  private backend: Backend;
+  private namespaceId: string;
+  private registeredWorkflows = new Map<
+    string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    WorkflowDefinition<any, any>
+  >();
+
+  constructor(options: OpenWorkflowOptions) {
+    this.namespaceId = options.namespaceId ?? "default";
+    this.backend = options.backend;
+  }
+
+  /**
+   * Define and register a new workflow.
+   */
+  defineWorkflow<Input, Output>(
+    name: string,
+    fn: WorkflowFunction<Input, Output>,
+  ): WorkflowDefinition<Input, Output> {
+    if (this.registeredWorkflows.has(name)) {
+      throw new Error(`Workflow "${name}" is already registered`);
+    }
+
+    const definition = new WorkflowDefinition<Input, Output>({
+      backend: this.backend,
+      namespaceId: this.namespaceId,
+      name,
+      fn,
+    });
+
+    this.registeredWorkflows.set(name, definition);
+
+    return definition;
+  }
+
+  /**
+   * listWorkflows lists all defined workflows. Needed for worker registration.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  listWorkflowDefinitions(): WorkflowDefinition<any, any>[] {
+    return [...this.registeredWorkflows.values()];
+  }
+}
+
+//
+// --- Workflow Definition
+//
+
+/**
+ * Options for WorkflowDefinition.
+ */
+export interface WorkflowDefinitionOptions<Input, Output> {
+  backend: Backend;
+  namespaceId: string;
+  name: string;
+  fn: WorkflowFunction<Input, Output>;
+}
+
+/**
+ * Represents a workflow definition. Returned from `client.defineWorkflow()`.
+ */
+export class WorkflowDefinition<Input, Output> {
+  private backend: Backend;
+  private namespaceId: string;
+  readonly name: string;
+  readonly fn: WorkflowFunction<Input, Output>;
+
+  constructor(options: WorkflowDefinitionOptions<Input, Output>) {
+    this.backend = options.backend;
+    this.namespaceId = options.namespaceId;
+    this.name = options.name;
+    this.fn = options.fn;
+  }
+
+  async run(
+    options: WorkflowRunOptions<Input>,
+  ): Promise<WorkflowRunHandle<Output>> {
+    // need to come back and support idempotency keys, scheduling, etc.
+    const workflowRun = await this.backend.createWorkflowRun({
+      namespaceId: this.namespaceId,
+      workflowName: this.name,
+      version: null,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: options.input ?? null,
+      availableAt: null,
+    });
+
+    return new WorkflowRunHandle<Output>({
+      backend: this.backend,
+      namespaceId: this.namespaceId,
+      workflowRun: workflowRun,
+      resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
+      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
+    });
+  }
+}
+
+/**
+ * Params passed to a workflow function for the user to use when defining steps.
+ */
+export interface WorkflowFunctionParams<Input> {
+  input: Input;
+  step: StepApi;
+}
+
+/**
+ * The workflow definition's function (defined by the user) that the user uses
+ * to define the workflow's steps.
+ */
+export type WorkflowFunction<Input, Output> = (
+  params: WorkflowFunctionParams<Input>,
+) => Promise<Output> | Output;
+
+/**
+ * Used within a workflow handler to define steps by calling `step.run()`.
+ */
+export interface StepApi {
+  run<Output>(name: string, fn: StepFunction<Output>): Promise<Output>;
+}
+
+/**
+ * The step definition (defined by the user) that executes user code.
+ */
+export type StepFunction<Output> = () => Promise<Output> | Output;
+
+//
+// --- Workflow Run
+//
+
+/**
+ * Options for creating a new workflow run from a workflow definition when
+ * calling `workflowDef.run()`.
+ */
+export interface WorkflowRunOptions<Input> {
+  input: Input;
+}
+
+/**
+ * Options for WorkflowHandle.
+ */
+export interface WorkflowHandleOptions {
+  backend: Backend;
+  namespaceId: string;
+  workflowRun: WorkflowRun;
+  resultPollIntervalMs: number;
+  resultTimeoutMs: number;
+}
+
+/**
+ * Represents a started workflow run and provides a helper to await its result.
+ * Returned from `workflowDef.run()`.
+ */
+export class WorkflowRunHandle<Output> {
+  private backend: Backend;
+  private namespaceId: string;
+  private workflowRun: WorkflowRun;
+  private resultPollIntervalMs: number;
+  private resultTimeoutMs: number;
+
+  constructor(options: WorkflowHandleOptions) {
+    this.backend = options.backend;
+    this.namespaceId = options.namespaceId;
+    this.workflowRun = options.workflowRun;
+    this.resultPollIntervalMs = options.resultPollIntervalMs;
+    this.resultTimeoutMs = options.resultTimeoutMs;
+  }
+
+  async result(): Promise<Output> {
+    const start = Date.now();
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    while (true) {
+      // refresh the workflow run
+      const latest = await this.backend.getWorkflowRun({
+        namespaceId: this.namespaceId,
+        workflowRunId: this.workflowRun.id,
+      });
+
+      if (!latest) {
+        throw new Error(
+          `Workflow run ${this.workflowRun.id} no longer exists in namespace ${this.namespaceId}`,
+        );
+      }
+
+      if (latest.status === "succeeded") {
+        return latest.output as Output;
+      }
+
+      if (latest.status === "failed") {
+        throw new Error(
+          `Workflow ${this.workflowRun.workflowName} failed: ${JSON.stringify(latest.error)}`,
+        );
+      }
+
+      if (Date.now() - start > this.resultTimeoutMs) {
+        throw new Error(
+          `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
+        );
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, this.resultPollIntervalMs);
+      });
+    }
+  }
+}

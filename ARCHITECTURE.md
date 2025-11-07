@@ -110,9 +110,8 @@ of coordination. There is no separate orchestrator server.
     a Worker process starts, it automatically discovers and registers this code
     in an in-memory map. There is no sync process with an external server.
 2.  **Workflow Invocation**: The application code uses the **Client** to start a
-    new workflow run (e.g., `client.run('OnboardUser', { userId: '123' })`). The
-    Client creates a new entry in the `workflow_runs` table with a `pending`
-    status.
+    new workflow run. The Client creates a new entry in the `workflow_runs`
+    table with a `pending` status.
 3.  **Job Polling**: A **Worker** process polls the `workflow_runs` table,
     looking for jobs with `status = 'pending'` and an `availableAt` timestamp in
     the past. It uses an atomic `FOR UPDATE SKIP LOCKED` query to claim a single
@@ -142,17 +141,17 @@ beginning. This is the core of the deterministic replay model.
 
 ```ts
 // A worker claims a workflow run.
-// It loads the step history: { "fetchUser": { output: { id: 1, name: "Alice" } } }
+// It loads the step history: { "fetch-user": { output: { id: 1, name: "Alice" } } }
 
-const user = await step.run("fetchUser", async () => {
-  // 1. The framework sees "fetchUser".
+const user = await step.run("fetch-user", async () => {
+  // 1. The framework sees "fetch-user".
   // 2. It finds a completed result in the history.
   // 3. It returns the cached output immediately without executing the function.
   return await db.users.findOne({ id: 1 });
 });
 
-const welcomeEmail = await step.run("sendWelcomeEmail", async () => {
-  // 4. The framework sees "sendWelcomeEmail".
+const welcomeEmail = await step.run("send-welcome-email", async () => {
+  // 4. The framework sees "send-welcome-email".
   // 5. It is NOT in the history.
   // 6. It creates a step_attempt with status "running".
   // 7. It executes the function and saves the result.
@@ -180,12 +179,12 @@ concurrency capacity.
 
 The SDK provides several step primitives to handle different workflow patterns:
 
-**`step.run(id, fn)`**: Executes a block of arbitrary code. This is the most
+**`step.run(name, fn)`**: Executes a block of arbitrary code. This is the most
 common step type used for database queries, API calls, and other synchronous
 operations.
 
 ```ts
-const user = await step.run("fetchUser", async () => {
+const user = await step.run("fetch-user", async () => {
   return await db.users.findOne({ id: userId });
 });
 ```
@@ -217,8 +216,8 @@ The SDK supports parallel execution of steps via language-native constructs like
 
 ```ts
 const [user, settings] = await Promise.all([
-  step.run("fetchUser", ...),
-  step.run("fetchSettings", ...),
+  step.run("fetch-user", ...),
+  step.run("fetch-settings", ...),
 ]);
 ```
 
@@ -258,13 +257,13 @@ historical paths within the workflow code. The workflow receives a `version`
 parameter that can be used to determine which code path to execute.
 
 ```ts
-const workflow = async ({ step, version }) => {
+const workflow = ow.defineWorkflow("versioned-workflow", async ({ step, version }) => {
   if (version === "v1") {
-    await step.run("oldStepName", ...);
+    await step.run("old-step-name", ...);
   } else {
-    await step.run("newStepName", ...);
+    await step.run("new-step-name", ...);
   }
-};
+});
 ```
 
 This approach enables zero-downtime deployments by allowing old workflow runs to

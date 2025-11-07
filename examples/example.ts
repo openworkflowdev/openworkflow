@@ -1,0 +1,139 @@
+import { BackendPostgres } from "../packages/backend-postgres/index.js";
+import { DEFAULT_DATABASE_URL } from "../packages/backend-postgres/postgres.js";
+import { OpenWorkflow } from "../packages/openworkflow/index.js";
+import { Worker } from "../packages/worker/index.js";
+import { randomUUID } from "node:crypto";
+
+const namespaceId = randomUUID();
+
+const backend = new BackendPostgres(DEFAULT_DATABASE_URL);
+const ow = new OpenWorkflow({
+  backend,
+  namespaceId,
+});
+
+interface SummarizeDocInput {
+  docUrl: string;
+}
+
+interface SummarizeDocOutput {
+  summaryId: string;
+  summarized: string;
+}
+
+/**
+ * An example workflow that extracts, cleans, summarizes, and saves a document
+ * from a URL. It explicitally specifies <Input, Output> types for better type
+ * safety, but that's optional.
+ */
+const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
+  "summarize-doc",
+  async ({ input, step }) => {
+    const extracted = await step.run("extract-text", () => {
+      console.log(`Extracting text from ${input.docUrl}`);
+      return "extracted-text";
+    });
+
+    const cleaned = await step.run("clean-text", () => {
+      console.log(`Cleaning ${String(extracted.length)} characters`);
+      return "cleaned-text";
+    });
+
+    const summarized = await step.run("summarize-text", async () => {
+      console.log(`Summarizing: ${cleaned.slice(0, 10)}...`);
+
+      // sleep a bit to simulate async work
+      await randomSleep();
+
+      return "summary";
+    });
+
+    const summaryId = await step.run("save-summary", async () => {
+      console.log(`Saving summary (${summarized}) to the database`);
+
+      // sleep a bit to simulate async work
+      await randomSleep();
+
+      return randomUUID();
+    });
+
+    return {
+      summaryId,
+      summarized,
+    };
+  },
+);
+
+/**
+ * Start a worker with 4 concurrency slots. Then create and run four workflows
+ * concurrently with injected logging.
+ *
+ * This `main` function is much more complex and messy than a typical example.
+ * You can find a more typical example in the README.
+ */
+async function main() {
+  const n = 4;
+
+  console.log("Starting worker...");
+  const worker = new Worker({
+    backend,
+    namespaceId,
+    workflows: ow.listWorkflowDefinitions(),
+    concurrency: n,
+  });
+  await worker.start();
+
+  console.log(`Running ${String(n)} workflows...`);
+  const runCreatePromises = [] as Promise<unknown>[];
+  for (let i = 0; i < n; i++) {
+    runCreatePromises.push(
+      summarizeDoc.run({ input: { docUrl: "https://example.com/mydoc.pdf" } }),
+    );
+    console.log(
+      `Workflow run ${String(i + 1)} enqueued in namespace "${namespaceId}"`,
+    );
+  }
+
+  // wait for all run handles to be created
+  const runHandles = (await Promise.all(runCreatePromises)) as {
+    result: () => Promise<SummarizeDocOutput>;
+  }[];
+
+  // collect result promises, attach logging to each
+  const resultPromises = runHandles.map((h, idx) =>
+    h
+      .result()
+      .then((res) => {
+        console.log(
+          `Workflow ${String(idx + 1)} completed with summaryId=${res.summaryId}`,
+        );
+        return { status: "fulfilled" as const, value: res };
+      })
+      .catch((error: unknown) => {
+        console.error(`Workflow ${String(idx + 1)} failed:`, error);
+        return { status: "rejected" as const, reason: error } as unknown;
+      }),
+  );
+
+  // run all
+  await Promise.all(resultPromises);
+
+  console.log("Stopping worker...");
+  await worker.stop();
+
+  console.log("Closing backend...");
+  await backend.end();
+
+  console.log("Done.");
+}
+
+await main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+
+function randomSleep() {
+  // eslint-disable-next-line sonarjs/pseudo-random
+  const sleepDurationMs = Math.floor(Math.random() * 1000) * 5;
+  return new Promise((resolve) => setTimeout(resolve, sleepDurationMs));
+}
