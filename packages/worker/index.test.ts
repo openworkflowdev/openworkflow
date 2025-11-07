@@ -87,7 +87,7 @@ describe("Worker", () => {
     expect(executionCount).toBe(1);
   });
 
-  test("marks workflow failed when definition is missing", async () => {
+  test("marks workflow for retry when definition is missing", async () => {
     const workflowRun = await backend.createWorkflowRun({
       namespaceId,
       workflowName: "missing",
@@ -115,7 +115,46 @@ describe("Worker", () => {
       namespaceId,
       workflowRunId: workflowRun.id,
     });
-    expect(updated?.status).toBe("failed");
+
+    expect(updated?.status).toBe("pending");
+    expect(updated?.error).toBeDefined();
+    expect(updated?.availableAt).not.toBeNull();
+  });
+
+  test("retries failed workflows automatically (known slow test)", async () => {
+    let attemptCount = 0;
+
+    const workflow = client.defineWorkflow("retry-test", () => {
+      attemptCount++;
+      if (attemptCount < 2) {
+        throw new Error(`Attempt ${String(attemptCount)} failed`);
+      }
+      return { success: true, attempts: attemptCount };
+    });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    // run the workflow
+    const handle = await workflow.run({ input: {} });
+
+    // first attempt - will fail and reschedule
+    await worker.tick();
+    await sleep(100); // wait for worker to finish
+    expect(attemptCount).toBe(1);
+
+    await sleep(1100); // wait for backoff delay
+
+    // second attempt - will succeed
+    await worker.tick();
+    await sleep(100); // wait for worker to finish
+    expect(attemptCount).toBe(2);
+
+    const result = await handle.result();
+    expect(result).toEqual({ success: true, attempts: 2 });
   });
 
   test("tick is a no-op when no work is available", async () => {
@@ -129,3 +168,7 @@ describe("Worker", () => {
     await worker.tick(); // no runs queued
   });
 });
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

@@ -81,7 +81,7 @@ export class Worker {
     if (this.loopPromise) await this.loopPromise;
 
     // wait for all active executions to finish
-    while (this.activeExecutions.size > 0) await delay(100);
+    while (this.activeExecutions.size > 0) await sleep(100);
   }
 
   /**
@@ -119,7 +119,7 @@ export class Worker {
       } catch (error) {
         console.error("Worker tick failed:", error);
       }
-      await delay(DEFAULT_POLL_INTERVAL_MS);
+      await sleep(DEFAULT_POLL_INTERVAL_MS);
     }
   }
 
@@ -389,6 +389,6 @@ function serializeError(error: unknown): {
   };
 }
 
-function delay(ms: number): Promise<void> {
+function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

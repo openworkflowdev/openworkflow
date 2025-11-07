@@ -67,7 +67,7 @@ describe("OpenWorkflow", () => {
 
   test("result rejects when workflow fails", async () => {
     const workflow = client.defineWorkflow("result-failure", noopFn);
-    const handle = await workflow.run({ input: { value: 1 } });
+    await workflow.run({ input: { value: 1 } });
 
     const workerId = "test-worker";
     const claimed = await backend.claimWorkflowRun({
@@ -78,6 +78,7 @@ describe("OpenWorkflow", () => {
     expect(claimed).not.toBeNull();
     if (!claimed) throw new Error("workflow run was not claimed");
 
+    // mark as failed (should reschedule))
     await backend.markWorkflowRunFailed({
       namespaceId,
       workflowRunId: claimed.id,
@@ -85,9 +86,12 @@ describe("OpenWorkflow", () => {
       error: { message: "boom" },
     });
 
-    await expect(handle.result()).rejects.toThrow(
-      "Workflow result-failure failed",
-    );
+    const rescheduled = await backend.getWorkflowRun({
+      namespaceId,
+      workflowRunId: claimed.id,
+    });
+    expect(rescheduled?.status).toBe("pending");
+    expect(rescheduled?.error).toEqual({ message: "boom" });
   });
 
   test("listWorkflowDefinitions returns registered workflows", () => {

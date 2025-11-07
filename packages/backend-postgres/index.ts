@@ -13,6 +13,7 @@ import {
   MarkWorkflowRunSucceededParams,
   StepAttempt,
   WorkflowRun,
+  DEFAULT_RETRY_POLICY,
 } from "../backend/index.js";
 import { newPostgres, Postgres } from "./postgres.js";
 
@@ -159,23 +160,29 @@ export class BackendPostgres implements Backend {
   async markWorkflowRunFailed(
     params: MarkWorkflowRunFailedParams,
   ): Promise<void> {
-    const [updated] = await this.pg`
+    const { workflowRunId, error } = params;
+    const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
+      DEFAULT_RETRY_POLICY;
+
+    await this.pg`
       UPDATE "openworkflow"."workflow_runs"
       SET
-        "status" = 'failed',
-        "output" = NULL,
-        "error" = ${this.pg.json(params.error)},
-        "worker_id" = ${params.workerId},
-        "available_at" = NULL,
-        "finished_at" = NOW(),
+        "status" = 'pending',
+        "available_at" = NOW() + (
+          LEAST(
+            ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
+            ${maximumIntervalMs}
+          ) * INTERVAL '1 millisecond'
+        ),
+        "error" = ${this.pg.json(error)},
+        "worker_id" = NULL,
+        "started_at" = NULL,
         "updated_at" = NOW()
       WHERE "namespace_id" = ${params.namespaceId}
-      AND "id" = ${params.workflowRunId}
+      AND "id" = ${workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
-      RETURNING "id"
     `;
-    if (!updated) throw new Error("Failed to mark workflow run failed");
   }
 
   async listStepAttempts(

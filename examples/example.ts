@@ -14,6 +14,7 @@ const ow = new OpenWorkflow({
 
 interface SummarizeDocInput {
   docUrl: string;
+  num: string; // just for logging
 }
 
 interface SummarizeDocOutput {
@@ -30,26 +31,37 @@ const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
   "summarize-doc",
   async ({ input, step }) => {
     const extracted = await step.run("extract-text", () => {
-      console.log(`Extracting text from ${input.docUrl}`);
+      console.log(`[${input.num}] Extracting text from ${input.docUrl}`);
       return "extracted-text";
     });
 
     const cleaned = await step.run("clean-text", () => {
-      console.log(`Cleaning ${String(extracted.length)} characters`);
+      console.log(
+        `[${input.num}] Cleaning ${String(extracted.length)} characters`,
+      );
       return "cleaned-text";
     });
 
     const summarized = await step.run("summarize-text", async () => {
-      console.log(`Summarizing: ${cleaned.slice(0, 10)}...`);
+      console.log(`[${input.num}] Summarizing: ${cleaned.slice(0, 10)}...`);
 
       // sleep a bit to simulate async work
       await randomSleep();
+
+      // fail 50% of the time to demonstrate retries
+      // eslint-disable-next-line sonarjs/pseudo-random
+      if (Math.random() < 0.5) {
+        console.log(`[${input.num}] ⚠️ Simulated failure during summarization`);
+        throw new Error("Simulated summarization error");
+      }
 
       return "summary";
     });
 
     const summaryId = await step.run("save-summary", async () => {
-      console.log(`Saving summary (${summarized}) to the database`);
+      console.log(
+        `[${input.num}] Saving summary (${summarized}) to the database`,
+      );
 
       // sleep a bit to simulate async work
       await randomSleep();
@@ -87,11 +99,11 @@ async function main() {
   const runCreatePromises = [] as Promise<unknown>[];
   for (let i = 0; i < n; i++) {
     runCreatePromises.push(
-      summarizeDoc.run({ input: { docUrl: "https://example.com/mydoc.pdf" } }),
+      summarizeDoc.run({
+        input: { docUrl: "https://example.com/mydoc.pdf", num: String(i + 1) },
+      }),
     );
-    console.log(
-      `Workflow run ${String(i + 1)} enqueued in namespace "${namespaceId}"`,
-    );
+    console.log(`Workflow run ${String(i + 1)} enqueued"`);
   }
 
   // wait for all run handles to be created
@@ -103,14 +115,14 @@ async function main() {
   const resultPromises = runHandles.map((h, idx) =>
     h
       .result()
-      .then((res) => {
+      .then((output) => {
         console.log(
-          `Workflow ${String(idx + 1)} completed with summaryId=${res.summaryId}`,
+          `✅ Workflow run ${String(idx + 1)} succeeded: ${JSON.stringify(output)}`,
         );
-        return { status: "fulfilled" as const, value: res };
+        return { status: "fulfilled" as const, value: output };
       })
       .catch((error: unknown) => {
-        console.error(`Workflow ${String(idx + 1)} failed:`, error);
+        console.error(`❌ Workflow run ${String(idx + 1)} failed:`, error);
         return { status: "rejected" as const, reason: error } as unknown;
       }),
   );

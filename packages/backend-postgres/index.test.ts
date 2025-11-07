@@ -229,7 +229,7 @@ describe("BackendPostgres", () => {
   });
 
   describe("markWorkflowRunFailed()", () => {
-    test("marks running workflow runs as failed", async () => {
+    test("reschedules workflow runs with exponential backoff on first failure", async () => {
       const namespaceId = randomUUID();
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend, namespaceId);
@@ -241,6 +241,8 @@ describe("BackendPostgres", () => {
       });
       if (!claimed) throw new Error("Expected workflow run to be claimed");
 
+      const beforeFailTime = Date.now();
+
       const error = { message: "boom" };
       await backend.markWorkflowRunFailed({
         namespaceId,
@@ -249,15 +251,77 @@ describe("BackendPostgres", () => {
         error,
       });
 
-      const finished = await backend.getWorkflowRun({
+      const rescheduled = await backend.getWorkflowRun({
         namespaceId,
         workflowRunId: claimed.id,
       });
-      expect(finished?.status).toBe("failed");
-      expect(finished?.error).toEqual(error);
-      expect(finished?.output).toBeNull();
-      expect(finished?.finishedAt).not.toBeNull();
-      expect(finished?.availableAt).toBeNull();
+
+      // rescheduled, not permanently failed
+      expect(rescheduled?.status).toBe("pending");
+      expect(rescheduled?.error).toEqual(error);
+      expect(rescheduled?.output).toBeNull();
+      expect(rescheduled?.finishedAt).toBeNull();
+      expect(rescheduled?.workerId).toBeNull();
+
+      expect(rescheduled?.availableAt).not.toBeNull();
+      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
+      const delayMs = rescheduled.availableAt.getTime() - beforeFailTime;
+      expect(delayMs).toBeGreaterThanOrEqual(900); // ~1s with some tolerance
+      expect(delayMs).toBeLessThan(1500);
+    });
+
+    test("reschedules with increasing backoff on multiple failures (known slow test)", async () => {
+      const namespaceId = randomUUID();
+      await createPendingWorkflowRun(backend, namespaceId);
+
+      // fail first attempt
+      let workerId = randomUUID();
+      let claimed = await backend.claimWorkflowRun({
+        namespaceId,
+        workerId,
+        leaseDurationMs: 20,
+      });
+      if (!claimed) throw new Error("Expected workflow run to be claimed");
+      expect(claimed.attempts).toBe(1);
+
+      await backend.markWorkflowRunFailed({
+        namespaceId,
+        workflowRunId: claimed.id,
+        workerId,
+        error: { message: "first failure" },
+      });
+
+      await sleep(1100); // wait for first backoff (~1s)
+
+      // fail second attempt
+      workerId = randomUUID();
+      claimed = await backend.claimWorkflowRun({
+        namespaceId,
+        workerId,
+        leaseDurationMs: 20,
+      });
+      if (!claimed) throw new Error("Expected workflow run to be claimed");
+      expect(claimed.attempts).toBe(2);
+
+      const beforeSecondFail = Date.now();
+      await backend.markWorkflowRunFailed({
+        namespaceId,
+        workflowRunId: claimed.id,
+        workerId,
+        error: { message: "second failure" },
+      });
+
+      const rescheduled = await backend.getWorkflowRun({
+        namespaceId,
+        workflowRunId: claimed.id,
+      });
+      expect(rescheduled?.status).toBe("pending");
+
+      // second attempt should have ~2s backoff (1s * 2^1)
+      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
+      const delayMs = rescheduled.availableAt.getTime() - beforeSecondFail;
+      expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
+      expect(delayMs).toBeLessThan(2500);
     });
   });
 
