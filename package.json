@@ -23,7 +23,7 @@
     "@tsconfig/strictest": "^2.0.7",
     "@types/node": "^24.10.0",
     "@vitest/coverage-v8": "^4.0.7",
-    "eslint": "^9.39.0",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^62.0.0",
