@@ -1,5 +1,6 @@
 import { Backend, WorkflowRun } from "../backend/index.js";
 
+export const DEFAULT_NAMESPACE_ID = "default";
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
 
@@ -24,7 +25,7 @@ export class OpenWorkflow {
   >();
 
   constructor(options: OpenWorkflowOptions) {
-    this.namespaceId = options.namespaceId ?? "default";
+    this.namespaceId = options.namespaceId ?? DEFAULT_NAMESPACE_ID;
     this.backend = options.backend;
   }
 

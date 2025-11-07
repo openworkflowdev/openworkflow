@@ -5,6 +5,7 @@ import {
   WorkflowRun,
 } from "../backend/index.js";
 import {
+  DEFAULT_NAMESPACE_ID,
   StepApi,
   StepFunction,
   WorkflowDefinition,
@@ -21,7 +22,7 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export interface WorkerOptions {
   backend: Backend;
-  namespaceId: string;
+  namespaceId?: string;
   workflows: WorkflowDefinition<unknown, unknown>[];
   concurrency?: number;
 }
@@ -44,7 +45,7 @@ export class Worker {
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId;
+    this.namespaceId = options.namespaceId ?? DEFAULT_NAMESPACE_ID;
 
     const concurrency = Math.max(
       DEFAULT_CONCURRENCY,
