@@ -94,6 +94,7 @@ export class BackendPostgres implements Backend {
           AND "status" IN ('pending', 'running')
           AND "available_at" <= NOW()
         ORDER BY
+          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
           "available_at",
           "created_at"
         LIMIT 1

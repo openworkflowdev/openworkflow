@@ -121,6 +121,38 @@ describe("BackendPostgres", () => {
       );
     });
 
+    test("prioritizes pending workflow runs over expired running ones", async () => {
+      const namespaceId = randomUUID();
+
+      const running = await createPendingWorkflowRun(backend, namespaceId);
+      const runningClaim = await backend.claimWorkflowRun({
+        namespaceId,
+        workerId: "worker-running",
+        leaseDurationMs: 5,
+      });
+      if (!runningClaim) throw new Error("expected claim");
+      expect(runningClaim.id).toBe(running.id);
+
+      await sleep(10); // wait for running's lease to expire
+
+      // pending claimed first, even though running expired
+      const pending = await createPendingWorkflowRun(backend, namespaceId);
+      const claimedFirst = await backend.claimWorkflowRun({
+        namespaceId,
+        workerId: "worker-second",
+        leaseDurationMs: 100,
+      });
+      expect(claimedFirst?.id).toBe(pending.id);
+
+      // running claimed second
+      const claimedSecond = await backend.claimWorkflowRun({
+        namespaceId,
+        workerId: "worker-third",
+        leaseDurationMs: 100,
+      });
+      expect(claimedSecond?.id).toBe(running.id);
+    });
+
     test("returns null when no workflow runs are available", async () => {
       const claimed = await backend.claimWorkflowRun({
         namespaceId: randomUUID(),
