@@ -173,7 +173,7 @@ export interface WorkflowHandleOptions {
 export class WorkflowRunHandle<Output> {
   private backend: Backend;
   private namespaceId: string;
-  private workflowRun: WorkflowRun;
+  readonly workflowRun: WorkflowRun;
   private resultPollIntervalMs: number;
   private resultTimeoutMs: number;
 

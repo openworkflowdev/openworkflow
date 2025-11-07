@@ -167,6 +167,210 @@ describe("Worker", () => {
 
     await worker.tick(); // no runs queued
   });
+
+  test("executes steps synchronously within workflow (known slow test)", async () => {
+    const executionOrder: string[] = [];
+    const workflow = client.defineWorkflow("sync-steps", async ({ step }) => {
+      executionOrder.push("start");
+      await step.run("step1", () => {
+        executionOrder.push("step1");
+        return 1;
+      });
+      executionOrder.push("between");
+      await step.run("step2", () => {
+        executionOrder.push("step2");
+        return 2;
+      });
+      executionOrder.push("end");
+      return executionOrder;
+    });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    const handle = await workflow.run({ input: {} });
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toEqual(["start", "step1", "between", "step2", "end"]);
+  });
+
+  test("executes parallel steps with Promise.all (known slow test)", async () => {
+    const executionTimes: Record<string, number> = {};
+    const workflow = client.defineWorkflow("parallel", async ({ step }) => {
+      const start = Date.now();
+      const [a, b, c] = await Promise.all([
+        step.run("step-a", () => {
+          executionTimes["step-a"] = Date.now() - start;
+          return "a";
+        }),
+        step.run("step-b", () => {
+          executionTimes["step-b"] = Date.now() - start;
+          return "b";
+        }),
+        step.run("step-c", () => {
+          executionTimes["step-c"] = Date.now() - start;
+          return "c";
+        }),
+      ]);
+      return { a, b, c };
+    });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    const handle = await workflow.run({ input: {} });
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toEqual({ a: "a", b: "b", c: "c" });
+
+    // steps should execute at roughly the same time (within 100ms)
+    const times = Object.values(executionTimes);
+    const maxTime = Math.max(...times);
+    const minTime = Math.min(...times);
+    expect(maxTime - minTime).toBeLessThan(100);
+  });
+
+  test("respects worker concurrency limit", async () => {
+    const workflow = client.defineWorkflow("concurrency-test", () => {
+      return "done";
+    });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+      concurrency: 2,
+    });
+
+    // create 5 workflow runs, though only 2 (concurrency limit) should be
+    // completed per tick
+    const handles = await Promise.all([
+      workflow.run({ input: {} }),
+      workflow.run({ input: {} }),
+      workflow.run({ input: {} }),
+      workflow.run({ input: {} }),
+      workflow.run({ input: {} }),
+    ]);
+
+    await worker.tick();
+    await sleep(100);
+
+    let completed = 0;
+    for (const handle of handles) {
+      const run = await backend.getWorkflowRun({
+        namespaceId,
+        workflowRunId: handle.workflowRun.id,
+      });
+      if (run?.status === "succeeded") completed++;
+    }
+
+    expect(completed).toBe(2);
+  });
+
+  test("worker starts, processes work, and stops gracefully", async () => {
+    const workflow = client.defineWorkflow("lifecycle", () => {
+      return "complete";
+    });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    await worker.start();
+    const handle = await workflow.run({ input: {} });
+    await sleep(200);
+    await worker.stop();
+
+    const result = await handle.result();
+    expect(result).toBe("complete");
+  });
+
+  test("recovers from crashes during parallel step execution (known slow test)", async () => {
+    let attemptCount = 0;
+
+    const workflow = client.defineWorkflow(
+      "crash-recovery",
+      async ({ step }) => {
+        attemptCount++;
+
+        const [a, b] = await Promise.all([
+          step.run("step-a", () => {
+            if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
+            return "a";
+          }),
+          step.run("step-b", () => {
+            if (attemptCount === 1) throw new Error("Simulated crash");
+            return "b";
+          }),
+        ]);
+
+        return { a, b, attempts: attemptCount };
+      },
+    );
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    const handle = await workflow.run({ input: {} });
+
+    // first attempt will fail
+    await worker.tick();
+    await sleep(100);
+    expect(attemptCount).toBe(1);
+
+    // wait for backoff
+    await sleep(1100);
+
+    // second attempt should succeed
+    await worker.tick();
+    await sleep(100);
+
+    const result = await handle.result();
+    expect(result).toEqual({ a: "a", b: "b", attempts: 2 });
+    expect(attemptCount).toBe(2);
+  });
+
+  test("reclaims workflow run when heartbeat stops (known slow test)", async () => {
+    const workflow = client.defineWorkflow("heartbeat-test", () => "done");
+
+    const handle = await workflow.run({ input: {} });
+    const workerId = randomUUID();
+
+    const claimed = await backend.claimWorkflowRun({
+      namespaceId,
+      workerId,
+      leaseDurationMs: 50,
+    });
+    expect(claimed).not.toBeNull();
+
+    // let lease expire before starting worker
+    await sleep(100);
+
+    // worker should be able to reclaim
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toBe("done");
+  });
 });
 
 function sleep(ms: number): Promise<void> {
