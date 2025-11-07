@@ -86,20 +86,22 @@ export class Worker {
 
   /**
    * Processes one round of work claims and execution. Exposed for testing.
+   * Returns the number of workflow runs claimed.
    */
-  async tick(): Promise<void> {
+  async tick(): Promise<number> {
     const availableSlots = this.concurrency - this.activeExecutions.size;
-    if (availableSlots <= 0) return;
+    if (availableSlots <= 0) return 0;
 
     // claim work for each available slot
     const claims = Array.from({ length: availableSlots }, (_, i) => {
       const availableWorkerId = this.workerIds[i % this.workerIds.length];
       return availableWorkerId
         ? this.claimAndProcessWorkflowRunInBackground(availableWorkerId)
-        : Promise.resolve();
+        : Promise.resolve(null);
     });
 
-    await Promise.all(claims);
+    const claimed = await Promise.all(claims);
+    return claimed.filter((run) => run !== null).length;
   }
 
   /**
@@ -111,32 +113,38 @@ export class Worker {
 
   /*
    * Main run loop that continuously ticks while the worker is running.
+   * Only sleeps when no work was claimed to avoid busy-waiting.
    */
   private async runLoop(): Promise<void> {
     while (this.running) {
       try {
-        await this.tick();
+        const claimedCount = await this.tick();
+        // only sleep if we didn't claim any work
+        if (claimedCount === 0) {
+          await sleep(DEFAULT_POLL_INTERVAL_MS);
+        }
       } catch (error) {
         console.error("Worker tick failed:", error);
+        await sleep(DEFAULT_POLL_INTERVAL_MS);
       }
-      await sleep(DEFAULT_POLL_INTERVAL_MS);
     }
   }
 
   /*
    * Cclaim and process a workflow run for the given worker ID. Do not await the
    * processing here to avoid blocking the caller.
+   * Returns the claimed workflow run, or null if none was available.
    */
   private async claimAndProcessWorkflowRunInBackground(
     workerId: string,
-  ): Promise<void> {
+  ): Promise<WorkflowRun | null> {
     // claim workflow run
     const workflowRun = await this.backend.claimWorkflowRun({
       namespaceId: this.namespaceId,
       workerId,
       leaseDurationMs: DEFAULT_LEASE_DURATION_MS,
     });
-    if (!workflowRun) return;
+    if (!workflowRun) return null;
 
     // find workflow definition
     const workflow = this.registeredWorkflows.get(workflowRun.workflowName);
@@ -149,7 +157,7 @@ export class Worker {
           message: `Workflow "${workflowRun.workflowName}" is not registered`,
         },
       });
-      return;
+      return null;
     }
 
     // create execution and start processing *async* w/o blocking
@@ -169,6 +177,8 @@ export class Worker {
         execution.stopHeartbeat();
         this.activeExecutions.delete(execution);
       });
+
+    return workflowRun;
   }
 
   /**

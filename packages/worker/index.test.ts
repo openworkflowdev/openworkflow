@@ -398,6 +398,97 @@ describe("Worker", () => {
     const result = await handle.result();
     expect(result).toBe("done");
   });
+
+  test("tick() returns count of claimed workflows", async () => {
+    const workflow = client.defineWorkflow("count-test", () => "result");
+
+    // enqueue 3 workflows
+    await workflow.run({ input: {} });
+    await workflow.run({ input: {} });
+    await workflow.run({ input: {} });
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+      concurrency: 5,
+    });
+
+    // first tick should claim 3 workflows (all available)
+    const claimed = await worker.tick();
+    expect(claimed).toBe(3);
+
+    // second tick should claim 0 (all already claimed)
+    const claimedAgain = await worker.tick();
+    expect(claimedAgain).toBe(0);
+
+    await worker.stop();
+  });
+
+  test("tick() respects concurrency limit", async () => {
+    const workflow = client.defineWorkflow("concurrency-test", async () => {
+      await sleep(100);
+      return "done";
+    });
+
+    // enqueue 10 workflows
+    for (let i = 0; i < 10; i++) {
+      await workflow.run({ input: {} });
+    }
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+      concurrency: 3,
+    });
+
+    // first tick should claim exactly 3 (concurrency limit)
+    const claimed = await worker.tick();
+    expect(claimed).toBe(3);
+
+    // second tick should claim 0 (all slots occupied)
+    const claimedAgain = await worker.tick();
+    expect(claimedAgain).toBe(0);
+
+    await worker.stop();
+  });
+
+  test("worker only sleeps between claims when no work is available", async () => {
+    const workflow = client.defineWorkflow(
+      "adaptive-test",
+      async ({ step }) => {
+        await step.run("step-1", () => "done");
+        return "complete";
+      },
+    );
+
+    // enqueue many workflows
+    const handles = [];
+    for (let i = 0; i < 20; i++) {
+      handles.push(await workflow.run({ input: {} }));
+    }
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+      concurrency: 5,
+    });
+
+    const startTime = Date.now();
+    await worker.start();
+
+    // wait for all workflows to complete
+    await Promise.all(handles.map((h) => h.result()));
+    await worker.stop();
+
+    const duration = Date.now() - startTime;
+
+    // with this conditional sleep, all workflows should complete quickly
+    // without it (with 100ms sleep between ticks), it would take much longer
+    expect(duration).toBeLessThan(3000); // should complete in under 3 seconds
+  });
 });
 
 function sleep(ms: number): Promise<void> {
