@@ -38,6 +38,7 @@ export class BackendPostgres implements Backend {
         "version",
         "status",
         "idempotency_key",
+        "config",
         "context",
         "input",
         "attempts",
@@ -52,6 +53,7 @@ export class BackendPostgres implements Backend {
         ${params.version},
         'pending',
         ${params.idempotencyKey},
+        ${this.pg.json(params.config)},
         ${this.pg.json(params.context)},
         ${this.pg.json(params.input)},
         0,
@@ -200,6 +202,8 @@ export class BackendPostgres implements Backend {
         "step_name",
         "kind",
         "status",
+        "config",
+        "context",
         "started_at",
         "created_at",
         "updated_at"
@@ -211,6 +215,8 @@ export class BackendPostgres implements Backend {
         ${params.stepName},
         ${params.kind},
         'running',
+        ${this.pg.json(params.config)},
+        ${this.pg.json(params.context)},
         NOW(),
         NOW(),
         NOW()

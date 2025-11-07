@@ -24,6 +24,7 @@ describe("BackendPostgres", () => {
         version: randomUUID(),
         status: "pending",
         idempotencyKey: randomUUID(),
+        config: { key: "val" },
         context: { key: "val" },
         input: { key: "val" },
         output: null,
@@ -46,6 +47,7 @@ describe("BackendPostgres", () => {
         version: expected.version,
         idempotencyKey: expected.idempotencyKey,
         input: expected.input,
+        config: expected.config,
         context: expected.context,
         availableAt: expected.availableAt,
       });
@@ -67,6 +69,7 @@ describe("BackendPostgres", () => {
         version: null,
         idempotencyKey: null,
         input: null,
+        config: {},
         context: null,
         availableAt: null,
       });
@@ -237,6 +240,8 @@ describe("BackendPostgres", () => {
         stepName: randomUUID(),
         kind: "activity",
         status: "running",
+        config: { key: "val" },
+        context: { key: "val" },
         output: null,
         error: null,
         childWorkflowRunNamespaceId: null,
@@ -253,6 +258,8 @@ describe("BackendPostgres", () => {
         workerId: workflowRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: expected.stepName,
         kind: expected.kind,
+        config: expected.config,
+        context: expected.context,
       });
       expect(created.id).toHaveLength(36);
       expect(deltaSeconds(created.startedAt)).toBeLessThan(1);
@@ -277,6 +284,8 @@ describe("BackendPostgres", () => {
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
+        config: {},
+        context: null,
       });
       await backend.markStepAttemptSucceeded({
         namespaceId: claimed.namespaceId,
@@ -292,6 +301,8 @@ describe("BackendPostgres", () => {
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
+        config: {},
+        context: null,
       });
 
       const listed = await backend.listStepAttempts({
@@ -315,6 +326,8 @@ describe("BackendPostgres", () => {
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
+        config: {},
+        context: null,
       });
 
       const got = await backend.getStepAttempt({
@@ -335,6 +348,8 @@ describe("BackendPostgres", () => {
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
+        config: {},
+        context: null,
       });
       const output = { foo: "bar" };
 
@@ -367,6 +382,8 @@ describe("BackendPostgres", () => {
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
+        config: {},
+        context: null,
       });
       const error = { message: "nope" };
 
@@ -415,6 +432,7 @@ async function createPendingWorkflowRun(
     version: null,
     idempotencyKey: null,
     input: null,
+    config: {},
     context: null,
     availableAt: null,
   });

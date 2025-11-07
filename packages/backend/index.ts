@@ -27,6 +27,7 @@ export interface CreateWorkflowRunParams {
   workflowName: string;
   version: string | null;
   idempotencyKey: string | null;
+  config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
   availableAt: Date | null; // null = immediately
@@ -75,6 +76,8 @@ export interface CreateStepAttemptParams {
   workerId: string;
   stepName: string;
   kind: StepKind;
+  config: JsonValue;
+  context: JsonValue | null;
 }
 
 export interface GetStepAttemptParams {
@@ -118,6 +121,7 @@ export interface WorkflowRun {
   version: string | null;
   status: WorkflowRunStatus;
   idempotencyKey: string | null;
+  config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
   output: JsonValue | null;
@@ -147,6 +151,8 @@ export interface StepAttempt {
   stepName: string;
   kind: StepKind;
   status: StepAttemptStatus;
+  config: JsonValue;
+  context: JsonValue | null;
   output: JsonValue | null;
   error: JsonValue | null;
   childWorkflowRunNamespaceId: string | null;
