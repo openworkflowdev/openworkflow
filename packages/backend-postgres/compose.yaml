@@ -5,3 +5,7 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - 5432:5432
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_stat_statements
+      -c pg_stat_statements.track=all
