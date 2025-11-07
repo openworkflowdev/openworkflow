@@ -340,7 +340,9 @@ class StepExecutor implements StepApi {
     try {
       // execute step function
       const result = await fn();
-      const output = result as JsonValue | null;
+
+      // convert undefined to null for JSON compatibility
+      const output = (result ?? null) as JsonValue | null;
 
       // mark success
       await this.backend.markStepAttemptSucceeded({
@@ -354,7 +356,7 @@ class StepExecutor implements StepApi {
       // cache result
       this.history.set(name, output);
 
-      return result;
+      return output as Output;
     } catch (error) {
       // mark failure
       await this.backend.markStepAttemptFailed({

@@ -139,9 +139,13 @@ export interface StepApi {
 }
 
 /**
- * The step definition (defined by the user) that executes user code.
+ * The step definition (defined by the user) that executes user code. Can return
+ * undefined (e.g., when using `return;`) which will be converted to null.
  */
-export type StepFunction<Output> = () => Promise<Output> | Output;
+export type StepFunction<Output> = () =>
+  | Promise<Output | undefined>
+  | Output
+  | undefined;
 
 //
 // --- Workflow Run

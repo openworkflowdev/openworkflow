@@ -168,6 +168,33 @@ describe("Worker", () => {
     await worker.tick(); // no runs queued
   });
 
+  test("handles step functions that return undefined", async () => {
+    const workflow = client.defineWorkflow(
+      "undefined-steps",
+      async ({ step }) => {
+        await step.run("step-1", () => {
+          return; // explicit undefined
+        });
+        await step.run("step-2", () => {
+          // implicit undefined
+        });
+        return { success: true };
+      },
+    );
+
+    const worker = new Worker({
+      backend,
+      namespaceId,
+      workflows: client.listWorkflowDefinitions(),
+    });
+
+    const handle = await workflow.run({ input: {} });
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toEqual({ success: true });
+  });
+
   test("executes steps synchronously within workflow (known slow test)", async () => {
     const executionOrder: string[] = [];
     const workflow = client.defineWorkflow("sync-steps", async ({ step }) => {
