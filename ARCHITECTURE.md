@@ -23,15 +23,15 @@ execution with minimal operational complexity.
   start to finish. Each run is a state machine managed by the workers.
 - **Step**: A durable, memoized checkpoint within a workflow. A step represents
   a unit of work, like a database query or an API call.
-- **Step Run**: A record in the Backend representing the state and result of a
-  single step's execution within a specific workflow run.
+- **Step Attempt**: A record in the Backend representing the state and result of
+  a single step attempt within a specific workflow run.
 - **Worker**: A long-running process in the user's application that polls the
   Backend for pending workflows, executes their code, and persists the results.
 - **Client**: The part of the OpenWorkflow SDK used by application code to start
   and query workflow runs.
 - **Backend**: A pluggable persistence layer (e.g., a Postgres database) that
-  stores all state for workflow runs and step runs. It serves as the queue and
-  the durable state log.
+  stores all state for workflow runs and step attempts. It serves as the queue
+  and the durable state log.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.
@@ -46,13 +46,14 @@ A workflow run can be in one of the following states:
 - **`succeeded`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed and all retries have been exhausted.
 
-### 1.4. Step Run Statuses
+### 1.4. Step Attempt Statuses
 
-A step run can be in one of the following states:
+A step attempt can be in one of the following states:
 
-- **`running`**: The step run is currently being executed.
-- **`succeeded`**: The step run completed successfully and its result is stored.
-- **`failed`**: The step run failed and all retries have been exhausted.
+- **`running`**: The step attempt is currently being executed.
+- **`succeeded`**: The step attempt completed successfully and its result is
+  stored.
+- **`failed`**: The step attempt failed.
 
 ## 2. System Architecture Overview
 
@@ -85,7 +86,7 @@ of coordination. There is no separate orchestrator server.
                |       Backend Storage        |
                |                              |
                | - workflow_runs              |
-               | - step_runs                  |
+               | - step_attempts              |
                +------------------------------+
 ```
 
@@ -98,10 +99,10 @@ of coordination. There is no separate orchestrator server.
   defined workflow code. It continuously polls the `workflow_runs` table for
   available work, executes the workflow logic, and updates the Backend with the
   results.
-- **Backend**: The source of truth. It stores workflow runs and step runs. The
-  `workflow_runs` table serves as the job queue for the workers, while the
-  `step_runs` table serves as a record of started and completed work, enabling
-  memoization.
+- **Backend**: The source of truth. It stores workflow runs and step attempts.
+  The `workflow_runs` table serves as the job queue for the workers, while the
+  `step_attempts` table serves as a record of started and completed work,
+  enabling memoization.
 
 ### 2.3. Basic Execution Flow
 
@@ -117,15 +118,15 @@ of coordination. There is no separate orchestrator server.
     the past. It uses an atomic `FOR UPDATE SKIP LOCKED` query to claim a single
     workflow run, setting its status to `running`.
 4.  **Code Execution (Replay Loop)**: The Worker loads the history of completed
-    `step_runs` for the claimed workflow. It then executes the workflow code
+    `step_attempts` for the claimed workflow. It then executes the workflow code
     from the beginning, using the history to memoize results of
     already-completed steps.
 5.  **Step Processing**: When the Worker encounters a new step, it creates a
-    `step_run` record with status `running`, executes the step function, and
-    then updates the `step_run` to `successful` upon completion. The Worker
+    `step_attempt` record with status `running`, executes the step function, and
+    then updates the `step_attempt` to `succeeded` upon completion. The Worker
     continues executing inline until the workflow code completes.
-6.  **State Update**: The Worker updates the Backend with each `step_run` as it
-    is created and completed, and updates the status of the `workflow_run`
+6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
+    it is created and completed, and updates the status of the `workflow_run`
     (e.g., `succeeded`).
 
 ## 3. The Execution Model: State Machine Replication
@@ -153,9 +154,9 @@ const user = await step.run("fetchUser", async () => {
 const welcomeEmail = await step.run("sendWelcomeEmail", async () => {
   // 4. The framework sees "sendWelcomeEmail".
   // 5. It is NOT in the history.
-  // 6. It creates a step_run with status "running".
+  // 6. It creates a step_attempt with status "running".
   // 7. It executes the function and saves the result.
-  // 8. It updates the step_run to status "successful" and continues.
+  // 8. It updates the step_attempt to status "succeeded" and continues.
   return await email.send(user);
 });
 ```
@@ -165,10 +166,10 @@ const welcomeEmail = await step.run("sendWelcomeEmail", async () => {
 All steps are executed synchronously by the worker. When a worker encounters a
 new step:
 
-1.  It creates a `step_run` record with status `running`.
+1.  It creates a `step_attempt` record with status `running`.
 2.  It executes the step function inline.
-3.  Upon completion, it updates the `step_run` to status `successful` with the
-    result.
+3.  Upon completion, it updates the `step_attempt` to status `succeeded` with
+    the result.
 
 Workers can be configured with a high concurrency limit (e.g., 100 or more) to
 handle many workflow runs simultaneously. Each workflow run occupies a worker
@@ -194,8 +195,8 @@ const user = await step.run("fetchUser", async () => {
 ### 4.1. Step Failures & Retries
 
 When a step's function throws an error, the framework records the error in the
-`step_run` and sets its status to `failed`. The error then propagates up. If the
-step has a retry policy, the entire workflow run is rescheduled with an
+`step_attempt` and sets its status to `failed`. The error then propagates up. If
+the workflow has a retry policy, the entire workflow run is rescheduled with an
 exponential backoff by setting its `availableAt` timestamp to a future time. On
 the next execution, the replay will reach the failed step and re-execute its
 function.
@@ -223,7 +224,7 @@ const [user, settings] = await Promise.all([
 
 When the worker encounters this, it executes all steps within the `Promise.all`
 concurrently. It waits for all of them to complete before proceeding. Each step
-is persisted individually as a `step_run`.
+attempt is persisted individually as a `step_attempt`.
 
 ### 5.2. Workflow Concurrency
 

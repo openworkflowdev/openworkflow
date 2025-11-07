@@ -12,12 +12,14 @@ export interface Backend {
   ): Promise<void>;
   markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<void>;
 
-  // Step Runs
-  listStepRuns(params: ListStepRunsParams): Promise<StepRun[]>;
-  createStepRun(params: CreateStepRunParams): Promise<StepRun>;
-  getStepRun(params: GetStepRunParams): Promise<StepRun | null>;
-  markStepRunSucceeded(params: MarkStepRunSucceededParams): Promise<void>;
-  markStepRunFailed(params: MarkStepRunFailedParams): Promise<void>;
+  // Step Attempts
+  listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
+  createStepAttempt(params: CreateStepAttemptParams): Promise<StepAttempt>;
+  getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
+  markStepAttemptSucceeded(
+    params: MarkStepAttemptSucceededParams,
+  ): Promise<void>;
+  markStepAttemptFailed(params: MarkStepAttemptFailedParams): Promise<void>;
 }
 
 export interface CreateWorkflowRunParams {
@@ -62,12 +64,12 @@ export interface MarkWorkflowRunFailedParams {
   error: JsonValue;
 }
 
-export interface ListStepRunsParams {
+export interface ListStepAttemptsParams {
   namespaceId: string;
   workflowRunId: string;
 }
 
-export interface CreateStepRunParams {
+export interface CreateStepAttemptParams {
   namespaceId: string;
   workflowRunId: string;
   workerId: string;
@@ -75,23 +77,23 @@ export interface CreateStepRunParams {
   kind: StepKind;
 }
 
-export interface GetStepRunParams {
+export interface GetStepAttemptParams {
   namespaceId: string;
-  stepRunId: string;
+  stepAttemptId: string;
 }
 
-export interface MarkStepRunSucceededParams {
+export interface MarkStepAttemptSucceededParams {
   namespaceId: string;
   workflowRunId: string;
-  stepRunId: string;
+  stepAttemptId: string;
   workerId: string;
   output: JsonValue | null;
 }
 
-export interface MarkStepRunFailedParams {
+export interface MarkStepAttemptFailedParams {
   namespaceId: string;
   workflowRunId: string;
-  stepRunId: string;
+  stepAttemptId: string;
   workerId: string;
   error: JsonValue;
 }
@@ -121,8 +123,8 @@ export interface WorkflowRun {
   output: JsonValue | null;
   error: JsonValue | null;
   attempts: number;
-  parentStepRunNamespaceId: string | null;
-  parentStepRunId: string | null;
+  parentStepAttemptNamespaceId: string | null;
+  parentStepAttemptId: string | null;
   workerId: string | null;
   availableAt: Date | null;
   startedAt: Date | null;
@@ -133,21 +135,20 @@ export interface WorkflowRun {
 
 export type StepKind = "activity";
 
-export type StepRunStatus = "running" | "succeeded" | "failed";
+export type StepAttemptStatus = "running" | "succeeded" | "failed";
 
 /**
- * StepRun represents a single execution instance of a step within a workflow.
+ * StepAttempt represents a single attempt of a step within a workflow.
  */
-export interface StepRun {
+export interface StepAttempt {
   namespaceId: string;
   id: string;
   workflowRunId: string;
   stepName: string;
   kind: StepKind;
-  status: StepRunStatus;
+  status: StepAttemptStatus;
   output: JsonValue | null;
   error: JsonValue | null;
-  attempts: number;
   childWorkflowRunNamespaceId: string | null;
   childWorkflowRunId: string | null;
   startedAt: Date | null;

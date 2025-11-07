@@ -48,7 +48,7 @@ export function migrations(schema: string): string[] {
 
     COMMIT;`,
 
-    // 1 - add workflow_runs and step_runs tables
+    // 1 - add workflow_runs and step_attempts tables
     `BEGIN;
 
     CREATE TABLE IF NOT EXISTS "${schema}"."workflow_runs" (
@@ -64,8 +64,8 @@ export function migrations(schema: string): string[] {
       "output" JSONB,
       "error" JSONB,
       "attempts" SMALLINT NOT NULL,
-      "parent_step_run_namespace_id" TEXT,
-      "parent_step_run_id" TEXT,
+      "parent_step_attempt_namespace_id" TEXT,
+      "parent_step_attempt_id" TEXT,
       "worker_id" TEXT,
       "available_at" TIMESTAMPTZ,
       "started_at" TIMESTAMPTZ,
@@ -75,7 +75,7 @@ export function migrations(schema: string): string[] {
       PRIMARY KEY ("namespace_id", "id")
     );
 
-    CREATE TABLE IF NOT EXISTS "${schema}"."step_runs" (
+    CREATE TABLE IF NOT EXISTS "${schema}"."step_attempts" (
       "namespace_id" TEXT NOT NULL,
       "id" TEXT NOT NULL,
       --
@@ -85,7 +85,6 @@ export function migrations(schema: string): string[] {
       "status" TEXT NOT NULL,
       "output" JSONB,
       "error" JSONB,
-      "attempts" SMALLINT NOT NULL,
       "child_workflow_run_namespace_id" TEXT,
       "child_workflow_run_id" TEXT,
       "started_at" TIMESTAMPTZ,
@@ -104,22 +103,22 @@ export function migrations(schema: string): string[] {
     // 2 - foreign keys
     `BEGIN;
 
-    ALTER TABLE "${schema}"."step_runs"
-    ADD CONSTRAINT "step_runs_workflow_run_fk"
+    ALTER TABLE "${schema}"."step_attempts"
+    ADD CONSTRAINT "step_attempts_workflow_run_fk"
     FOREIGN KEY ("namespace_id", "workflow_run_id")
     REFERENCES "${schema}"."workflow_runs" ("namespace_id", "id")
     ON DELETE CASCADE
     NOT VALID;
 
     ALTER TABLE "${schema}"."workflow_runs"
-    ADD CONSTRAINT "workflow_runs_parent_step_run_fk"
-    FOREIGN KEY ("parent_step_run_namespace_id", "parent_step_run_id")
-    REFERENCES "${schema}"."step_runs" ("namespace_id", "id")
+    ADD CONSTRAINT "workflow_runs_parent_step_attempt_fk"
+    FOREIGN KEY ("parent_step_attempt_namespace_id", "parent_step_attempt_id")
+    REFERENCES "${schema}"."step_attempts" ("namespace_id", "id")
     ON DELETE SET NULL
     NOT VALID;
 
-    ALTER TABLE "${schema}"."step_runs"
-    ADD CONSTRAINT "step_runs_child_workflow_run_fk"
+    ALTER TABLE "${schema}"."step_attempts"
+    ADD CONSTRAINT "step_attempts_child_workflow_run_fk"
     FOREIGN KEY ("child_workflow_run_namespace_id", "child_workflow_run_id")
     REFERENCES "${schema}"."workflow_runs" ("namespace_id", "id")
     ON DELETE SET NULL
@@ -134,14 +133,14 @@ export function migrations(schema: string): string[] {
     // 3 - validate foreign keys
     `BEGIN;
 
-    ALTER TABLE "${schema}"."step_runs"
-    VALIDATE CONSTRAINT "step_runs_workflow_run_fk";
+    ALTER TABLE "${schema}"."step_attempts"
+    VALIDATE CONSTRAINT "step_attempts_workflow_run_fk";
     
     ALTER TABLE "${schema}"."workflow_runs" VALIDATE CONSTRAINT
-    "workflow_runs_parent_step_run_fk";
+    "workflow_runs_parent_step_attempt_fk";
 
-    ALTER TABLE "${schema}"."step_runs"
-    VALIDATE CONSTRAINT "step_runs_child_workflow_run_fk";
+    ALTER TABLE "${schema}"."step_attempts"
+    VALIDATE CONSTRAINT "step_attempts_child_workflow_run_fk";
 
     INSERT INTO "${schema}"."openworkflow_migrations" ("version")
     VALUES (3)
@@ -152,15 +151,15 @@ export function migrations(schema: string): string[] {
     // 4 - indexes
     `BEGIN;
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_status_available_at_idx"
-    ON "${schema}"."workflow_runs" ("namespace_id", "status", "available_at");
+    CREATE INDEX IF NOT EXISTS "workflow_runs_status_available_at_created_at_idx"
+    ON "${schema}"."workflow_runs" ("namespace_id", "status", "available_at", "created_at");
 
     CREATE INDEX IF NOT EXISTS "workflow_runs_workflow_name_idempotency_key_created_at_idx"
     ON "${schema}"."workflow_runs" ("namespace_id", "workflow_name", "idempotency_key", "created_at");
 
     CREATE INDEX IF NOT EXISTS "workflow_runs_parent_step_idx"
-    ON "${schema}"."workflow_runs" ("parent_step_run_namespace_id", "parent_step_run_id")
-    WHERE parent_step_run_namespace_id IS NOT NULL AND parent_step_run_id IS NOT NULL;
+    ON "${schema}"."workflow_runs" ("parent_step_attempt_namespace_id", "parent_step_attempt_id")
+    WHERE parent_step_attempt_namespace_id IS NOT NULL AND parent_step_attempt_id IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS "workflow_runs_created_at_desc_idx"
     ON "${schema}"."workflow_runs" ("namespace_id", "created_at" DESC);
@@ -171,14 +170,14 @@ export function migrations(schema: string): string[] {
     CREATE INDEX IF NOT EXISTS "workflow_runs_workflow_name_status_created_at_desc_idx"
     ON "${schema}"."workflow_runs" ("namespace_id", "workflow_name", "status", "created_at" DESC);
 
-    CREATE UNIQUE INDEX IF NOT EXISTS "step_runs_workflow_run_step_name_unique_idx"
-    ON "${schema}"."step_runs" ("namespace_id", "workflow_run_id", "step_name");
+    CREATE INDEX IF NOT EXISTS "step_attempts_workflow_run_created_at_idx"
+    ON "${schema}"."step_attempts" ("namespace_id", "workflow_run_id", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "step_runs_workflow_run_created_at_idx"
-    ON "${schema}"."step_runs" ("namespace_id", "workflow_run_id", "created_at");
+    CREATE INDEX IF NOT EXISTS "step_attempts_workflow_run_step_name_created_at_idx"
+    ON "${schema}"."step_attempts" ("namespace_id", "workflow_run_id", "step_name", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "step_runs_child_workflow_run_idx"
-    ON "${schema}"."step_runs" ("child_workflow_run_namespace_id", "child_workflow_run_id")
+    CREATE INDEX IF NOT EXISTS "step_attempts_child_workflow_run_idx"
+    ON "${schema}"."step_attempts" ("child_workflow_run_namespace_id", "child_workflow_run_id")
     WHERE child_workflow_run_namespace_id IS NOT NULL AND child_workflow_run_id IS NOT NULL;
 
     INSERT INTO "${schema}"."openworkflow_migrations"("version")

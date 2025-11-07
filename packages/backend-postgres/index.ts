@@ -1,17 +1,17 @@
 import {
   Backend,
   ClaimWorkflowRunParams,
-  CreateStepRunParams,
+  CreateStepAttemptParams,
   CreateWorkflowRunParams,
-  GetStepRunParams,
+  GetStepAttemptParams,
   GetWorkflowRunParams,
   HeartbeatWorkflowRunParams,
-  ListStepRunsParams,
-  MarkStepRunFailedParams,
-  MarkStepRunSucceededParams,
+  ListStepAttemptsParams,
+  MarkStepAttemptFailedParams,
+  MarkStepAttemptSucceededParams,
   MarkWorkflowRunFailedParams,
   MarkWorkflowRunSucceededParams,
-  StepRun,
+  StepAttempt,
   WorkflowRun,
 } from "../backend/index.js";
 import { newPostgres, Postgres } from "./postgres.js";
@@ -175,11 +175,13 @@ export class BackendPostgres implements Backend {
     if (!updated) throw new Error("Failed to mark workflow run failed");
   }
 
-  async listStepRuns(params: ListStepRunsParams): Promise<StepRun[]> {
+  async listStepAttempts(
+    params: ListStepAttemptsParams,
+  ): Promise<StepAttempt[]> {
     // limit to 200 for now
-    return this.pg<StepRun[]>`
+    return this.pg<StepAttempt[]>`
       SELECT *
-      FROM "openworkflow"."step_runs"
+      FROM "openworkflow"."step_attempts"
       WHERE "namespace_id" = ${params.namespaceId}
       AND "workflow_run_id" = ${params.workflowRunId}
       ORDER BY "created_at"
@@ -187,79 +189,58 @@ export class BackendPostgres implements Backend {
     `;
   }
 
-  async createStepRun(params: CreateStepRunParams): Promise<StepRun> {
-    const [stepRun] = await this.pg<StepRun[]>`
-      INSERT INTO "openworkflow"."step_runs" (
+  async createStepAttempt(
+    params: CreateStepAttemptParams,
+  ): Promise<StepAttempt> {
+    const [stepAttempt] = await this.pg<StepAttempt[]>`
+      INSERT INTO "openworkflow"."step_attempts" (
         "namespace_id",
         "id",
         "workflow_run_id",
         "step_name",
         "kind",
         "status",
-        "attempts",
         "started_at",
         "created_at",
         "updated_at"
       )
-      SELECT
+      VALUES (
         ${params.namespaceId},
         gen_random_uuid(),
         ${params.workflowRunId},
         ${params.stepName},
         ${params.kind},
         'running',
-        1,
         NOW(),
         NOW(),
         NOW()
-      FROM "openworkflow"."workflow_runs" wr
-      WHERE wr."namespace_id" = ${params.namespaceId}
-      AND wr."id" = ${params.workflowRunId}
-      AND wr."worker_id" = ${params.workerId}
-      AND wr."status" = 'running'
-      ON CONFLICT ("namespace_id", "workflow_run_id", "step_name") DO UPDATE
-      SET
-        "status" = 'running',
-        "output" = NULL,
-        "error" = NULL,
-        "attempts" = "step_runs"."attempts" + 1,
-        "started_at" = NOW(),
-        "finished_at" = NULL,
-        "updated_at" = NOW()
-      WHERE EXISTS (
-        SELECT 1
-        FROM "openworkflow"."workflow_runs" wr
-        WHERE wr."namespace_id" = "step_runs"."namespace_id"
-        AND wr."id" = "step_runs"."workflow_run_id"
-        AND wr."status" = 'running'
-        AND wr."worker_id" = ${params.workerId}
       )
       RETURNING *
     `;
 
-    if (!stepRun) {
-      throw new Error("Failed to create step run");
-    }
+    if (!stepAttempt) throw new Error("Failed to create step attempt");
 
-    return stepRun;
+    return stepAttempt;
   }
 
-  async getStepRun(params: GetStepRunParams): Promise<StepRun | null> {
-    const [stepRun] = await this.pg<StepRun[]>`
+  async getStepAttempt(
+    params: GetStepAttemptParams,
+  ): Promise<StepAttempt | null> {
+    const [stepAttempt] = await this.pg<StepAttempt[]>`
       SELECT *
-      FROM "openworkflow"."step_runs"
+      FROM "openworkflow"."step_attempts"
       WHERE "namespace_id" = ${params.namespaceId}
-      AND "id" = ${params.stepRunId}
+      AND "id" = ${params.stepAttemptId}
       LIMIT 1
     `;
-    return stepRun ?? null;
+    return stepAttempt ?? null;
   }
 
-  async markStepRunSucceeded(
-    params: MarkStepRunSucceededParams,
+  async markStepAttemptSucceeded(
+    params: MarkStepAttemptSucceededParams,
   ): Promise<void> {
     const [updated] = await this.pg`
-      UPDATE "openworkflow"."step_runs" sr
+      UPDATE "openworkflow"."step_attempts" sa
       SET
         "status" = 'succeeded',
         "output" = ${this.pg.json(params.output)},
@@ -267,22 +248,24 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM "openworkflow"."workflow_runs" wr
-      WHERE sr."namespace_id" = ${params.namespaceId}
-      AND sr."workflow_run_id" = ${params.workflowRunId}
-      AND sr."id" = ${params.stepRunId}
-      AND sr."status" = 'running'
-      AND wr."namespace_id" = sr."namespace_id"
-      AND wr."id" = sr."workflow_run_id"
+      WHERE sa."namespace_id" = ${params.namespaceId}
+      AND sa."workflow_run_id" = ${params.workflowRunId}
+      AND sa."id" = ${params.stepAttemptId}
+      AND sa."status" = 'running'
+      AND wr."namespace_id" = sa."namespace_id"
+      AND wr."id" = sa."workflow_run_id"
       AND wr."status" = 'running'
       AND wr."worker_id" = ${params.workerId}
-      RETURNING sr."id"
+      RETURNING sa."id"
     `;
-    if (!updated) throw new Error("Failed to mark step run succeeded");
+    if (!updated) throw new Error("Failed to mark step attempt succeeded");
   }
 
-  async markStepRunFailed(params: MarkStepRunFailedParams): Promise<void> {
+  async markStepAttemptFailed(
+    params: MarkStepAttemptFailedParams,
+  ): Promise<void> {
     const [updated] = await this.pg`
-      UPDATE "openworkflow"."step_runs" sr
+      UPDATE "openworkflow"."step_attempts" sa
       SET
         "status" = 'failed',
         "output" = NULL,
@@ -290,17 +273,17 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM "openworkflow"."workflow_runs" wr
-      WHERE sr."namespace_id" = ${params.namespaceId}
-      AND sr."workflow_run_id" = ${params.workflowRunId}
-      AND sr."id" = ${params.stepRunId}
-      AND sr."status" = 'running'
-      AND wr."namespace_id" = sr."namespace_id"
-      AND wr."id" = sr."workflow_run_id"
+      WHERE sa."namespace_id" = ${params.namespaceId}
+      AND sa."workflow_run_id" = ${params.workflowRunId}
+      AND sa."id" = ${params.stepAttemptId}
+      AND sa."status" = 'running'
+      AND wr."namespace_id" = sa."namespace_id"
+      AND wr."id" = sa."workflow_run_id"
       AND wr."status" = 'running'
       AND wr."worker_id" = ${params.workerId}
-      RETURNING sr."id"
+      RETURNING sa."id"
     `;
-    if (!updated) throw new Error("Failed to mark step run failed");
+    if (!updated) throw new Error("Failed to mark step attempt failed");
   }
 }
 

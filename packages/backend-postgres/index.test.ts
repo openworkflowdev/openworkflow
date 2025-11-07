@@ -1,4 +1,4 @@
-import { WorkflowRun } from "../backend/index.js";
+import { StepAttempt, WorkflowRun } from "../backend/index.js";
 import { BackendPostgres } from "./index.js";
 import { DEFAULT_DATABASE_URL } from "./postgres.js";
 import { randomUUID } from "node:crypto";
@@ -29,8 +29,8 @@ describe("BackendPostgres", () => {
         output: null,
         error: null,
         attempts: 0,
-        parentStepRunNamespaceId: null,
-        parentStepRunId: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         workerId: null,
         availableAt: newDateInOneYear(), // -
         startedAt: null,
@@ -226,73 +226,67 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("createStepRun()", () => {
-    test("creates step runs and bumps attempts for retries", async () => {
-      const claimed = await createClaimedWorkflowRun(backend);
-      const stepName = randomUUID();
+  describe("createStepAttempt()", () => {
+    test("creates a step attempt", async () => {
+      const workflowRun = await createClaimedWorkflowRun(backend);
 
-      const created = await backend.createStepRun({
-        namespaceId: claimed.namespaceId,
-        workflowRunId: claimed.id,
-        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
-        stepName,
+      const expected: StepAttempt = {
+        namespaceId: workflowRun.namespaceId,
+        id: "", // -
+        workflowRunId: workflowRun.id,
+        stepName: randomUUID(),
         kind: "activity",
+        status: "running",
+        output: null,
+        error: null,
+        childWorkflowRunNamespaceId: null,
+        childWorkflowRunId: null,
+        startedAt: null,
+        finishedAt: null,
+        createdAt: new Date(), // -
+        updatedAt: new Date(), // -
+      };
+
+      const created = await backend.createStepAttempt({
+        namespaceId: expected.namespaceId,
+        workflowRunId: expected.workflowRunId,
+        workerId: workflowRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        stepName: expected.stepName,
+        kind: expected.kind,
       });
-      expect(created.status).toBe("running");
-      expect(created.attempts).toBe(1);
-      expect(created.finishedAt).toBeNull();
+      expect(created.id).toHaveLength(36);
+      expect(deltaSeconds(created.startedAt)).toBeLessThan(1);
+      expect(deltaSeconds(created.createdAt)).toBeLessThan(1);
+      expect(deltaSeconds(created.updatedAt)).toBeLessThan(1);
 
-      const retried = await backend.createStepRun({
-        namespaceId: claimed.namespaceId,
-        workflowRunId: claimed.id,
-        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
-        stepName,
-        kind: "activity",
-      });
-      expect(retried.id).toBe(created.id);
-      expect(retried.attempts).toBe(2);
-      expect(retried.status).toBe("running");
-      expect(retried.startedAt?.getTime()).toBeGreaterThan(
-        created.startedAt?.getTime() ?? 0,
-      );
-    });
-
-    test("throws when worker does not own the workflow run", async () => {
-      const { namespaceId, id: workflowRunId } =
-        await createClaimedWorkflowRun(backend);
-
-      await expect(
-        backend.createStepRun({
-          namespaceId,
-          workflowRunId,
-          workerId: randomUUID(),
-          stepName: randomUUID(),
-          kind: "activity",
-        }),
-      ).rejects.toThrow("Failed to create step run");
+      expected.id = created.id;
+      expected.startedAt = created.startedAt;
+      expected.createdAt = created.createdAt;
+      expected.updatedAt = created.updatedAt;
+      expect(created).toEqual(expected);
     });
   });
 
-  describe("listStepRuns()", () => {
-    test("lists step runs ordered by creation time", async () => {
+  describe("listStepAttempts()", () => {
+    test("lists step attempts ordered by creation time", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
-      const first = await backend.createStepRun({
+      const first = await backend.createStepAttempt({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
         kind: "activity",
       });
-      await backend.markStepRunSucceeded({
+      await backend.markStepAttemptSucceeded({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
-        stepRunId: first.id,
+        stepAttemptId: first.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
         output: { ok: true },
       });
 
-      const second = await backend.createStepRun({
+      const second = await backend.createStepAttempt({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -300,7 +294,7 @@ describe("BackendPostgres", () => {
         kind: "activity",
       });
 
-      const listed = await backend.listStepRuns({
+      const listed = await backend.listStepAttempts({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
       });
@@ -311,11 +305,11 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("getStepRun()", () => {
-    test("returns a persisted step run", async () => {
+  describe("getStepAttempt()", () => {
+    test("returns a persisted step attempt", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
-      const created = await backend.createStepRun({
+      const created = await backend.createStepAttempt({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -323,19 +317,19 @@ describe("BackendPostgres", () => {
         kind: "activity",
       });
 
-      const got = await backend.getStepRun({
+      const got = await backend.getStepAttempt({
         namespaceId: claimed.namespaceId,
-        stepRunId: created.id,
+        stepAttemptId: created.id,
       });
       expect(got).toEqual(created);
     });
   });
 
-  describe("markStepRunSucceeded()", () => {
-    test("marks running step runs as succeeded", async () => {
+  describe("markStepAttemptSucceeded()", () => {
+    test("marks running step attempts as succeeded", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
-      const created = await backend.createStepRun({
+      const created = await backend.createStepAttempt({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -344,17 +338,17 @@ describe("BackendPostgres", () => {
       });
       const output = { foo: "bar" };
 
-      await backend.markStepRunSucceeded({
+      await backend.markStepAttemptSucceeded({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
-        stepRunId: created.id,
+        stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         output,
       });
 
-      const succeeded = await backend.getStepRun({
+      const succeeded = await backend.getStepAttempt({
         namespaceId: claimed.namespaceId,
-        stepRunId: created.id,
+        stepAttemptId: created.id,
       });
       expect(succeeded?.status).toBe("succeeded");
       expect(succeeded?.output).toEqual(output);
@@ -363,11 +357,11 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markStepRunFailed()", () => {
-    test("marks running step runs as failed", async () => {
+  describe("markStepAttemptFailed()", () => {
+    test("marks running step attempts as failed", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
-      const created = await backend.createStepRun({
+      const created = await backend.createStepAttempt({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -376,17 +370,17 @@ describe("BackendPostgres", () => {
       });
       const error = { message: "nope" };
 
-      await backend.markStepRunFailed({
+      await backend.markStepAttemptFailed({
         namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
-        stepRunId: created.id,
+        stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         error,
       });
 
-      const failed = await backend.getStepRun({
+      const failed = await backend.getStepAttempt({
         namespaceId: claimed.namespaceId,
-        stepRunId: created.id,
+        stepAttemptId: created.id,
       });
       expect(failed?.status).toBe("failed");
       expect(failed?.error).toEqual(error);
