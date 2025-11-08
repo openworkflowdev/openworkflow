@@ -16,7 +16,7 @@ describe("Worker", () => {
     await backend.end();
   });
 
-  test("passes workflow input to handlers", async () => {
+  test("passes workflow input to handlers (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -35,7 +35,7 @@ describe("Worker", () => {
     expect(result).toEqual(payload);
   });
 
-  test("processes workflow runs to completion", async () => {
+  test("processes workflow runs to completion (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -56,7 +56,7 @@ describe("Worker", () => {
     expect(result).toBe(42);
   });
 
-  test("step.run reuses cached results", async () => {
+  test("step.run reuses cached results (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -124,7 +124,7 @@ describe("Worker", () => {
     expect(updated?.availableAt).not.toBeNull();
   });
 
-  test("retries failed workflows automatically (known slow test)", async () => {
+  test("retries failed workflows automatically (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -177,7 +177,7 @@ describe("Worker", () => {
     await worker.tick(); // no runs queued
   });
 
-  test("handles step functions that return undefined", async () => {
+  test("handles step functions that return undefined (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -207,7 +207,7 @@ describe("Worker", () => {
     expect(result).toEqual({ success: true });
   });
 
-  test("executes steps synchronously within workflow (known slow test)", async () => {
+  test("executes steps synchronously within workflow (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -240,7 +240,7 @@ describe("Worker", () => {
     expect(result).toEqual(["start", "step1", "between", "step2", "end"]);
   });
 
-  test("executes parallel steps with Promise.all (known slow test)", async () => {
+  test("executes parallel steps with Promise.all (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -323,7 +323,7 @@ describe("Worker", () => {
     expect(completed).toBe(2);
   });
 
-  test("worker starts, processes work, and stops gracefully", async () => {
+  test("worker starts, processes work, and stops gracefully (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -346,7 +346,7 @@ describe("Worker", () => {
     expect(result).toBe("complete");
   });
 
-  test("recovers from crashes during parallel step execution (known slow test)", async () => {
+  test("recovers from crashes during parallel step execution (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -397,7 +397,7 @@ describe("Worker", () => {
     expect(attemptCount).toBe(2);
   });
 
-  test("reclaims workflow run when heartbeat stops (known slow test)", async () => {
+  test("reclaims workflow run when heartbeat stops (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
@@ -490,7 +490,7 @@ describe("Worker", () => {
     await worker.stop();
   });
 
-  test("worker only sleeps between claims when no work is available (known slow test)", async () => {
+  test("worker only sleeps between claims when no work is available (known slow test - awaits result)", async () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 

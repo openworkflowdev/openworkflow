@@ -270,7 +270,7 @@ describe("BackendPostgres", () => {
       expect(delayMs).toBeLessThan(1500);
     });
 
-    test("reschedules with increasing backoff on multiple failures (known slow test)", async () => {
+    test("reschedules with increasing backoff on multiple failures (known slow test - awaits result)", async () => {
       const namespaceId = randomUUID();
       await createPendingWorkflowRun(backend, namespaceId);
 
