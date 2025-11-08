@@ -1,4 +1,4 @@
-import { BackendPostgres } from "../backend-postgres/index.js";
+import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
 import { Worker } from "./worker.js";

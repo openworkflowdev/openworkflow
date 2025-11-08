@@ -1,7 +1,6 @@
 import { BackendPostgres } from "../packages/backend-postgres/index.js";
 import { DEFAULT_DATABASE_URL } from "../packages/backend-postgres/postgres.js";
-import { OpenWorkflow } from "../packages/openworkflow/client.js";
-import { Worker } from "../packages/openworkflow/worker.js";
+import { OpenWorkflow, Worker } from "../packages/openworkflow/index.js";
 import { randomUUID } from "node:crypto";
 
 const namespaceId = randomUUID();

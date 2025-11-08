@@ -2,6 +2,12 @@
   "name": "@openworkflow/backend-postgres",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "types": "./index.d.ts"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "db:migrate": "tsx ./scripts/db-migrate.ts",

@@ -1,5 +1,5 @@
 import { StepAttempt, WorkflowRun } from "../openworkflow/backend.js";
-import { BackendPostgres } from "./index.js";
+import { BackendPostgres } from "./backend.js";
 import { DEFAULT_DATABASE_URL } from "./postgres.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
