@@ -2,27 +2,23 @@ import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
 import { randomUUID } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 describe("OpenWorkflow", () => {
   let backend: BackendPostgres;
-  let namespaceId: string;
-  let client: OpenWorkflow;
 
-  beforeEach(async () => {
-    namespaceId = randomUUID();
+  beforeAll(async () => {
     backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
-    client = new OpenWorkflow({
-      backend,
-      namespaceId,
-    });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await backend.end();
   });
 
   test("enqueues workflow runs via backend", async () => {
+    const namespaceId = randomUUID();
+    const client = new OpenWorkflow({ backend, namespaceId });
+
     const workflow = client.defineWorkflow("enqueue-test", noopFn);
     await workflow.run({ docUrl: "https://example.com" });
 
@@ -39,6 +35,9 @@ describe("OpenWorkflow", () => {
   });
 
   test("result resolves when workflow succeeds", async () => {
+    const namespaceId = randomUUID();
+    const client = new OpenWorkflow({ backend, namespaceId });
+
     const workflow = client.defineWorkflow("result-success", noopFn);
     const handle = await workflow.run({ value: 1 });
 
@@ -64,6 +63,9 @@ describe("OpenWorkflow", () => {
   });
 
   test("result rejects when workflow fails", async () => {
+    const namespaceId = randomUUID();
+    const client = new OpenWorkflow({ backend, namespaceId });
+
     const workflow = client.defineWorkflow("result-failure", noopFn);
     await workflow.run({ value: 1 });
 
@@ -93,6 +95,9 @@ describe("OpenWorkflow", () => {
   });
 
   test("listWorkflowDefinitions returns registered workflows", () => {
+    const namespaceId = randomUUID();
+    const client = new OpenWorkflow({ backend, namespaceId });
+
     client.defineWorkflow("first", noopFn);
     client.defineWorkflow("second", noopFn);
 
