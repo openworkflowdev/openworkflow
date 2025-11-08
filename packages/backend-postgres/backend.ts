@@ -23,6 +23,10 @@ import {
   DEFAULT_SCHEMA,
 } from "./postgres.js";
 
+interface BackendPostgresOptions {
+  runMigrations?: boolean;
+}
+
 export class BackendPostgres implements Backend {
   private pg: Postgres;
 
@@ -32,12 +36,20 @@ export class BackendPostgres implements Backend {
 
   /**
    * Create and initialize a new BackendPostgres instance. This will
-   * automatically run migrations on startup.
+   * automatically run migrations on startup unless `runMigrations` is set to
+   * false.
    */
-  static async connect(url: string): Promise<BackendPostgres> {
-    const pgForMigrate = newPostgresMaxOne(url);
-    await migrate(pgForMigrate, DEFAULT_SCHEMA);
-    await pgForMigrate.end();
+  static async connect(
+    url: string,
+    options?: BackendPostgresOptions,
+  ): Promise<BackendPostgres> {
+    const { runMigrations } = { runMigrations: true, ...options };
+
+    if (runMigrations) {
+      const pgForMigrate = newPostgresMaxOne(url);
+      await migrate(pgForMigrate, DEFAULT_SCHEMA);
+      await pgForMigrate.end();
+    }
 
     const pg = newPostgres(url);
     return new BackendPostgres(pg);
