@@ -93,18 +93,6 @@ describe("OpenWorkflow", () => {
     expect(rescheduled?.status).toBe("pending");
     expect(rescheduled?.error).toEqual({ message: "boom" });
   });
-
-  test("listWorkflowDefinitions returns registered workflows", () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
-
-    client.defineWorkflow({ name: "first" }, noopFn);
-    client.defineWorkflow({ name: "second" }, noopFn);
-
-    const definitions = client.listWorkflowDefinitions();
-    expect(definitions).toHaveLength(2);
-    expect(definitions.map((def) => def.name)).toEqual(["first", "second"]);
-  });
 });
 
 async function noopFn() {

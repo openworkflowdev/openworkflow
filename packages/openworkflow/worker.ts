@@ -25,7 +25,7 @@ export interface WorkerOptions {
   backend: Backend;
   namespaceId?: string;
   workflows: WorkflowDefinition<unknown, unknown>[];
-  concurrency?: number;
+  concurrency?: number | undefined;
 }
 
 /**
@@ -35,7 +35,7 @@ export interface WorkerOptions {
 export class Worker {
   private readonly backend: Backend;
   private readonly namespaceId: string;
-  private readonly workerIds: string[]; // each represents a concurrency slot
+  private readonly workerIds: string[];
   private readonly registeredWorkflows = new Map<
     string,
     WorkflowDefinition<unknown, unknown>

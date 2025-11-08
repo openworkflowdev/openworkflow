@@ -1,6 +1,6 @@
 import { BackendPostgres } from "../packages/backend-postgres/index.js";
 import { DEFAULT_DATABASE_URL } from "../packages/backend-postgres/postgres.js";
-import { OpenWorkflow, Worker } from "../packages/openworkflow/index.js";
+import { OpenWorkflow } from "../packages/openworkflow/index.js";
 import { randomUUID } from "node:crypto";
 
 const WORKFLOW_RUN_COUNT = 1000;
@@ -33,12 +33,7 @@ async function main() {
     },
   );
 
-  const worker = new Worker({
-    backend,
-    namespaceId,
-    workflows: client.listWorkflowDefinitions(),
-    concurrency: WORKER_CONCURRENCY,
-  });
+  const worker = client.newWorker({ concurrency: WORKER_CONCURRENCY });
 
   console.log("Starting benchmark...");
   console.log("Configuration:");

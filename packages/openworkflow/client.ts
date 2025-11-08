@@ -1,4 +1,5 @@
 import type { Backend, WorkflowRun } from "./backend.js";
+import { Worker } from "./worker.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
@@ -30,6 +31,18 @@ export class OpenWorkflow {
   }
 
   /**
+   * Create a new Worker with this client's backend, namespace, and workflows.
+   */
+  newWorker(options?: { concurrency?: number }): Worker {
+    return new Worker({
+      backend: this.backend,
+      namespaceId: this.namespaceId,
+      workflows: [...this.registeredWorkflows.values()],
+      concurrency: options?.concurrency,
+    });
+  }
+
+  /**
    * Define and register a new workflow.
    */
   defineWorkflow<Input, Output>(
@@ -52,14 +65,6 @@ export class OpenWorkflow {
     this.registeredWorkflows.set(name, definition);
 
     return definition;
-  }
-
-  /**
-   * listWorkflows lists all defined workflows. Needed for worker registration.
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  listWorkflowDefinitions(): WorkflowDefinition<any, any>[] {
-    return [...this.registeredWorkflows.values()];
   }
 }
 

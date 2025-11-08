@@ -1,7 +1,6 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
-import { Worker } from "./worker.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
@@ -24,11 +23,7 @@ describe("Worker", () => {
       { name: "context" },
       ({ input }) => input,
     );
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const payload = { value: 10 };
     const handle = await workflow.run(payload);
@@ -46,11 +41,7 @@ describe("Worker", () => {
       { name: "process" },
       ({ input }: { input: { value: number } }) => input.value * 2,
     );
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run({ value: 21 });
     await worker.tick();
@@ -79,11 +70,7 @@ describe("Worker", () => {
       },
     );
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run();
     await worker.tick();
@@ -108,16 +95,7 @@ describe("Worker", () => {
       availableAt: null,
     });
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: [
-        client.defineWorkflow({ name: "other" }, () => {
-          return null;
-        }),
-      ],
-    });
-
+    const worker = client.newWorker();
     await worker.tick();
 
     const updated = await backend.getWorkflowRun({
@@ -144,11 +122,7 @@ describe("Worker", () => {
       return { success: true, attempts: attemptCount };
     });
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     // run the workflow
     const handle = await workflow.run();
@@ -174,12 +148,7 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     client.defineWorkflow({ name: "noop" }, () => null);
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
-
+    const worker = client.newWorker();
     await worker.tick(); // no runs queued
   });
 
@@ -200,11 +169,7 @@ describe("Worker", () => {
       },
     );
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run();
     await worker.tick();
@@ -236,11 +201,7 @@ describe("Worker", () => {
       },
     );
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run();
     await worker.tick();
@@ -276,11 +237,7 @@ describe("Worker", () => {
       },
     );
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run();
     await worker.tick();
@@ -303,12 +260,7 @@ describe("Worker", () => {
       return "done";
     });
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-      concurrency: 2,
-    });
+    const worker = client.newWorker({ concurrency: 2 });
 
     // create 5 workflow runs, though only 2 (concurrency limit) should be
     // completed per tick
@@ -343,11 +295,7 @@ describe("Worker", () => {
       return "complete";
     });
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     await worker.start();
     const handle = await workflow.run();
@@ -384,11 +332,7 @@ describe("Worker", () => {
       },
     );
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
+    const worker = client.newWorker();
 
     const handle = await workflow.run();
 
@@ -432,12 +376,7 @@ describe("Worker", () => {
     await sleep(100);
 
     // worker should be able to reclaim
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-    });
-
+    const worker = client.newWorker();
     await worker.tick();
 
     const result = await handle.result();
@@ -458,12 +397,7 @@ describe("Worker", () => {
     await workflow.run();
     await workflow.run();
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-      concurrency: 5,
-    });
+    const worker = client.newWorker({ concurrency: 5 });
 
     // first tick should claim 3 workflows (all available)
     const claimed = await worker.tick();
@@ -493,12 +427,7 @@ describe("Worker", () => {
       await workflow.run();
     }
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-      concurrency: 3,
-    });
+    const worker = client.newWorker({ concurrency: 3 });
 
     // first tick should claim exactly 3 (concurrency limit)
     const claimed = await worker.tick();
@@ -529,12 +458,7 @@ describe("Worker", () => {
       handles.push(await workflow.run());
     }
 
-    const worker = new Worker({
-      backend,
-      namespaceId,
-      workflows: client.listWorkflowDefinitions(),
-      concurrency: 5,
-    });
+    const worker = client.newWorker({ concurrency: 5 });
 
     const startTime = Date.now();
     await worker.start();

@@ -96,14 +96,7 @@ Workers are background processes that execute your workflows. Start one in a
 separate process or the same one as your app:
 
 ```ts
-import { Worker } from "openworkflow";
-
-const worker = new Worker({
-  backend,
-  workflows: ow.listWorkflowDefinitions(),
-  concurrency: 10, // process up to 10 workflows simultaneously
-});
-
+const worker = ow.newWorker({ concurrency: 10 });
 await worker.start();
 ```
 
@@ -166,12 +159,7 @@ Workers are long-running processes that poll your database for pending workflows
 and execute them. You can run multiple workers for high availability and scale.
 
 ```ts
-const worker = new Worker({
-  backend,
-  workflows: ow.listWorkflowDefinitions(),
-  concurrency: 20, // how many workflows this worker can run in parallel
-});
-
+const worker = ow.newWorker({ concurrency: 20 });
 await worker.start();
 
 // Graceful shutdown on SIGTERM
