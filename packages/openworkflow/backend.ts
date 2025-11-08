@@ -137,7 +137,7 @@ export interface WorkflowRun {
   updatedAt: Date;
 }
 
-export type StepKind = "activity";
+export type StepKind = "function";
 
 export type StepAttemptStatus = "running" | "succeeded" | "failed";
 

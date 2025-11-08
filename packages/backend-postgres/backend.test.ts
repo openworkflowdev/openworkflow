@@ -334,7 +334,7 @@ describe("BackendPostgres", () => {
         id: "", // -
         workflowRunId: workflowRun.id,
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         status: "running",
         config: { key: "val" },
         context: { key: "val" },
@@ -379,7 +379,7 @@ describe("BackendPostgres", () => {
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         config: {},
         context: null,
       });
@@ -396,7 +396,7 @@ describe("BackendPostgres", () => {
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         config: {},
         context: null,
       });
@@ -421,7 +421,7 @@ describe("BackendPostgres", () => {
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         config: {},
         context: null,
       });
@@ -443,7 +443,7 @@ describe("BackendPostgres", () => {
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         config: {},
         context: null,
       });
@@ -477,7 +477,7 @@ describe("BackendPostgres", () => {
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
-        kind: "activity",
+        kind: "function",
         config: {},
         context: null,
       });

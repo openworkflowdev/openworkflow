@@ -343,7 +343,7 @@ class StepExecutor implements StepApi {
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName: name,
-      kind: "activity",
+      kind: "function",
       config: {},
       context: null,
     });
