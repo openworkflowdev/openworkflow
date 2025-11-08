@@ -17,16 +17,16 @@ async function main() {
   const workflow = client.defineWorkflow(
     "benchmark-workflow",
     async ({ step }) => {
-      await step.run("step-1", () => {
+      await step.run({ name: "step-1" }, () => {
         return;
       });
-      await step.run("step-2", () => {
+      await step.run({ name: "step-2" }, () => {
         return;
       });
-      await step.run("step-3", () => {
+      await step.run({ name: "step-3" }, () => {
         return;
       });
-      await step.run("step-4", () => {
+      await step.run({ name: "step-4" }, () => {
         return;
       });
       return { completed: true };

@@ -29,19 +29,19 @@ interface SummarizeDocOutput {
 const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
   "summarize-doc",
   async ({ input, step }) => {
-    const extracted = await step.run("extract-text", () => {
+    const extracted = await step.run({ name: "extract-text" }, () => {
       console.log(`[${input.num}] Extracting text from ${input.docUrl}`);
       return "extracted-text";
     });
 
-    const cleaned = await step.run("clean-text", () => {
+    const cleaned = await step.run({ name: "clean-text" }, () => {
       console.log(
         `[${input.num}] Cleaning ${String(extracted.length)} characters`,
       );
       return "cleaned-text";
     });
 
-    const summarized = await step.run("summarize-text", async () => {
+    const summarized = await step.run({ name: "summarize-text" }, async () => {
       console.log(`[${input.num}] Summarizing: ${cleaned.slice(0, 10)}...`);
 
       // sleep a bit to simulate async work
@@ -57,7 +57,7 @@ const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
       return "summary";
     });
 
-    const summaryId = await step.run("save-summary", async () => {
+    const summaryId = await step.run({ name: "save-summary" }, async () => {
       console.log(
         `[${input.num}] Saving summary (${summarized}) to the database`,
       );

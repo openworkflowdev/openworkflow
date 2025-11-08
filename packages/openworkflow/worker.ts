@@ -8,6 +8,7 @@ import {
   DEFAULT_NAMESPACE_ID,
   StepApi,
   StepFunction,
+  StepFunctionConfig,
   WorkflowDefinition,
 } from "./client.js";
 import { randomUUID } from "node:crypto";
@@ -331,7 +332,12 @@ class StepExecutor implements StepApi {
     }
   }
 
-  async run<Output>(name: string, fn: StepFunction<Output>): Promise<Output> {
+  async run<Output>(
+    config: StepFunctionConfig,
+    fn: StepFunction<Output>,
+  ): Promise<Output> {
+    const { name } = config;
+
     // return cached result if available
     if (this.history.has(name)) {
       return this.history.get(name) as Output;

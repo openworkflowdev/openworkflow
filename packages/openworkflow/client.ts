@@ -135,10 +135,23 @@ export type WorkflowFunction<Input, Output> = (
 ) => Promise<Output> | Output;
 
 /**
+ * Config for an individual step defined with `step.run()`.
+ */
+export interface StepFunctionConfig {
+  /**
+   * The name of the step.
+   */
+  name: string;
+}
+
+/**
  * Used within a workflow handler to define steps by calling `step.run()`.
  */
 export interface StepApi {
-  run<Output>(name: string, fn: StepFunction<Output>): Promise<Output>;
+  run<Output>(
+    config: StepFunctionConfig,
+    fn: StepFunction<Output>,
+  ): Promise<Output>;
 }
 
 /**

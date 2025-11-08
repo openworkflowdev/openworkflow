@@ -141,17 +141,17 @@ beginning. This is the core of the deterministic replay model.
 
 ```ts
 // A worker claims a workflow run.
-// It loads the step history: { "fetch-user": { output: { id: 1, name: "Alice" } } }
+// It loads the step history and continues to the first step.
 
-const user = await step.run("fetch-user", async () => {
+const user = await step.run({ name: "fetch-user" }, async () => {
   // 1. The framework sees "fetch-user".
   // 2. It finds a completed result in the history.
   // 3. It returns the cached output immediately without executing the function.
   return await db.users.findOne({ id: 1 });
 });
 
-const welcomeEmail = await step.run("send-welcome-email", async () => {
-  // 4. The framework sees "send-welcome-email".
+const welcomeEmail = await step.run({ name: "welcome-email" }, async () => {
+  // 4. The framework sees "welcome-email".
   // 5. It is NOT in the history.
   // 6. It creates a step_attempt with status "running".
   // 7. It executes the function and saves the result.
@@ -179,12 +179,12 @@ concurrency capacity.
 
 The SDK provides several step primitives to handle different workflow patterns:
 
-**`step.run(name, fn)`**: Executes a block of arbitrary code. This is the most
+**`step.run(config, fn)`**: Executes a block of arbitrary code. This is the most
 common step type used for database queries, API calls, and other synchronous
 operations.
 
 ```ts
-const user = await step.run("fetch-user", async () => {
+const user = await step.run({ name: "fetch-user" }, async () => {
   return await db.users.findOne({ id: userId });
 });
 ```
@@ -216,8 +216,8 @@ The SDK supports parallel execution of steps via language-native constructs like
 
 ```ts
 const [user, settings] = await Promise.all([
-  step.run("fetch-user", ...),
-  step.run("fetch-settings", ...),
+  step.run({ name: "fetch-user" }, ...),
+  step.run({ name: "fetch-settings" }, ...),
 ]);
 ```
 
@@ -259,9 +259,9 @@ parameter that can be used to determine which code path to execute.
 ```ts
 const workflow = ow.defineWorkflow("versioned-workflow", async ({ step, version }) => {
   if (version === "v1") {
-    await step.run("old-step-name", ...);
+  await step.run({ name: "old-step-name" }, ...);
   } else {
-    await step.run("new-step-name", ...);
+  await step.run({ name: "new-step-name" }, ...);
   }
 });
 ```

@@ -18,15 +18,15 @@ deploys.
 const processOrder = ow.defineWorkflow(
   "process-order",
   async ({ input, step }) => {
-    const payment = await step.run("charge-card", async () => {
+    const payment = await step.run({ name: "charge-card" }, async () => {
       return await stripe.charges.create({ amount: input.amount });
     });
 
-    const inventory = await step.run("reserve-inventory", async () => {
+    const inventory = await step.run({ name: "reserve-items" }, async () => {
       return await db.inventory.reserve(input.items);
     });
 
-    const shipment = await step.run("create-shipment", async () => {
+    const shipment = await step.run({ name: "create-shipment" }, async () => {
       return await shippo.shipments.create({ items: inventory });
     });
 
@@ -67,11 +67,11 @@ const ow = new OpenWorkflow({ backend });
 const sendWelcomeEmail = ow.defineWorkflow(
   "send-welcome-email",
   async ({ input, step }) => {
-    const user = await step.run("fetch-user", async () => {
+    const user = await step.run({ name: "fetch-user" }, async () => {
       return await db.users.findOne({ id: input.userId });
     });
 
-    const emailId = await step.run("send-email", async () => {
+    const emailId = await step.run({ name: "send-email" }, async () => {
       return await resend.emails.send({
         from: "me@example.com",
         to: user.email,
@@ -81,7 +81,7 @@ const sendWelcomeEmail = ow.defineWorkflow(
       });
     });
 
-    await step.run("mark-welcome-email-sent", async () => {
+    await step.run({ name: "mark-welcome-email-sent" }, async () => {
       await db.users.update(input.userId, { welcomeEmailSent: true });
     });
 
@@ -144,7 +144,7 @@ Steps are the building blocks of workflows. Each step is executed exactly once
 and its result is memoized. Steps let you break workflows into checkpoints.
 
 ```ts
-const result = await step.run("step-name", async () => {
+const result = await step.run({ name: "step-name" }, async () => {
   // This function runs once. If the workflow restarts,
   // this returns the cached result instead of re-running.
   return await someAsyncWork();
@@ -203,18 +203,15 @@ Run multiple steps concurrently using `Promise.all`:
 
 ```ts
 const [user, subscription, settings] = await Promise.all([
-  step.run(
-    "fetch-user",
-    async () => await db.users.findOne({ id: input.userId }),
-  ),
-  step.run(
-    "fetch-subscription",
-    async () => await stripe.subscriptions.retrieve(input.subId),
-  ),
-  step.run(
-    "fetch-settings",
-    async () => await db.settings.findOne({ userId: input.userId }),
-  ),
+  step.run({ name: "fetch-user" }, async () => {
+    await db.users.findOne({ id: input.userId });
+  }),
+  step.run({ name: "fetch-subscription" }, async () => {
+    await stripe.subscriptions.retrieve(input.subId);
+  }),
+  step.run({ name: "fetch-settings" }, async () => {
+    await db.settings.findOne({ userId: input.userId });
+  }),
 ]);
 ```
 
@@ -226,7 +223,7 @@ completed steps return instantly on resume.
 Steps can retry automatically with exponential backoff:
 
 ```ts
-const data = await step.run("fetch-external-api", async () => {
+const data = await step.run({ name: "fetch-external-api" }, async () => {
   // If this throws, the step retries automatically
   return await externalAPI.getData();
 });

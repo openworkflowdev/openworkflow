@@ -62,11 +62,11 @@ describe("Worker", () => {
 
     let executionCount = 0;
     const workflow = client.defineWorkflow("cached-step", async ({ step }) => {
-      const first = await step.run("once", () => {
+      const first = await step.run({ name: "once" }, () => {
         executionCount++;
         return "value";
       });
-      const second = await step.run("once", () => {
+      const second = await step.run({ name: "once" }, () => {
         executionCount++;
         return "should-not-run";
       });
@@ -184,10 +184,10 @@ describe("Worker", () => {
     const workflow = client.defineWorkflow(
       "undefined-steps",
       async ({ step }) => {
-        await step.run("step-1", () => {
+        await step.run({ name: "step-1" }, () => {
           return; // explicit undefined
         });
-        await step.run("step-2", () => {
+        await step.run({ name: "step-2" }, () => {
           // implicit undefined
         });
         return { success: true };
@@ -214,12 +214,12 @@ describe("Worker", () => {
     const executionOrder: string[] = [];
     const workflow = client.defineWorkflow("sync-steps", async ({ step }) => {
       executionOrder.push("start");
-      await step.run("step1", () => {
+      await step.run({ name: "step1" }, () => {
         executionOrder.push("step1");
         return 1;
       });
       executionOrder.push("between");
-      await step.run("step2", () => {
+      await step.run({ name: "step2" }, () => {
         executionOrder.push("step2");
         return 2;
       });
@@ -248,15 +248,15 @@ describe("Worker", () => {
     const workflow = client.defineWorkflow("parallel", async ({ step }) => {
       const start = Date.now();
       const [a, b, c] = await Promise.all([
-        step.run("step-a", () => {
+        step.run({ name: "step-a" }, () => {
           executionTimes["step-a"] = Date.now() - start;
           return "a";
         }),
-        step.run("step-b", () => {
+        step.run({ name: "step-b" }, () => {
           executionTimes["step-b"] = Date.now() - start;
           return "b";
         }),
-        step.run("step-c", () => {
+        step.run({ name: "step-c" }, () => {
           executionTimes["step-c"] = Date.now() - start;
           return "c";
         }),
@@ -358,11 +358,11 @@ describe("Worker", () => {
         attemptCount++;
 
         const [a, b] = await Promise.all([
-          step.run("step-a", () => {
+          step.run({ name: "step-a" }, () => {
             if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
             return "a";
           }),
-          step.run("step-b", () => {
+          step.run({ name: "step-b" }, () => {
             if (attemptCount === 1) throw new Error("Simulated crash");
             return "b";
           }),
@@ -497,7 +497,7 @@ describe("Worker", () => {
     const workflow = client.defineWorkflow(
       "adaptive-test",
       async ({ step }) => {
-        await step.run("step-1", () => "done");
+        await step.run({ name: "step-1" }, () => "done");
         return "complete";
       },
     );
