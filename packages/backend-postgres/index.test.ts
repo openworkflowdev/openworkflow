@@ -7,8 +7,8 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 describe("BackendPostgres", () => {
   let backend: BackendPostgres;
 
-  beforeAll(() => {
-    backend = new BackendPostgres(DEFAULT_DATABASE_URL);
+  beforeAll(async () => {
+    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
   });
 
   afterAll(async () => {

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 
 const namespaceId = randomUUID();
 
-const backend = new BackendPostgres(DEFAULT_DATABASE_URL);
+const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
 const ow = new OpenWorkflow({
   backend,
   namespaceId,

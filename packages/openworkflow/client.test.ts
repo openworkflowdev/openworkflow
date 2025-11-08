@@ -9,9 +9,9 @@ describe("OpenWorkflow", () => {
   let namespaceId: string;
   let client: OpenWorkflow;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     namespaceId = randomUUID();
-    backend = new BackendPostgres(DEFAULT_DATABASE_URL);
+    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
     client = new OpenWorkflow({
       backend,
       namespaceId,

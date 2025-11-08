@@ -9,7 +9,7 @@ const WORKER_CONCURRENCY = 100;
 
 async function main() {
   const namespaceId = randomUUID();
-  const backend = new BackendPostgres(DEFAULT_DATABASE_URL);
+  const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
   const client = new OpenWorkflow({
     backend,
     namespaceId,

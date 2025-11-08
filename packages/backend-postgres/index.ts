@@ -15,13 +15,23 @@ import {
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
 } from "../openworkflow/backend.js";
-import { newPostgres, Postgres } from "./postgres.js";
+import { newPostgres, Postgres, migrate, DEFAULT_SCHEMA } from "./postgres.js";
 
 export class BackendPostgres implements Backend {
   private pg: Postgres;
 
-  constructor(url: string) {
-    this.pg = newPostgres(url);
+  private constructor(pg: Postgres) {
+    this.pg = pg;
+  }
+
+  /**
+   * Create and initialize a new BackendPostgres instance. This will
+   * automatically run migrations on startup.
+   */
+  static async connect(url: string): Promise<BackendPostgres> {
+    const pg = newPostgres(url);
+    await migrate(pg, DEFAULT_SCHEMA);
+    return new BackendPostgres(pg);
   }
 
   async end(): Promise<void> {
