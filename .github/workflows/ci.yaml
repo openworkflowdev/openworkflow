@@ -29,6 +29,5 @@ jobs:
       - run: npm ci
       - run: npm run format
       - run: npm run lint
-      - run: npm run -w @openworkflow/backend-postgres db:migrate
       - run: npm run test
       - run: npm run build
