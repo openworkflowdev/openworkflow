@@ -33,9 +33,11 @@ export class OpenWorkflow {
    * Define and register a new workflow.
    */
   defineWorkflow<Input, Output>(
-    name: string,
+    config: WorkflowDefinitionConfig,
     fn: WorkflowFunction<Input, Output>,
   ): WorkflowDefinition<Input, Output> {
+    const { name } = config;
+
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
     }
@@ -73,6 +75,16 @@ export interface WorkflowDefinitionOptions<Input, Output> {
   namespaceId: string;
   name: string;
   fn: WorkflowFunction<Input, Output>;
+}
+
+/**
+ * Config passed to `defineWorkflow()` when defining a workflow.
+ */
+export interface WorkflowDefinitionConfig {
+  /**
+   * The name of the workflow.
+   */
+  name: string;
 }
 
 /**

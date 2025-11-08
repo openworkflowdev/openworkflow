@@ -27,7 +27,7 @@ interface SummarizeDocOutput {
  * safety, but that's optional.
  */
 const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
-  "summarize-doc",
+  { name: "summarize-doc" },
   async ({ input, step }) => {
     const extracted = await step.run({ name: "extract-text" }, () => {
       console.log(`[${input.num}] Extracting text from ${input.docUrl}`);

@@ -257,7 +257,7 @@ historical paths within the workflow code. The workflow receives a `version`
 parameter that can be used to determine which code path to execute.
 
 ```ts
-const workflow = ow.defineWorkflow("versioned-workflow", async ({ step, version }) => {
+const workflow = ow.defineWorkflow({ name: "versioned-workflow" }, async ({ step, version }) => {
   if (version === "v1") {
   await step.run({ name: "old-step-name" }, ...);
   } else {

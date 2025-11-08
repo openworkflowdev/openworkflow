@@ -15,7 +15,7 @@ async function main() {
   });
 
   const workflow = client.defineWorkflow(
-    "benchmark-workflow",
+    { name: "benchmark-workflow" },
     async ({ step }) => {
       await step.run({ name: "step-1" }, () => {
         return;

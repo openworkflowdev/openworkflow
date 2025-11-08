@@ -20,7 +20,10 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("context", ({ input }) => input);
+    const workflow = client.defineWorkflow(
+      { name: "context" },
+      ({ input }) => input,
+    );
     const worker = new Worker({
       backend,
       namespaceId,
@@ -40,7 +43,7 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     const workflow = client.defineWorkflow(
-      "process",
+      { name: "process" },
       ({ input }: { input: { value: number } }) => input.value * 2,
     );
     const worker = new Worker({
@@ -61,17 +64,20 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     let executionCount = 0;
-    const workflow = client.defineWorkflow("cached-step", async ({ step }) => {
-      const first = await step.run({ name: "once" }, () => {
-        executionCount++;
-        return "value";
-      });
-      const second = await step.run({ name: "once" }, () => {
-        executionCount++;
-        return "should-not-run";
-      });
-      return { first, second };
-    });
+    const workflow = client.defineWorkflow(
+      { name: "cached-step" },
+      async ({ step }) => {
+        const first = await step.run({ name: "once" }, () => {
+          executionCount++;
+          return "value";
+        });
+        const second = await step.run({ name: "once" }, () => {
+          executionCount++;
+          return "should-not-run";
+        });
+        return { first, second };
+      },
+    );
 
     const worker = new Worker({
       backend,
@@ -106,7 +112,7 @@ describe("Worker", () => {
       backend,
       namespaceId,
       workflows: [
-        client.defineWorkflow("other", () => {
+        client.defineWorkflow({ name: "other" }, () => {
           return null;
         }),
       ],
@@ -130,7 +136,7 @@ describe("Worker", () => {
 
     let attemptCount = 0;
 
-    const workflow = client.defineWorkflow("retry-test", () => {
+    const workflow = client.defineWorkflow({ name: "retry-test" }, () => {
       attemptCount++;
       if (attemptCount < 2) {
         throw new Error(`Attempt ${String(attemptCount)} failed`);
@@ -167,7 +173,7 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    client.defineWorkflow("noop", () => null);
+    client.defineWorkflow({ name: "noop" }, () => null);
     const worker = new Worker({
       backend,
       namespaceId,
@@ -182,7 +188,7 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     const workflow = client.defineWorkflow(
-      "undefined-steps",
+      { name: "undefined-steps" },
       async ({ step }) => {
         await step.run({ name: "step-1" }, () => {
           return; // explicit undefined
@@ -212,20 +218,23 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     const executionOrder: string[] = [];
-    const workflow = client.defineWorkflow("sync-steps", async ({ step }) => {
-      executionOrder.push("start");
-      await step.run({ name: "step1" }, () => {
-        executionOrder.push("step1");
-        return 1;
-      });
-      executionOrder.push("between");
-      await step.run({ name: "step2" }, () => {
-        executionOrder.push("step2");
-        return 2;
-      });
-      executionOrder.push("end");
-      return executionOrder;
-    });
+    const workflow = client.defineWorkflow(
+      { name: "sync-steps" },
+      async ({ step }) => {
+        executionOrder.push("start");
+        await step.run({ name: "step1" }, () => {
+          executionOrder.push("step1");
+          return 1;
+        });
+        executionOrder.push("between");
+        await step.run({ name: "step2" }, () => {
+          executionOrder.push("step2");
+          return 2;
+        });
+        executionOrder.push("end");
+        return executionOrder;
+      },
+    );
 
     const worker = new Worker({
       backend,
@@ -245,24 +254,27 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     const executionTimes: Record<string, number> = {};
-    const workflow = client.defineWorkflow("parallel", async ({ step }) => {
-      const start = Date.now();
-      const [a, b, c] = await Promise.all([
-        step.run({ name: "step-a" }, () => {
-          executionTimes["step-a"] = Date.now() - start;
-          return "a";
-        }),
-        step.run({ name: "step-b" }, () => {
-          executionTimes["step-b"] = Date.now() - start;
-          return "b";
-        }),
-        step.run({ name: "step-c" }, () => {
-          executionTimes["step-c"] = Date.now() - start;
-          return "c";
-        }),
-      ]);
-      return { a, b, c };
-    });
+    const workflow = client.defineWorkflow(
+      { name: "parallel" },
+      async ({ step }) => {
+        const start = Date.now();
+        const [a, b, c] = await Promise.all([
+          step.run({ name: "step-a" }, () => {
+            executionTimes["step-a"] = Date.now() - start;
+            return "a";
+          }),
+          step.run({ name: "step-b" }, () => {
+            executionTimes["step-b"] = Date.now() - start;
+            return "b";
+          }),
+          step.run({ name: "step-c" }, () => {
+            executionTimes["step-c"] = Date.now() - start;
+            return "c";
+          }),
+        ]);
+        return { a, b, c };
+      },
+    );
 
     const worker = new Worker({
       backend,
@@ -287,7 +299,7 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("concurrency-test", () => {
+    const workflow = client.defineWorkflow({ name: "concurrency-test" }, () => {
       return "done";
     });
 
@@ -327,7 +339,7 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("lifecycle", () => {
+    const workflow = client.defineWorkflow({ name: "lifecycle" }, () => {
       return "complete";
     });
 
@@ -353,7 +365,7 @@ describe("Worker", () => {
     let attemptCount = 0;
 
     const workflow = client.defineWorkflow(
-      "crash-recovery",
+      { name: "crash-recovery" },
       async ({ step }) => {
         attemptCount++;
 
@@ -401,7 +413,10 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("heartbeat-test", () => "done");
+    const workflow = client.defineWorkflow(
+      { name: "heartbeat-test" },
+      () => "done",
+    );
 
     const handle = await workflow.run();
     const workerId = randomUUID();
@@ -433,7 +448,10 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("count-test", () => "result");
+    const workflow = client.defineWorkflow(
+      { name: "count-test" },
+      () => "result",
+    );
 
     // enqueue 3 workflows
     await workflow.run();
@@ -462,10 +480,13 @@ describe("Worker", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("concurrency-test", async () => {
-      await sleep(100);
-      return "done";
-    });
+    const workflow = client.defineWorkflow(
+      { name: "concurrency-test" },
+      async () => {
+        await sleep(100);
+        return "done";
+      },
+    );
 
     // enqueue 10 workflows
     for (let i = 0; i < 10; i++) {
@@ -495,7 +516,7 @@ describe("Worker", () => {
     const client = new OpenWorkflow({ backend, namespaceId });
 
     const workflow = client.defineWorkflow(
-      "adaptive-test",
+      { name: "adaptive-test" },
       async ({ step }) => {
         await step.run({ name: "step-1" }, () => "done");
         return "complete";

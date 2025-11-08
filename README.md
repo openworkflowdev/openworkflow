@@ -16,7 +16,7 @@ deploys.
 
 ```ts
 const processOrder = ow.defineWorkflow(
-  "process-order",
+  { name: "process-order" },
   async ({ input, step }) => {
     const payment = await step.run({ name: "charge-card" }, async () => {
       return await stripe.charges.create({ amount: input.amount });
@@ -65,7 +65,7 @@ const backend = await BackendPostgres.connect(process.env.DATABASE_URL);
 const ow = new OpenWorkflow({ backend });
 
 const sendWelcomeEmail = ow.defineWorkflow(
-  "send-welcome-email",
+  { name: "send-welcome-email" },
   async ({ input, step }) => {
     const user = await step.run({ name: "fetch-user" }, async () => {
       return await db.users.findOne({ id: input.userId });
@@ -132,10 +132,13 @@ interrupted (crash, deploy, server restart), it resumes from its last completed
 step.
 
 ```ts
-const workflow = ow.defineWorkflow("my-workflow", async ({ input, step }) => {
-  // Your workflow logic here
-  return result;
-});
+const workflow = ow.defineWorkflow(
+  { name: "my-workflow" },
+  async ({ input, step }) => {
+    // Your workflow logic here
+    return result;
+  },
+);
 ```
 
 ### Steps
@@ -249,7 +252,7 @@ interface ProcessOrderOutput {
 }
 
 const processOrder = ow.defineWorkflow<ProcessOrderInput, ProcessOrderOutput>(
-  "process-order",
+  { name: "process-order" },
   async ({ input, step }) => {
     // input is typed as ProcessOrderInput
     // return type must match ProcessOrderOutput

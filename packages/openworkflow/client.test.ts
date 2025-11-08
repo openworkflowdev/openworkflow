@@ -19,7 +19,7 @@ describe("OpenWorkflow", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("enqueue-test", noopFn);
+    const workflow = client.defineWorkflow({ name: "enqueue-test" }, noopFn);
     await workflow.run({ docUrl: "https://example.com" });
 
     const workerId = "enqueue-worker";
@@ -38,7 +38,7 @@ describe("OpenWorkflow", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("result-success", noopFn);
+    const workflow = client.defineWorkflow({ name: "result-success" }, noopFn);
     const handle = await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
@@ -66,7 +66,7 @@ describe("OpenWorkflow", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    const workflow = client.defineWorkflow("result-failure", noopFn);
+    const workflow = client.defineWorkflow({ name: "result-failure" }, noopFn);
     await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
@@ -98,8 +98,8 @@ describe("OpenWorkflow", () => {
     const namespaceId = randomUUID();
     const client = new OpenWorkflow({ backend, namespaceId });
 
-    client.defineWorkflow("first", noopFn);
-    client.defineWorkflow("second", noopFn);
+    client.defineWorkflow({ name: "first" }, noopFn);
+    client.defineWorkflow({ name: "second" }, noopFn);
 
     const definitions = client.listWorkflowDefinitions();
     expect(definitions).toHaveLength(2);
