@@ -452,7 +452,7 @@ describe("Worker", () => {
     await worker.stop();
   });
 
-  test("worker only sleeps between claims when no work is available", async () => {
+  test("worker only sleeps between claims when no work is available (known slow test)", async () => {
     const workflow = client.defineWorkflow(
       "adaptive-test",
       async ({ step }) => {
