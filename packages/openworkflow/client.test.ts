@@ -86,6 +86,17 @@ describe("OpenWorkflow", () => {
     expect(rescheduled?.status).toBe("pending");
     expect(rescheduled?.error).toEqual({ message: "boom" });
   });
+
+  test("creates workflow run with deadline", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "deadline-test" }, noopFn);
+    const deadline = new Date(Date.now() + 60_000); // in 1 minute
+    const handle = await workflow.run({ value: 1 }, { deadlineAt: deadline });
+
+    expect(handle.workflowRun.deadlineAt).not.toBeNull();
+    expect(handle.workflowRun.deadlineAt?.getTime()).toBe(deadline.getTime());
+  });
 });
 
 async function noopFn() {

@@ -36,6 +36,7 @@ describe("BackendPostgres", () => {
         parentStepAttemptId: null,
         workerId: null,
         availableAt: newDateInOneYear(), // -
+        deadlineAt: newDateInOneYear(),
         startedAt: null,
         finishedAt: null,
         createdAt: new Date(), // -
@@ -51,6 +52,7 @@ describe("BackendPostgres", () => {
         config: expected.config,
         context: expected.context,
         availableAt: expected.availableAt,
+        deadlineAt: expected.deadlineAt,
       });
       expect(created.namespaceId).toHaveLength(36);
       expect(created.id).toHaveLength(36);
@@ -74,12 +76,14 @@ describe("BackendPostgres", () => {
         config: {},
         context: null,
         availableAt: null,
+        deadlineAt: null,
       });
       expect(createdMin.version).toBeNull();
       expect(createdMin.idempotencyKey).toBeNull();
       expect(createdMin.input).toBeNull();
       expect(createdMin.context).toBeNull();
       expect(deltaSeconds(createdMin.availableAt)).toBeLessThan(1); // defaults to NOW()
+      expect(createdMin.deadlineAt).toBeNull();
     });
   });
 
@@ -490,6 +494,174 @@ describe("BackendPostgres", () => {
       expect(failed?.finishedAt).not.toBeNull();
     });
   });
+
+  describe("deadline_at", () => {
+    test("creates a workflow run with a deadline", async () => {
+      const deadline = new Date(Date.now() + 60_000); // in 1 minute
+      const created = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: deadline,
+      });
+
+      expect(created.deadlineAt).not.toBeNull();
+      expect(created.deadlineAt?.getTime()).toBe(deadline.getTime());
+    });
+
+    test("does not claim workflow runs past their deadline", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const pastDeadline = new Date(Date.now() - 1000);
+      await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: pastDeadline,
+      });
+
+      const claimed = await backend.claimWorkflowRun({
+        workerId: randomUUID(),
+        leaseDurationMs: 1000,
+      });
+
+      expect(claimed).toBeNull();
+
+      await backend.end();
+    });
+
+    test("marks deadline-expired workflow runs as failed when claiming", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const pastDeadline = new Date(Date.now() - 1000);
+      const created = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: pastDeadline,
+      });
+
+      // attempt to claim triggers deadline check
+      const claimed = await backend.claimWorkflowRun({
+        workerId: randomUUID(),
+        leaseDurationMs: 1000,
+      });
+      expect(claimed).toBeNull();
+
+      // verify it was marked as failed
+      const failed = await backend.getWorkflowRun({
+        workflowRunId: created.id,
+      });
+      expect(failed?.status).toBe("failed");
+      expect(failed?.error).toEqual({
+        message: "Workflow run deadline exceeded",
+      });
+      expect(failed?.finishedAt).not.toBeNull();
+      expect(failed?.availableAt).toBeNull();
+
+      await backend.end();
+    });
+
+    test("does not reschedule failed workflow runs if next retry would exceed deadline", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const deadline = new Date(Date.now() + 500); // 500ms from now
+      const created = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: deadline,
+      });
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 100,
+      });
+      expect(claimed).not.toBeNull();
+
+      // should mark as permanently failed since retry backoff (1s) would exceed deadline (500ms)
+      await backend.markWorkflowRunFailed({
+        workflowRunId: created.id,
+        workerId,
+        error: { message: "test error" },
+      });
+
+      const failed = await backend.getWorkflowRun({
+        workflowRunId: created.id,
+      });
+
+      expect(failed?.status).toBe("failed");
+      expect(failed?.availableAt).toBeNull();
+      expect(failed?.finishedAt).not.toBeNull();
+
+      await backend.end();
+    });
+
+    test("reschedules failed workflow runs if retry would complete before deadline", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const deadline = new Date(Date.now() + 5000); // in 5 seconds
+      const created = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: deadline,
+      });
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 100,
+      });
+      expect(claimed).not.toBeNull();
+
+      // should reschedule since retry backoff (1s) is before deadline (5s
+      await backend.markWorkflowRunFailed({
+        workflowRunId: created.id,
+        workerId,
+        error: { message: "test error" },
+      });
+
+      const rescheduled = await backend.getWorkflowRun({
+        workflowRunId: created.id,
+      });
+
+      expect(rescheduled?.status).toBe("pending");
+      expect(rescheduled?.availableAt).not.toBeNull();
+      expect(rescheduled?.finishedAt).toBeNull();
+
+      await backend.end();
+    });
+  });
 });
 
 function deltaSeconds(date: Date | null | undefined): number {
@@ -516,6 +688,7 @@ async function createPendingWorkflowRun(backend: BackendPostgres) {
     config: {},
     context: null,
     availableAt: null,
+    deadlineAt: null,
   });
 }
 

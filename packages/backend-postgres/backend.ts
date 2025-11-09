@@ -83,6 +83,7 @@ export class BackendPostgres implements Backend {
         "input",
         "attempts",
         "available_at",
+        "deadline_at",
         "created_at",
         "updated_at"
       )
@@ -98,6 +99,7 @@ export class BackendPostgres implements Backend {
         ${this.pg.json(params.input)},
         0,
         ${sqlDateDefaultNow(this.pg, params.availableAt)},
+        ${params.deadlineAt},
         NOW(),
         NOW()
       )
@@ -126,13 +128,32 @@ export class BackendPostgres implements Backend {
   async claimWorkflowRun(
     params: ClaimWorkflowRunParams,
   ): Promise<WorkflowRun | null> {
+    // 1. mark any deadline-expired workflow runs as failed
+    // 2. find an available workflow run to claim
+    // 3. claim the workflow run
     const [claimed] = await this.pg<WorkflowRun[]>`
-      WITH candidate AS (
+      WITH expired AS (
+        UPDATE "openworkflow"."workflow_runs"
+        SET
+          "status" = 'failed',
+          "error" = ${this.pg.json({ message: "Workflow run deadline exceeded" })},
+          "worker_id" = NULL,
+          "available_at" = NULL,
+          "finished_at" = NOW(),
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "status" IN ('pending', 'running')
+          AND "deadline_at" IS NOT NULL
+          AND "deadline_at" <= NOW()
+        RETURNING "id"
+      ),
+      candidate AS (
         SELECT "id"
         FROM "openworkflow"."workflow_runs"
         WHERE "namespace_id" = ${this.namespaceId}
           AND "status" IN ('pending', 'running')
           AND "available_at" <= NOW()
+          AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
         ORDER BY
           CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
           "available_at",
@@ -203,16 +224,49 @@ export class BackendPostgres implements Backend {
     const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
       DEFAULT_RETRY_POLICY;
 
+    // this beefy query updates a workflow's status, available_at, and
+    // finished_at based on the workflow's deadline and retry policy
+    //
+    // if the next retry would exceed the deadline, the run is marked as
+    // 'failed' and finalized, otherwise, the run is rescheduled with an updated
+    // 'available_at' timestamp for the next retry
     await this.pg`
       UPDATE "openworkflow"."workflow_runs"
       SET
-        "status" = 'pending',
-        "available_at" = NOW() + (
-          LEAST(
-            ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
-            ${maximumIntervalMs}
-          ) * INTERVAL '1 millisecond'
-        ),
+        "status" = CASE
+          WHEN "deadline_at" IS NOT NULL AND NOW() + (
+            LEAST(
+              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
+              ${maximumIntervalMs}
+            ) * INTERVAL '1 millisecond'
+          ) >= "deadline_at" THEN 'failed'
+          ELSE 'pending'
+        END,
+
+        "available_at" = CASE
+          WHEN "deadline_at" IS NOT NULL AND NOW() + (
+            LEAST(
+              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
+              ${maximumIntervalMs}
+            ) * INTERVAL '1 millisecond'
+          ) >= "deadline_at" THEN NULL
+          ELSE NOW() + (
+            LEAST(
+              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
+              ${maximumIntervalMs}
+            ) * INTERVAL '1 millisecond'
+          )
+        END,
+
+        "finished_at" = CASE
+          WHEN "deadline_at" IS NOT NULL AND NOW() + (
+            LEAST(
+              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
+              ${maximumIntervalMs}
+            ) * INTERVAL '1 millisecond'
+          ) >= "deadline_at" THEN NOW()
+          ELSE NULL
+        END,
         "error" = ${this.pg.json(error)},
         "worker_id" = NULL,
         "started_at" = NULL,

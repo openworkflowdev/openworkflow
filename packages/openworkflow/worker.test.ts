@@ -82,6 +82,7 @@ describe("Worker", () => {
       context: null,
       input: null,
       availableAt: null,
+      deadlineAt: null,
     });
 
     const worker = client.newWorker();

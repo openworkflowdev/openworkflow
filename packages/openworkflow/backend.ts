@@ -32,6 +32,7 @@ export interface CreateWorkflowRunParams {
   context: JsonValue | null;
   input: JsonValue | null;
   availableAt: Date | null; // null = immediately
+  deadlineAt: Date | null; // null = no deadline
 }
 
 export interface GetWorkflowRunParams {
@@ -122,6 +123,7 @@ export interface WorkflowRun {
   parentStepAttemptId: string | null;
   workerId: string | null;
   availableAt: Date | null;
+  deadlineAt: Date | null;
   startedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;

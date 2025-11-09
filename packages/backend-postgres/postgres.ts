@@ -69,6 +69,7 @@ export function migrations(schema: string): string[] {
       "parent_step_attempt_id" TEXT,
       "worker_id" TEXT,
       "available_at" TIMESTAMPTZ,
+      "deadline_at" TIMESTAMPTZ,
       "started_at" TIMESTAMPTZ,
       "finished_at" TIMESTAMPTZ,
       "created_at" TIMESTAMPTZ NOT NULL,

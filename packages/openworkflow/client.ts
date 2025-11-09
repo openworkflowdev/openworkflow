@@ -101,8 +101,7 @@ export class WorkflowDefinition<Input, Output> {
 
   async run(
     input?: Input,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _options?: WorkflowRunOptions,
+    options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
@@ -113,6 +112,7 @@ export class WorkflowDefinition<Input, Output> {
       context: null,
       input: input ?? null,
       availableAt: null,
+      deadlineAt: options?.deadlineAt ?? null,
     });
 
     return new WorkflowRunHandle<Output>({
@@ -177,8 +177,13 @@ export type StepFunction<Output> = () =>
  * Options for creating a new workflow run from a workflow definition when
  * calling `workflowDef.run()`.
  */
-//eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface WorkflowRunOptions {}
+export interface WorkflowRunOptions {
+  /**
+   * Set a deadline for the workflow run. If the workflow exceeds this deadline,
+   * it will be marked as failed.
+   */
+  deadlineAt?: Date;
+}
 
 /**
  * Options for WorkflowHandle.

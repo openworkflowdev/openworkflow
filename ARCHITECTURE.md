@@ -35,6 +35,9 @@ execution with minimal operational complexity.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.
+- **`deadlineAt`**: An optional timestamp on a workflow run that specifies the
+  deadline by which the workflow must complete. If the deadline is reached, the
+  workflow run is marked as failed.
 
 ### 1.3. Workflow Run Statuses
 
@@ -206,6 +209,12 @@ If an error is unhandled by the workflow code, the entire workflow run fails.
 Similar to step retries, the workflow run itself can have a retry policy. If
 retries remain, it will be rescheduled with a backoff. If all retries are
 exhausted, its status is set to `failed` permanently.
+
+### 4.3. Workflow Deadlines
+
+Workflow runs can include an optional `deadlineAt` timestamp, specifying the
+time by which the workflow must complete. Steps and retries are skipped if they
+would exceed the deadline, making the run permanently `failed`.
 
 ## 5. Concurrency & Parallelism
 
