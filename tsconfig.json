@@ -4,7 +4,13 @@
     "@tsconfig/node22/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/node22
   ],
   "compilerOptions": {
-    "outDir": "dist"
+    "rootDir": ".",
+    "outDir": "dist",
+
+    "composite": true,
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true
   },
   "include": ["**/*.ts"]
 }

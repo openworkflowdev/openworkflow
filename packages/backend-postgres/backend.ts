@@ -1,4 +1,11 @@
 import {
+  newPostgres,
+  newPostgresMaxOne,
+  Postgres,
+  migrate,
+  DEFAULT_SCHEMA,
+} from "./postgres.js";
+import {
   DEFAULT_NAMESPACE_ID,
   Backend,
   ClaimWorkflowRunParams,
@@ -15,14 +22,7 @@ import {
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
-} from "../openworkflow/backend.js";
-import {
-  newPostgres,
-  newPostgresMaxOne,
-  Postgres,
-  migrate,
-  DEFAULT_SCHEMA,
-} from "./postgres.js";
+} from "openworkflow/backend";
 
 interface BackendPostgresOptions {
   namespaceId?: string;

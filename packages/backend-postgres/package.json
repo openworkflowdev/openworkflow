@@ -4,8 +4,9 @@
   "type": "module",
   "exports": {
     ".": {
-      "import": "./index.js",
-      "types": "./index.d.ts"
+      "development": "./index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "scripts": {
@@ -19,6 +20,7 @@
     "postgres": "^3.4.7"
   },
   "devDependencies": {
+    "openworkflow": "file:../openworkflow",
     "squawk-cli": "^2.30.0"
   },
   "peerDependencies": {
