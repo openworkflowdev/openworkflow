@@ -22,7 +22,7 @@ import {
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
-} from "openworkflow/backend";
+} from "openworkflow";
 
 interface BackendPostgresOptions {
   namespaceId?: string;

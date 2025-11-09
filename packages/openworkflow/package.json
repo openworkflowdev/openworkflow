@@ -7,21 +7,6 @@
       "development": "./index.ts",
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    },
-    "./backend": {
-      "development": "./backend.ts",
-      "import": "./dist/backend.js",
-      "types": "./dist/backend.d.ts"
-    },
-    "./client": {
-      "development": "./client.ts",
-      "import": "./dist/client.js",
-      "types": "./dist/client.d.ts"
-    },
-    "./worker": {
-      "development": "./worker.ts",
-      "import": "./dist/worker.js",
-      "types": "./dist/worker.d.ts"
     }
   },
   "scripts": {
