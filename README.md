@@ -282,3 +282,9 @@ const result = await run.result();
 - Workflow cancellation
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
+
+## Bugs & feature requests
+
+Found a bug or have a feature request? Please open an issue on GitHub so we can
+track and prioritize it:
+https://github.com/openworkflowdev/openworkflow/issues/new
