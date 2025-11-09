@@ -66,7 +66,7 @@ Workers are background processes that execute your workflows. Start one in a
 separate process or the same one as your app:
 
 ```ts
-const worker = ow.newWorker({ concurrency: 10 });
+const worker = ow.newWorker();
 await worker.start();
 ```
 
