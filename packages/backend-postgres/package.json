@@ -5,10 +5,13 @@
   "exports": {
     ".": {
       "development": "./index.ts",
-      "import": "./dist/index.js",
+      "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
     }
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "db:migrate": "tsx ./scripts/db-migrate.ts",
