@@ -1,9 +1,9 @@
-import { BackendPostgres } from "../packages/backend-postgres/index.js";
-import { DEFAULT_DATABASE_URL } from "../packages/backend-postgres/postgres.js";
-import { OpenWorkflow } from "../packages/openworkflow/index.js";
+import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { randomUUID } from "node:crypto";
+import { OpenWorkflow } from "openworkflow";
 
-const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+const databaseUrl = "postgresql://postgres:postgres@localhost:5432/postgres";
+const backend = await BackendPostgres.connect(databaseUrl, {
   namespaceId: randomUUID(),
 });
 const ow = new OpenWorkflow({ backend });

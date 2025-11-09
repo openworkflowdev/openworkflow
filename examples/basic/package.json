@@ -1,0 +1,15 @@
+{
+  "name": "example-basic",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@openworkflow/backend-postgres": "file:../../packages/backend-postgres",
+    "openworkflow": "file:../../packages/openworkflow"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}
