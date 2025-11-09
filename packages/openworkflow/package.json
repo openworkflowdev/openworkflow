@@ -1,6 +1,29 @@
 {
   "name": "openworkflow",
   "version": "0.0.1",
+  "description": "Open-source TypeScript framework for building durable, resumable workflows",
+  "keywords": [
+    "durable execution",
+    "durable function",
+    "durable workflow",
+    "job processing",
+    "postgresql",
+    "resumable",
+    "task orchestration",
+    "task scheduler",
+    "typescript",
+    "workflow",
+    "workflow orchestration"
+  ],
+  "homepage": "https://openworkflow.dev",
+  "bugs": "https://github.com/openworkflowdev/openworkflow/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openworkflowdev/openworkflow.git",
+    "directory": "packages/openworkflow"
+  },
+  "license": "Apache-2.0",
+  "author": "OpenWorkflow",
   "type": "module",
   "exports": {
     ".": {
@@ -14,5 +37,8 @@
   ],
   "scripts": {
     "build": "tsc"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
