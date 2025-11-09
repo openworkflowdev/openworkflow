@@ -7,8 +7,8 @@ OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
 exactly where they left off - all without extra servers to manage.
 
-> **⚠️ In Development:** OpenWorkflow is in active development and moving
-> quickly. Check out the [Roadmap](#roadmap) for what’s coming next.
+> OpenWorkflow is in active development and moving quickly. Check out the
+> [Roadmap](#roadmap) for what’s coming next.
 
 ## Quick Start
 
