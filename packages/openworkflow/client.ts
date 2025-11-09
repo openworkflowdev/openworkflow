@@ -16,11 +16,8 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  private registeredWorkflows = new Map<
-    string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    WorkflowDefinition<any, any>
-  >();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private registeredWorkflows = new Map<string, WorkflowDefinition<any, any>>();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
@@ -86,7 +83,8 @@ export interface WorkflowDefinitionConfig {
 }
 
 /**
- * Represents a workflow definition. Returned from `client.defineWorkflow()`.
+ * Represents a workflow definition that can be used to start runs. Returned
+ * from `client.defineWorkflow()`.
  */
 export class WorkflowDefinition<Input, Output> {
   private backend: Backend;
@@ -99,6 +97,9 @@ export class WorkflowDefinition<Input, Output> {
     this.fn = options.fn;
   }
 
+  /**
+   * Starts a new workflow run.
+   */
   async run(
     input?: Input,
     options?: WorkflowRunOptions,
@@ -151,7 +152,8 @@ export interface StepFunctionConfig {
 }
 
 /**
- * Used within a workflow handler to define steps by calling `step.run()`.
+ * Represents the API for defining steps within a workflow. Used within a
+ * workflow handler to define steps by calling `step.run()`.
  */
 export interface StepApi {
   run<Output>(
@@ -196,7 +198,7 @@ export interface WorkflowHandleOptions {
 }
 
 /**
- * Represents a started workflow run and provides a helper to await its result.
+ * Represents a started workflow run and provides methods to await its result.
  * Returned from `workflowDef.run()`.
  */
 export class WorkflowRunHandle<Output> {
@@ -212,12 +214,14 @@ export class WorkflowRunHandle<Output> {
     this.resultTimeoutMs = options.resultTimeoutMs;
   }
 
+  /**
+   * Waits for the workflow run to complete and returns the result.
+   */
   async result(): Promise<Output> {
     const start = Date.now();
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
-      // refresh the workflow run
       const latest = await this.backend.getWorkflowRun({
         workflowRunId: this.workflowRun.id,
       });

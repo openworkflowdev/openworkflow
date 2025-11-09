@@ -29,6 +29,9 @@ interface BackendPostgresOptions {
   runMigrations?: boolean;
 }
 
+/**
+ * Manages a connection to a Postgres database for workflow operations.
+ */
 export class BackendPostgres implements Backend {
   private pg: Postgres;
   private namespaceId: string;
