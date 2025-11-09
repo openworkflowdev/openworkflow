@@ -3,51 +3,20 @@
 [![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
 [![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
 
-> **⚠️ In Development:** OpenWorkflow is in early development. Expect the first
-> working version, v0.1, to be released on November 8.
-
 OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
-exactly where they left off.
+exactly where they left off - all without extra servers to manage.
 
-Write regular TypeScript code and OpenWorkflow + your database handle the rest.
-Automatic retries, crash recovery, parallel execution, and zero-downtime
-deploys.
-
-```ts
-const processOrder = ow.defineWorkflow(
-  { name: "process-order" },
-  async ({ input, step }) => {
-    const payment = await step.run({ name: "charge-card" }, async () => {
-      return await stripe.charges.create({ amount: input.amount });
-    });
-
-    const inventory = await step.run({ name: "reserve-items" }, async () => {
-      return await db.inventory.reserve(input.items);
-    });
-
-    const shipment = await step.run({ name: "create-shipment" }, async () => {
-      return await shippo.shipments.create({ items: inventory });
-    });
-
-    return { payment, shipment };
-  },
-);
-
-// Start the workflow
-const run = await processOrder.run({ amount: 10_000, items: ["widget"] });
-
-// Optionally await the result, which waits for an async worker to complete the
-// workflow.
-const { payment, shipment } = await run.result();
-```
+> **⚠️ In Development:** OpenWorkflow is in active development and moving
+> quickly. Check out the [Roadmap](#roadmap) for what’s coming next.
 
 ## Quick Start
 
-## Prerequisites
+Prerequisites:
 
 - Node.js
-- PostgreSQL
+- PostgreSQL (support for additional backends like Redis and SQLite coming soon.
+  See [Roadmap](#roadmap) for details.)
 
 ### 1. Install
 
@@ -61,7 +30,8 @@ npm install openworkflow @openworkflow/backend-postgres
 import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
 
-const backend = await BackendPostgres.connect(process.env.DATABASE_URL);
+const postgresUrl = process.env.DATABASE_URL; // connection url to your db
+const backend = await BackendPostgres.connect(postgresUrl);
 const ow = new OpenWorkflow({ backend });
 
 const sendWelcomeEmail = ow.defineWorkflow(
@@ -71,7 +41,7 @@ const sendWelcomeEmail = ow.defineWorkflow(
       return await db.users.findOne({ id: input.userId });
     });
 
-    const emailId = await step.run({ name: "send-email" }, async () => {
+    await step.run({ name: "send-email" }, async () => {
       return await resend.emails.send({
         from: "me@example.com",
         to: user.email,
@@ -85,7 +55,7 @@ const sendWelcomeEmail = ow.defineWorkflow(
       await db.users.update(input.userId, { welcomeEmailSent: true });
     });
 
-    return { emailId };
+    return { user };
   },
 );
 ```
@@ -162,11 +132,8 @@ and execute them. You can run multiple workers for high availability and scale.
 const worker = ow.newWorker({ concurrency: 20 });
 await worker.start();
 
-// Graceful shutdown on SIGTERM
-process.on("SIGTERM", async () => {
-  await worker.stop(); // waits for in-flight workflows to complete
-  process.exit(0);
-});
+// & to shut down...
+await worker.stop(); // waits for in-flight workflows to complete
 ```
 
 Workers are stateless. They can be started, stopped, and deployed independently.
@@ -220,8 +187,8 @@ const data = await step.run({ name: "fetch-external-api" }, async () => {
 });
 ```
 
-Configure retry behavior at the workflow level (coming soon) or handle errors
-explicitly in your step functions.
+Configure retry behavior at the workflow or step level (coming soon) or handle
+errors explicitly in your step functions.
 
 ### Type Safety
 
