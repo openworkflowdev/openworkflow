@@ -66,7 +66,7 @@ export class BackendPostgres implements Backend {
     return new BackendPostgres(pg, namespaceId);
   }
 
-  async end(): Promise<void> {
+  async stop(): Promise<void> {
     await this.pg.end();
   }
 

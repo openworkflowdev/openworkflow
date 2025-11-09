@@ -126,7 +126,7 @@ async function main() {
   await worker.stop();
 
   console.log("Closing backend...");
-  await backend.end();
+  await backend.stop();
 
   console.log("Done.");
 }

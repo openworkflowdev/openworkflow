@@ -14,7 +14,7 @@ describe("BackendPostgres", () => {
   });
 
   afterAll(async () => {
-    await backend.end();
+    await backend.stop();
   });
 
   describe("createWorkflowRun()", () => {
@@ -129,7 +129,7 @@ describe("BackendPostgres", () => {
         claimed?.startedAt?.getTime(),
       );
 
-      await backend.end();
+      await backend.stop();
     });
 
     test("prioritizes pending workflow runs over expired running ones", async () => {
@@ -162,7 +162,7 @@ describe("BackendPostgres", () => {
       });
       expect(claimedSecond?.id).toBe(running.id);
 
-      await backend.end();
+      await backend.stop();
     });
 
     test("returns null when no workflow runs are available", async () => {
@@ -176,7 +176,7 @@ describe("BackendPostgres", () => {
       });
       expect(claimed).toBeNull();
 
-      await backend.end();
+      await backend.stop();
     });
   });
 
@@ -327,7 +327,7 @@ describe("BackendPostgres", () => {
       expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
       expect(delayMs).toBeLessThan(2500);
 
-      await backend.end();
+      await backend.stop();
     });
   });
 
@@ -537,7 +537,7 @@ describe("BackendPostgres", () => {
 
       expect(claimed).toBeNull();
 
-      await backend.end();
+      await backend.stop();
     });
 
     test("marks deadline-expired workflow runs as failed when claiming", async () => {
@@ -575,7 +575,7 @@ describe("BackendPostgres", () => {
       expect(failed?.finishedAt).not.toBeNull();
       expect(failed?.availableAt).toBeNull();
 
-      await backend.end();
+      await backend.stop();
     });
 
     test("does not reschedule failed workflow runs if next retry would exceed deadline", async () => {
@@ -617,7 +617,7 @@ describe("BackendPostgres", () => {
       expect(failed?.availableAt).toBeNull();
       expect(failed?.finishedAt).not.toBeNull();
 
-      await backend.end();
+      await backend.stop();
     });
 
     test("reschedules failed workflow runs if retry would complete before deadline", async () => {
@@ -659,7 +659,7 @@ describe("BackendPostgres", () => {
       expect(rescheduled?.availableAt).not.toBeNull();
       expect(rescheduled?.finishedAt).toBeNull();
 
-      await backend.end();
+      await backend.stop();
     });
   });
 });

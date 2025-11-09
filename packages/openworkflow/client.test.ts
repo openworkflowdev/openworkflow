@@ -14,7 +14,7 @@ describe("OpenWorkflow", () => {
   });
 
   afterAll(async () => {
-    await backend.end();
+    await backend.stop();
   });
 
   test("enqueues workflow runs via backend", async () => {

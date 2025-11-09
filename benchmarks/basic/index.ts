@@ -100,7 +100,7 @@ async function main() {
   console.log(`Steps/sec:               ${stepsPerSecond}`);
   console.log(`Avg Latency:             ${avgLatencyMs}ms`);
 
-  await backend.end();
+  await backend.stop();
 }
 
 await main().catch((error: unknown) => {
