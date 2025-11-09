@@ -46,9 +46,7 @@ async function main() {
   const enqueueStart = Date.now();
 
   const handles = await Promise.all(
-    Array.from({ length: WORKFLOW_RUN_COUNT }, () =>
-      workflow.run({ input: {} }),
-    ),
+    Array.from({ length: WORKFLOW_RUN_COUNT }, () => workflow.run()),
   );
 
   const enqueueTime = Date.now() - enqueueStart;
