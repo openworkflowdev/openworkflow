@@ -267,12 +267,18 @@ const result = await run.result();
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
 
+> Note: The v0.1 release doesn’t yet include a dashboard UI or CLI. For now, you
+> can inspect workflow and step state directly in PostgreSQL (workflow_runs and
+> step_runs tables). A CLI and dashboard are planned for an upcoming release to
+> make debugging and monitoring much easier.
+
 **Coming Soon:**
 
+- CLI
+- Dashboard UI
 - Workflow versioning
 - Configurable retry policies
 - Signals for external events
 - Workflow cancellation
-- Admin dashboard
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
