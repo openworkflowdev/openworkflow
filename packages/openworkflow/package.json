@@ -1,6 +1,6 @@
 {
   "name": "openworkflow",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Open-source TypeScript framework for building durable, resumable workflows",
   "keywords": [
     "durable execution",
@@ -36,7 +36,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=20"

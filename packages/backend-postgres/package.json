@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/backend-postgres",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     ".": {
@@ -17,6 +17,7 @@
     "db:migrate": "tsx ./scripts/db-migrate.ts",
     "db:reset": "tsx ./scripts/db-reset.ts",
     "pghero": "sh ./scripts/pghero.sh",
+    "prepublishOnly": "npm run build",
     "squawk": "tsx ./scripts/squawk.ts"
   },
   "dependencies": {
@@ -27,6 +28,6 @@
     "squawk-cli": "^2.30.0"
   },
   "peerDependencies": {
-    "openworkflow": "^0.0.1"
+    "openworkflow": "^0.1.0"
   }
 }
