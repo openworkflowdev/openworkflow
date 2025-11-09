@@ -1,7 +1,6 @@
 import type { Backend, WorkflowRun } from "./backend.js";
 import { Worker } from "./worker.js";
 
-export const DEFAULT_NAMESPACE_ID = "default";
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
 
@@ -10,7 +9,6 @@ const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
  */
 export interface OpenWorkflowOptions {
   backend: Backend;
-  namespaceId?: string;
 }
 
 /**
@@ -18,7 +16,6 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  private namespaceId: string;
   private registeredWorkflows = new Map<
     string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,17 +23,15 @@ export class OpenWorkflow {
   >();
 
   constructor(options: OpenWorkflowOptions) {
-    this.namespaceId = options.namespaceId ?? DEFAULT_NAMESPACE_ID;
     this.backend = options.backend;
   }
 
   /**
-   * Create a new Worker with this client's backend, namespace, and workflows.
+   * Create a new Worker with this client's backend and workflows.
    */
   newWorker(options?: { concurrency?: number }): Worker {
     return new Worker({
       backend: this.backend,
-      namespaceId: this.namespaceId,
       workflows: [...this.registeredWorkflows.values()],
       concurrency: options?.concurrency,
     });
@@ -57,7 +52,6 @@ export class OpenWorkflow {
 
     const definition = new WorkflowDefinition<Input, Output>({
       backend: this.backend,
-      namespaceId: this.namespaceId,
       name,
       fn,
     });
@@ -77,7 +71,6 @@ export class OpenWorkflow {
  */
 export interface WorkflowDefinitionOptions<Input, Output> {
   backend: Backend;
-  namespaceId: string;
   name: string;
   fn: WorkflowFunction<Input, Output>;
 }
@@ -97,13 +90,11 @@ export interface WorkflowDefinitionConfig {
  */
 export class WorkflowDefinition<Input, Output> {
   private backend: Backend;
-  private namespaceId: string;
   readonly name: string;
   readonly fn: WorkflowFunction<Input, Output>;
 
   constructor(options: WorkflowDefinitionOptions<Input, Output>) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId;
     this.name = options.name;
     this.fn = options.fn;
   }
@@ -115,7 +106,6 @@ export class WorkflowDefinition<Input, Output> {
   ): Promise<WorkflowRunHandle<Output>> {
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
-      namespaceId: this.namespaceId,
       workflowName: this.name,
       version: null,
       idempotencyKey: null,
@@ -127,7 +117,6 @@ export class WorkflowDefinition<Input, Output> {
 
     return new WorkflowRunHandle<Output>({
       backend: this.backend,
-      namespaceId: this.namespaceId,
       workflowRun: workflowRun,
       resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
       resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
@@ -196,7 +185,6 @@ export interface WorkflowRunOptions {}
  */
 export interface WorkflowHandleOptions {
   backend: Backend;
-  namespaceId: string;
   workflowRun: WorkflowRun;
   resultPollIntervalMs: number;
   resultTimeoutMs: number;
@@ -208,14 +196,12 @@ export interface WorkflowHandleOptions {
  */
 export class WorkflowRunHandle<Output> {
   private backend: Backend;
-  private namespaceId: string;
   readonly workflowRun: WorkflowRun;
   private resultPollIntervalMs: number;
   private resultTimeoutMs: number;
 
   constructor(options: WorkflowHandleOptions) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId;
     this.workflowRun = options.workflowRun;
     this.resultPollIntervalMs = options.resultPollIntervalMs;
     this.resultTimeoutMs = options.resultTimeoutMs;
@@ -228,14 +214,11 @@ export class WorkflowRunHandle<Output> {
     while (true) {
       // refresh the workflow run
       const latest = await this.backend.getWorkflowRun({
-        namespaceId: this.namespaceId,
         workflowRunId: this.workflowRun.id,
       });
 
       if (!latest) {
-        throw new Error(
-          `Workflow run ${this.workflowRun.id} no longer exists in namespace ${this.namespaceId}`,
-        );
+        throw new Error(`Workflow run ${this.workflowRun.id} no longer exists`);
       }
 
       if (latest.status === "succeeded") {

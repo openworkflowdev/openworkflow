@@ -8,7 +8,9 @@ describe("BackendPostgres", () => {
   let backend: BackendPostgres;
 
   beforeAll(async () => {
-    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
+    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+      namespaceId: randomUUID(),
+    });
   });
 
   afterAll(async () => {
@@ -18,7 +20,7 @@ describe("BackendPostgres", () => {
   describe("createWorkflowRun()", () => {
     test("creates a workflow run", async () => {
       const expected: WorkflowRun = {
-        namespaceId: randomUUID(),
+        namespaceId: "", // -
         id: "", // -
         workflowName: randomUUID(),
         version: randomUUID(),
@@ -42,7 +44,6 @@ describe("BackendPostgres", () => {
 
       // Create with all fields
       const created = await backend.createWorkflowRun({
-        namespaceId: expected.namespaceId,
         workflowName: expected.workflowName,
         version: expected.version,
         idempotencyKey: expected.idempotencyKey,
@@ -51,11 +52,13 @@ describe("BackendPostgres", () => {
         context: expected.context,
         availableAt: expected.availableAt,
       });
+      expect(created.namespaceId).toHaveLength(36);
       expect(created.id).toHaveLength(36);
       expect(deltaSeconds(created.availableAt)).toBeGreaterThan(1);
       expect(deltaSeconds(created.createdAt)).toBeLessThan(1);
       expect(deltaSeconds(created.updatedAt)).toBeLessThan(1);
 
+      expected.namespaceId = created.namespaceId;
       expected.id = created.id;
       expected.availableAt = created.availableAt;
       expected.createdAt = created.createdAt;
@@ -64,7 +67,6 @@ describe("BackendPostgres", () => {
 
       // Create with minimal fields
       const createdMin = await backend.createWorkflowRun({
-        namespaceId: expected.namespaceId,
         workflowName: expected.workflowName,
         version: null,
         idempotencyKey: null,
@@ -82,14 +84,19 @@ describe("BackendPostgres", () => {
   });
 
   describe("claimWorkflowRun()", () => {
+    // because claims involve timing and leases, we create and teardown a new
+    // namespaced backend instance for each test
+
     test("claims workflow runs and respects leases, reclaiming if lease expires", async () => {
-      const namespaceId = randomUUID();
-      await createPendingWorkflowRun(backend, namespaceId);
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      await createPendingWorkflowRun(backend);
 
       const firstLeaseMs = 30;
       const firstWorker = randomUUID();
       const claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: firstWorker,
         leaseDurationMs: firstLeaseMs,
       });
@@ -100,7 +107,6 @@ describe("BackendPostgres", () => {
 
       const secondWorker = randomUUID();
       const blocked = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: secondWorker,
         leaseDurationMs: 10,
       });
@@ -109,7 +115,6 @@ describe("BackendPostgres", () => {
       await sleep(firstLeaseMs);
 
       const reclaimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: secondWorker,
         leaseDurationMs: 10,
       });
@@ -119,14 +124,17 @@ describe("BackendPostgres", () => {
       expect(reclaimed?.startedAt?.getTime()).toBe(
         claimed?.startedAt?.getTime(),
       );
+
+      await backend.end();
     });
 
     test("prioritizes pending workflow runs over expired running ones", async () => {
-      const namespaceId = randomUUID();
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
 
-      const running = await createPendingWorkflowRun(backend, namespaceId);
+      const running = await createPendingWorkflowRun(backend);
       const runningClaim = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: "worker-running",
         leaseDurationMs: 5,
       });
@@ -136,9 +144,8 @@ describe("BackendPostgres", () => {
       await sleep(10); // wait for running's lease to expire
 
       // pending claimed first, even though running expired
-      const pending = await createPendingWorkflowRun(backend, namespaceId);
+      const pending = await createPendingWorkflowRun(backend);
       const claimedFirst = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: "worker-second",
         leaseDurationMs: 100,
       });
@@ -146,31 +153,35 @@ describe("BackendPostgres", () => {
 
       // running claimed second
       const claimedSecond = await backend.claimWorkflowRun({
-        namespaceId,
         workerId: "worker-third",
         leaseDurationMs: 100,
       });
       expect(claimedSecond?.id).toBe(running.id);
+
+      await backend.end();
     });
 
     test("returns null when no workflow runs are available", async () => {
-      const claimed = await backend.claimWorkflowRun({
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
         namespaceId: randomUUID(),
+      });
+
+      const claimed = await backend.claimWorkflowRun({
         workerId: randomUUID(),
         leaseDurationMs: 10,
       });
       expect(claimed).toBeNull();
+
+      await backend.end();
     });
   });
 
   describe("heartbeatWorkflowRun()", () => {
     test("extends the lease for running workflow runs", async () => {
-      const namespaceId = randomUUID();
       const workerId = randomUUID();
-      await createPendingWorkflowRun(backend, namespaceId);
+      await createPendingWorkflowRun(backend);
 
       const claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId,
         leaseDurationMs: 20,
       });
@@ -178,14 +189,12 @@ describe("BackendPostgres", () => {
 
       const previousExpiry = claimed.availableAt;
       await backend.heartbeatWorkflowRun({
-        namespaceId,
         workflowRunId: claimed.id,
         workerId,
         leaseDurationMs: 200,
       });
 
       const refreshed = await backend.getWorkflowRun({
-        namespaceId,
         workflowRunId: claimed.id,
       });
 
@@ -197,12 +206,10 @@ describe("BackendPostgres", () => {
 
   describe("markWorkflowRunSucceeded()", () => {
     test("marks running workflow runs as succeeded", async () => {
-      const namespaceId = randomUUID();
       const workerId = randomUUID();
-      await createPendingWorkflowRun(backend, namespaceId);
+      await createPendingWorkflowRun(backend);
 
       const claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId,
         leaseDurationMs: 20,
       });
@@ -210,14 +217,12 @@ describe("BackendPostgres", () => {
 
       const output = { ok: true };
       await backend.markWorkflowRunSucceeded({
-        namespaceId,
         workflowRunId: claimed.id,
         workerId,
         output,
       });
 
       const finished = await backend.getWorkflowRun({
-        namespaceId,
         workflowRunId: claimed.id,
       });
       expect(finished?.status).toBe("succeeded");
@@ -230,12 +235,10 @@ describe("BackendPostgres", () => {
 
   describe("markWorkflowRunFailed()", () => {
     test("reschedules workflow runs with exponential backoff on first failure", async () => {
-      const namespaceId = randomUUID();
       const workerId = randomUUID();
-      await createPendingWorkflowRun(backend, namespaceId);
+      await createPendingWorkflowRun(backend);
 
       const claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId,
         leaseDurationMs: 20,
       });
@@ -245,14 +248,12 @@ describe("BackendPostgres", () => {
 
       const error = { message: "boom" };
       await backend.markWorkflowRunFailed({
-        namespaceId,
         workflowRunId: claimed.id,
         workerId,
         error,
       });
 
       const rescheduled = await backend.getWorkflowRun({
-        namespaceId,
         workflowRunId: claimed.id,
       });
 
@@ -271,13 +272,16 @@ describe("BackendPostgres", () => {
     });
 
     test("reschedules with increasing backoff on multiple failures (known slow test - awaits result)", async () => {
-      const namespaceId = randomUUID();
-      await createPendingWorkflowRun(backend, namespaceId);
+      // this test needs isolated namespace
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      await createPendingWorkflowRun(backend);
 
       // fail first attempt
       let workerId = randomUUID();
       let claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId,
         leaseDurationMs: 20,
       });
@@ -285,7 +289,6 @@ describe("BackendPostgres", () => {
       expect(claimed.attempts).toBe(1);
 
       await backend.markWorkflowRunFailed({
-        namespaceId,
         workflowRunId: claimed.id,
         workerId,
         error: { message: "first failure" },
@@ -296,7 +299,6 @@ describe("BackendPostgres", () => {
       // fail second attempt
       workerId = randomUUID();
       claimed = await backend.claimWorkflowRun({
-        namespaceId,
         workerId,
         leaseDurationMs: 20,
       });
@@ -305,14 +307,12 @@ describe("BackendPostgres", () => {
 
       const beforeSecondFail = Date.now();
       await backend.markWorkflowRunFailed({
-        namespaceId,
         workflowRunId: claimed.id,
         workerId,
         error: { message: "second failure" },
       });
 
       const rescheduled = await backend.getWorkflowRun({
-        namespaceId,
         workflowRunId: claimed.id,
       });
       expect(rescheduled?.status).toBe("pending");
@@ -322,6 +322,8 @@ describe("BackendPostgres", () => {
       const delayMs = rescheduled.availableAt.getTime() - beforeSecondFail;
       expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
       expect(delayMs).toBeLessThan(2500);
+
+      await backend.end();
     });
   });
 
@@ -349,7 +351,6 @@ describe("BackendPostgres", () => {
       };
 
       const created = await backend.createStepAttempt({
-        namespaceId: expected.namespaceId,
         workflowRunId: expected.workflowRunId,
         workerId: workflowRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: expected.stepName,
@@ -375,7 +376,6 @@ describe("BackendPostgres", () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const first = await backend.createStepAttempt({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
@@ -384,7 +384,6 @@ describe("BackendPostgres", () => {
         context: null,
       });
       await backend.markStepAttemptSucceeded({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         stepAttemptId: first.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
@@ -392,7 +391,6 @@ describe("BackendPostgres", () => {
       });
 
       const second = await backend.createStepAttempt({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
@@ -402,7 +400,6 @@ describe("BackendPostgres", () => {
       });
 
       const listed = await backend.listStepAttempts({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
       });
       expect(listed.map((step) => step.stepName)).toEqual([
@@ -417,7 +414,6 @@ describe("BackendPostgres", () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const created = await backend.createStepAttempt({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
@@ -427,7 +423,6 @@ describe("BackendPostgres", () => {
       });
 
       const got = await backend.getStepAttempt({
-        namespaceId: claimed.namespaceId,
         stepAttemptId: created.id,
       });
       expect(got).toEqual(created);
@@ -439,7 +434,6 @@ describe("BackendPostgres", () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const created = await backend.createStepAttempt({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
@@ -450,7 +444,6 @@ describe("BackendPostgres", () => {
       const output = { foo: "bar" };
 
       await backend.markStepAttemptSucceeded({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -458,7 +451,6 @@ describe("BackendPostgres", () => {
       });
 
       const succeeded = await backend.getStepAttempt({
-        namespaceId: claimed.namespaceId,
         stepAttemptId: created.id,
       });
       expect(succeeded?.status).toBe("succeeded");
@@ -473,7 +465,6 @@ describe("BackendPostgres", () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const created = await backend.createStepAttempt({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         stepName: randomUUID(),
@@ -484,7 +475,6 @@ describe("BackendPostgres", () => {
       const error = { message: "nope" };
 
       await backend.markStepAttemptFailed({
-        namespaceId: claimed.namespaceId,
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -492,7 +482,6 @@ describe("BackendPostgres", () => {
       });
 
       const failed = await backend.getStepAttempt({
-        namespaceId: claimed.namespaceId,
         stepAttemptId: created.id,
       });
       expect(failed?.status).toBe("failed");
@@ -518,12 +507,8 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function createPendingWorkflowRun(
-  backend: BackendPostgres,
-  namespaceId: string,
-) {
+async function createPendingWorkflowRun(backend: BackendPostgres) {
   return await backend.createWorkflowRun({
-    namespaceId,
     workflowName: randomUUID(),
     version: null,
     idempotencyKey: null,
@@ -535,11 +520,9 @@ async function createPendingWorkflowRun(
 }
 
 async function createClaimedWorkflowRun(backend: BackendPostgres) {
-  const namespaceId = randomUUID();
-  await createPendingWorkflowRun(backend, namespaceId);
+  await createPendingWorkflowRun(backend);
 
   const claimed = await backend.claimWorkflowRun({
-    namespaceId,
     workerId: randomUUID(),
     leaseDurationMs: 100,
   });

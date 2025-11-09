@@ -3,13 +3,10 @@ import { DEFAULT_DATABASE_URL } from "../packages/backend-postgres/postgres.js";
 import { OpenWorkflow } from "../packages/openworkflow/index.js";
 import { randomUUID } from "node:crypto";
 
-const namespaceId = randomUUID();
-
-const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
-const ow = new OpenWorkflow({
-  backend,
-  namespaceId,
+const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+  namespaceId: randomUUID(),
 });
+const ow = new OpenWorkflow({ backend });
 
 interface SummarizeDocInput {
   docUrl: string;

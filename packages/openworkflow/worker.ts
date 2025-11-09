@@ -5,7 +5,6 @@ import type {
   WorkflowRun,
 } from "./backend.js";
 import {
-  DEFAULT_NAMESPACE_ID,
   StepApi,
   StepFunction,
   StepFunctionConfig,
@@ -23,7 +22,6 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export interface WorkerOptions {
   backend: Backend;
-  namespaceId?: string;
   workflows: WorkflowDefinition<unknown, unknown>[];
   concurrency?: number | undefined;
 }
@@ -34,7 +32,6 @@ export interface WorkerOptions {
  */
 export class Worker {
   private readonly backend: Backend;
-  private readonly namespaceId: string;
   private readonly workerIds: string[];
   private readonly registeredWorkflows = new Map<
     string,
@@ -46,7 +43,6 @@ export class Worker {
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId ?? DEFAULT_NAMESPACE_ID;
 
     const concurrency = Math.max(
       DEFAULT_CONCURRENCY,
@@ -142,7 +138,6 @@ export class Worker {
   ): Promise<WorkflowRun | null> {
     // claim workflow run
     const workflowRun = await this.backend.claimWorkflowRun({
-      namespaceId: this.namespaceId,
       workerId,
       leaseDurationMs: DEFAULT_LEASE_DURATION_MS,
     });
@@ -152,7 +147,6 @@ export class Worker {
     const workflow = this.registeredWorkflows.get(workflowRun.workflowName);
     if (!workflow) {
       await this.backend.markWorkflowRunFailed({
-        namespaceId: this.namespaceId,
         workflowRunId: workflowRun.id,
         workerId,
         error: {
@@ -165,7 +159,6 @@ export class Worker {
     // create execution and start processing *async* w/o blocking
     const execution = new WorkflowExecution({
       backend: this.backend,
-      namespaceId: this.namespaceId,
       workflowRun,
       workerId,
     });
@@ -197,14 +190,12 @@ export class Worker {
     try {
       // load step history
       const attempts = await this.backend.listStepAttempts({
-        namespaceId: this.namespaceId,
         workflowRunId: execution.workflowRun.id,
       });
 
       // create step executor
       const executor = new StepExecutor({
         backend: this.backend,
-        namespaceId: this.namespaceId,
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         attempts,
@@ -218,7 +209,6 @@ export class Worker {
 
       // mark success
       await this.backend.markWorkflowRunSucceeded({
-        namespaceId: this.namespaceId,
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         output: (output ?? null) as JsonValue,
@@ -226,7 +216,6 @@ export class Worker {
     } catch (error) {
       // mark failure
       await this.backend.markWorkflowRunFailed({
-        namespaceId: this.namespaceId,
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         error: serializeError(error),
@@ -240,7 +229,6 @@ export class Worker {
  */
 interface WorkflowExecutionOptions {
   backend: Backend;
-  namespaceId: string;
   workflowRun: WorkflowRun;
   workerId: string;
 }
@@ -251,14 +239,12 @@ interface WorkflowExecutionOptions {
  */
 class WorkflowExecution {
   private backend: Backend;
-  private namespaceId: string;
   workflowRun: WorkflowRun;
   workerId: string;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(options: WorkflowExecutionOptions) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId;
     this.workflowRun = options.workflowRun;
     this.workerId = options.workerId;
   }
@@ -274,7 +260,6 @@ class WorkflowExecution {
     this.heartbeatTimer = setInterval(() => {
       this.backend
         .heartbeatWorkflowRun({
-          namespaceId: this.namespaceId,
           workflowRunId: this.workflowRun.id,
           workerId: this.workerId,
           leaseDurationMs,
@@ -301,7 +286,6 @@ class WorkflowExecution {
  */
 interface StepExecutorOptions {
   backend: Backend;
-  namespaceId: string;
   workflowRunId: string;
   workerId: string;
   attempts: StepAttempt[];
@@ -313,14 +297,12 @@ interface StepExecutorOptions {
  */
 class StepExecutor implements StepApi {
   private backend: Backend;
-  private namespaceId: string;
   private workflowRunId: string;
   private workerId: string;
   private readonly history = new Map<string, JsonValue | null>();
 
   constructor(options: StepExecutorOptions) {
     this.backend = options.backend;
-    this.namespaceId = options.namespaceId;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
 
@@ -345,7 +327,6 @@ class StepExecutor implements StepApi {
 
     // not in cache, create new step attempt
     const attempt = await this.backend.createStepAttempt({
-      namespaceId: this.namespaceId,
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName: name,
@@ -363,7 +344,6 @@ class StepExecutor implements StepApi {
 
       // mark success
       await this.backend.markStepAttemptSucceeded({
-        namespaceId: this.namespaceId,
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
@@ -377,7 +357,6 @@ class StepExecutor implements StepApi {
     } catch (error) {
       // mark failure
       await this.backend.markStepAttemptFailed({
-        namespaceId: this.namespaceId,
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,

@@ -1,3 +1,5 @@
+export const DEFAULT_NAMESPACE_ID = "default";
+
 /**
  * Backend is the interface for backend providers to implement.
  */
@@ -23,7 +25,6 @@ export interface Backend {
 }
 
 export interface CreateWorkflowRunParams {
-  namespaceId: string;
   workflowName: string;
   version: string | null;
   idempotencyKey: string | null;
@@ -34,44 +35,37 @@ export interface CreateWorkflowRunParams {
 }
 
 export interface GetWorkflowRunParams {
-  namespaceId: string;
   workflowRunId: string;
 }
 
 export interface ClaimWorkflowRunParams {
-  namespaceId: string;
   workerId: string;
   leaseDurationMs: number;
 }
 
 export interface HeartbeatWorkflowRunParams {
-  namespaceId: string;
   workflowRunId: string;
   workerId: string;
   leaseDurationMs: number;
 }
 
 export interface MarkWorkflowRunSucceededParams {
-  namespaceId: string;
   workflowRunId: string;
   workerId: string;
   output: JsonValue | null;
 }
 
 export interface MarkWorkflowRunFailedParams {
-  namespaceId: string;
   workflowRunId: string;
   workerId: string;
   error: JsonValue;
 }
 
 export interface ListStepAttemptsParams {
-  namespaceId: string;
   workflowRunId: string;
 }
 
 export interface CreateStepAttemptParams {
-  namespaceId: string;
   workflowRunId: string;
   workerId: string;
   stepName: string;
@@ -81,12 +75,10 @@ export interface CreateStepAttemptParams {
 }
 
 export interface GetStepAttemptParams {
-  namespaceId: string;
   stepAttemptId: string;
 }
 
 export interface MarkStepAttemptSucceededParams {
-  namespaceId: string;
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;
@@ -94,7 +86,6 @@ export interface MarkStepAttemptSucceededParams {
 }
 
 export interface MarkStepAttemptFailedParams {
-  namespaceId: string;
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;

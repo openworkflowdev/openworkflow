@@ -241,10 +241,12 @@ const result = await run.result();
     process.exit(0);
   });
   ```
-- **Namespaces** (optional): Use `namespaceId` to isolate workflows per
-  environment:
+- **Namespaces** (optional): Use `namespaceId` in your backend configuration to
+  isolate workflows per environment:
   ```ts
-  const ow = new OpenWorkflow({ backend, namespaceId: "production" });
+  const backend = await BackendPostgres.connect(postgresUrl, {
+    namespaceId: "production",
+  });
   ```
 
 ## What's Next

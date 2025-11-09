@@ -8,7 +8,9 @@ describe("OpenWorkflow", () => {
   let backend: BackendPostgres;
 
   beforeAll(async () => {
-    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
+    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+      namespaceId: randomUUID(),
+    });
   });
 
   afterAll(async () => {
@@ -16,15 +18,13 @@ describe("OpenWorkflow", () => {
   });
 
   test("enqueues workflow runs via backend", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "enqueue-test" }, noopFn);
     await workflow.run({ docUrl: "https://example.com" });
 
     const workerId = "enqueue-worker";
     const claimed = await backend.claimWorkflowRun({
-      namespaceId,
       workerId,
       leaseDurationMs: 1000,
     });
@@ -35,15 +35,13 @@ describe("OpenWorkflow", () => {
   });
 
   test("result resolves when workflow succeeds", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "result-success" }, noopFn);
     const handle = await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
     const claimed = await backend.claimWorkflowRun({
-      namespaceId,
       workerId,
       leaseDurationMs: 1000,
     });
@@ -51,7 +49,6 @@ describe("OpenWorkflow", () => {
     if (!claimed) throw new Error("workflow run was not claimed");
 
     await backend.markWorkflowRunSucceeded({
-      namespaceId,
       workflowRunId: claimed.id,
       workerId,
       output: { ok: true },
@@ -63,15 +60,13 @@ describe("OpenWorkflow", () => {
   });
 
   test("result rejects when workflow fails", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "result-failure" }, noopFn);
     await workflow.run({ value: 1 });
 
     const workerId = "test-worker";
     const claimed = await backend.claimWorkflowRun({
-      namespaceId,
       workerId,
       leaseDurationMs: 1000,
     });
@@ -80,14 +75,12 @@ describe("OpenWorkflow", () => {
 
     // mark as failed (should reschedule))
     await backend.markWorkflowRunFailed({
-      namespaceId,
       workflowRunId: claimed.id,
       workerId,
       error: { message: "boom" },
     });
 
     const rescheduled = await backend.getWorkflowRun({
-      namespaceId,
       workflowRunId: claimed.id,
     });
     expect(rescheduled?.status).toBe("pending");

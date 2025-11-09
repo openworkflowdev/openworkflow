@@ -2,22 +2,12 @@ import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 describe("Worker", () => {
-  let backend: BackendPostgres;
-
-  beforeAll(async () => {
-    backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL);
-  });
-
-  afterAll(async () => {
-    await backend.end();
-  });
-
   test("passes workflow input to handlers (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "context" },
@@ -34,8 +24,8 @@ describe("Worker", () => {
   });
 
   test("processes workflow runs to completion (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "process" },
@@ -51,8 +41,8 @@ describe("Worker", () => {
   });
 
   test("step.run reuses cached results (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     let executionCount = 0;
     const workflow = client.defineWorkflow(
@@ -81,11 +71,10 @@ describe("Worker", () => {
   });
 
   test("marks workflow for retry when definition is missing", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflowRun = await backend.createWorkflowRun({
-      namespaceId,
       workflowName: "missing",
       version: null,
       idempotencyKey: null,
@@ -99,7 +88,6 @@ describe("Worker", () => {
     await worker.tick();
 
     const updated = await backend.getWorkflowRun({
-      namespaceId,
       workflowRunId: workflowRun.id,
     });
 
@@ -109,8 +97,8 @@ describe("Worker", () => {
   });
 
   test("retries failed workflows automatically (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     let attemptCount = 0;
 
@@ -144,8 +132,8 @@ describe("Worker", () => {
   });
 
   test("tick is a no-op when no work is available", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     client.defineWorkflow({ name: "noop" }, () => null);
     const worker = client.newWorker();
@@ -153,8 +141,8 @@ describe("Worker", () => {
   });
 
   test("handles step functions that return undefined (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "undefined-steps" },
@@ -179,8 +167,8 @@ describe("Worker", () => {
   });
 
   test("executes steps synchronously within workflow (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const executionOrder: string[] = [];
     const workflow = client.defineWorkflow(
@@ -211,8 +199,8 @@ describe("Worker", () => {
   });
 
   test("executes parallel steps with Promise.all (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const executionTimes: Record<string, number> = {};
     const workflow = client.defineWorkflow(
@@ -253,8 +241,8 @@ describe("Worker", () => {
   });
 
   test("respects worker concurrency limit", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "concurrency-test" }, () => {
       return "done";
@@ -278,7 +266,6 @@ describe("Worker", () => {
     let completed = 0;
     for (const handle of handles) {
       const run = await backend.getWorkflowRun({
-        namespaceId,
         workflowRunId: handle.workflowRun.id,
       });
       if (run?.status === "succeeded") completed++;
@@ -288,8 +275,8 @@ describe("Worker", () => {
   });
 
   test("worker starts, processes work, and stops gracefully (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "lifecycle" }, () => {
       return "complete";
@@ -307,8 +294,8 @@ describe("Worker", () => {
   });
 
   test("recovers from crashes during parallel step execution (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     let attemptCount = 0;
 
@@ -354,8 +341,8 @@ describe("Worker", () => {
   });
 
   test("reclaims workflow run when heartbeat stops (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "heartbeat-test" },
@@ -366,7 +353,6 @@ describe("Worker", () => {
     const workerId = randomUUID();
 
     const claimed = await backend.claimWorkflowRun({
-      namespaceId,
       workerId,
       leaseDurationMs: 50,
     });
@@ -384,8 +370,8 @@ describe("Worker", () => {
   });
 
   test("tick() returns count of claimed workflows", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "count-test" },
@@ -411,8 +397,8 @@ describe("Worker", () => {
   });
 
   test("tick() respects concurrency limit", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "concurrency-test" },
@@ -441,8 +427,8 @@ describe("Worker", () => {
   });
 
   test("worker only sleeps between claims when no work is available (known slow test - awaits result)", async () => {
-    const namespaceId = randomUUID();
-    const client = new OpenWorkflow({ backend, namespaceId });
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
       { name: "adaptive-test" },
@@ -474,6 +460,12 @@ describe("Worker", () => {
     expect(duration).toBeLessThan(3000); // should complete in under 3 seconds
   });
 });
+
+async function createBackend(): Promise<BackendPostgres> {
+  return await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+    namespaceId: randomUUID(), // unique namespace per test
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

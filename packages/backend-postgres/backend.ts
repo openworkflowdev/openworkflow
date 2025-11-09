@@ -1,4 +1,5 @@
 import {
+  DEFAULT_NAMESPACE_ID,
   Backend,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
@@ -24,14 +25,17 @@ import {
 } from "./postgres.js";
 
 interface BackendPostgresOptions {
+  namespaceId?: string;
   runMigrations?: boolean;
 }
 
 export class BackendPostgres implements Backend {
   private pg: Postgres;
+  private namespaceId: string;
 
-  private constructor(pg: Postgres) {
+  private constructor(pg: Postgres, namespaceId: string) {
     this.pg = pg;
+    this.namespaceId = namespaceId;
   }
 
   /**
@@ -43,7 +47,11 @@ export class BackendPostgres implements Backend {
     url: string,
     options?: BackendPostgresOptions,
   ): Promise<BackendPostgres> {
-    const { runMigrations } = { runMigrations: true, ...options };
+    const { namespaceId, runMigrations } = {
+      namespaceId: DEFAULT_NAMESPACE_ID,
+      runMigrations: true,
+      ...options,
+    };
 
     if (runMigrations) {
       const pgForMigrate = newPostgresMaxOne(url);
@@ -52,7 +60,7 @@ export class BackendPostgres implements Backend {
     }
 
     const pg = newPostgres(url);
-    return new BackendPostgres(pg);
+    return new BackendPostgres(pg, namespaceId);
   }
 
   async end(): Promise<void> {
@@ -79,7 +87,7 @@ export class BackendPostgres implements Backend {
         "updated_at"
       )
       VALUES (
-        ${params.namespaceId},
+        ${this.namespaceId},
         gen_random_uuid(),
         ${params.workflowName},
         ${params.version},
@@ -107,7 +115,7 @@ export class BackendPostgres implements Backend {
     const [workflowRun] = await this.pg<WorkflowRun[]>`
       SELECT *
       FROM "openworkflow"."workflow_runs"
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       LIMIT 1
     `;
@@ -122,7 +130,7 @@ export class BackendPostgres implements Backend {
       WITH candidate AS (
         SELECT "id"
         FROM "openworkflow"."workflow_runs"
-        WHERE "namespace_id" = ${params.namespaceId}
+        WHERE "namespace_id" = ${this.namespaceId}
           AND "status" IN ('pending', 'running')
           AND "available_at" <= NOW()
         ORDER BY
@@ -142,7 +150,7 @@ export class BackendPostgres implements Backend {
         "updated_at" = NOW()
       FROM candidate
       WHERE wr."id" = candidate."id"
-        AND wr."namespace_id" = ${params.namespaceId}
+        AND wr."namespace_id" = ${this.namespaceId}
       RETURNING wr.*;
     `;
 
@@ -157,7 +165,7 @@ export class BackendPostgres implements Backend {
       SET
         "available_at" = ${this.pg`NOW() + ${params.leaseDurationMs} * INTERVAL '1 millisecond'`},
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
@@ -179,7 +187,7 @@ export class BackendPostgres implements Backend {
         "available_at" = NULL,
         "finished_at" = NOW(),
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
@@ -209,7 +217,7 @@ export class BackendPostgres implements Backend {
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
@@ -222,7 +230,7 @@ export class BackendPostgres implements Backend {
     return this.pg<StepAttempt[]>`
       SELECT *
       FROM "openworkflow"."step_attempts"
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "workflow_run_id" = ${params.workflowRunId}
       ORDER BY "created_at"
     `;
@@ -246,7 +254,7 @@ export class BackendPostgres implements Backend {
         "updated_at"
       )
       VALUES (
-        ${params.namespaceId},
+        ${this.namespaceId},
         gen_random_uuid(),
         ${params.workflowRunId},
         ${params.stepName},
@@ -272,7 +280,7 @@ export class BackendPostgres implements Backend {
     const [stepAttempt] = await this.pg<StepAttempt[]>`
       SELECT *
       FROM "openworkflow"."step_attempts"
-      WHERE "namespace_id" = ${params.namespaceId}
+      WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.stepAttemptId}
       LIMIT 1
     `;
@@ -291,7 +299,7 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM "openworkflow"."workflow_runs" wr
-      WHERE sa."namespace_id" = ${params.namespaceId}
+      WHERE sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
       AND sa."status" = 'running'
@@ -316,7 +324,7 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM "openworkflow"."workflow_runs" wr
-      WHERE sa."namespace_id" = ${params.namespaceId}
+      WHERE sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
       AND sa."status" = 'running'
@@ -335,6 +343,5 @@ export class BackendPostgres implements Backend {
  * This is needed so we don't have to disable the eslint rule for every query.
  */
 function sqlDateDefaultNow(pg: Postgres, date: Date | null) {
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   return date ?? pg`NOW()`;
 }
