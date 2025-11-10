@@ -234,7 +234,7 @@ function Home() {
                   rel="noopener noreferrer"
                   className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors"
                 >
-                  {t.nav.github}
+                  {t.landing.hero.viewGithub}
                 </a>
                 <Link
                   to="/$lang/docs/$"
