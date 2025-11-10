@@ -1,0 +1,14 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "getting-started",
+    "core-concepts",
+    "architecture",
+    "api-reference",
+    "advanced-features",
+    "backend-postgres",
+    "production-guide",
+    "examples"
+  ]
+}

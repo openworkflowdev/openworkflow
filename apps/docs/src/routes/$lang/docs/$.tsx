@@ -11,16 +11,18 @@ import {
   DocsPage,
   DocsTitle,
 } from 'fumadocs-ui/page';
-import defaultMdxComponents from 'fumadocs-ui/mdx';
+import { getMDXComponents } from '@/components/mdx-components';
 import { createClientLoader } from 'fumadocs-mdx/runtime/vite';
 import { baseOptions } from '@/lib/layout.shared';
 import { staticFunctionMiddleware } from '@tanstack/start-static-server-functions';
+import type { Locale } from '@/lib/i18n';
 
-export const Route = createFileRoute('/docs/$')({
+export const Route = createFileRoute('/$lang/docs/$')({
   component: Page,
   loader: async ({ params }) => {
     const slugs = params._splat?.split('/') ?? [];
-    const data = await loader({ data: slugs });
+    const lang = params.lang;
+    const data = await loader({ data: { slugs, lang } });
     await clientLoader.preload(data.path);
     return data;
   },
@@ -29,15 +31,16 @@ export const Route = createFileRoute('/docs/$')({
 const loader = createServerFn({
   method: 'GET',
 })
-  .inputValidator((slugs: string[]) => slugs)
+  .inputValidator((params: { slugs: string[]; lang?: string }) => params)
   .middleware([staticFunctionMiddleware])
-  .handler(async ({ data: slugs }) => {
-    const page = source.getPage(slugs);
+  .handler(async ({ data: { slugs, lang } }) => {
+    const page = source.getPage(slugs, lang);
     if (!page) throw notFound();
 
     return {
-      tree: source.pageTree as object,
+      tree: source.getPageTree(lang) as object,
       path: page.path,
+      lang,
     };
   });
 
@@ -49,11 +52,7 @@ const clientLoader = createClientLoader(docs.doc, {
         <DocsTitle>{frontmatter.title}</DocsTitle>
         <DocsDescription>{frontmatter.description}</DocsDescription>
         <DocsBody>
-          <MDX
-            components={{
-              ...defaultMdxComponents,
-            }}
-          />
+          <MDX components={getMDXComponents()} />
         </DocsBody>
       </DocsPage>
     );
@@ -62,6 +61,7 @@ const clientLoader = createClientLoader(docs.doc, {
 
 function Page() {
   const data = Route.useLoaderData();
+  const { lang } = Route.useParams();
   const Content = clientLoader.getComponent(data.path);
   const tree = useMemo(
     () => transformPageTree(data.tree as PageTree.Folder),
@@ -69,7 +69,7 @@ function Page() {
   );
 
   return (
-    <DocsLayout {...baseOptions()} tree={tree}>
+    <DocsLayout {...baseOptions(lang as Locale)} tree={tree}>
       <Content />
     </DocsLayout>
   );
