@@ -3,7 +3,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import { defineConfig } from 'vite';
 import tsConfigPaths from 'vite-tsconfig-paths';
 import tailwindcss from '@tailwindcss/vite';
-import { nitroV2Plugin } from "@tanstack/nitro-v2-vite-plugin";
+import { nitro } from 'nitro/vite'
 import mdx from 'fumadocs-mdx/vite';
 
 export default defineConfig({
@@ -17,11 +17,34 @@ export default defineConfig({
       projects: ['./tsconfig.json'],
     }),
     tanstackStart({
+      spa: {
+        enabled: true,
+
+        prerender: {
+          // outputPath: 'index.html',
+          enabled: true,
+          crawlLinks: true,
+          
+
+        },
+      },
       prerender: {
         enabled: true,
+        crawlLinks: true,
+        filter: ({ path }) => !path.startsWith('/docs/'),
       },
+      
+      pages: [
+        {
+          path: '/en/docs',
+        },
+        {
+          path: '/api/search',
+        },
+      ],
     }),
-    nitroV2Plugin({ preset: "vercel", compatibilityDate: "2025-10-30" }),
+    nitro(),
+
     react(),
   ],
 });

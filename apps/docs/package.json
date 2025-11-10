@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "start": "serve dist/client",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
@@ -14,7 +13,6 @@
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@tanstack/nitro-v2-vite-plugin": "^1.133.19",
     "@tanstack/react-router": "^1.134.12",
     "@tanstack/react-router-devtools": "^1.134.12",
     "@tanstack/react-start": "^1.134.12",
@@ -25,6 +23,7 @@
     "fumadocs-ui": "16.0.8",
     "lucide-react": "^0.553.0",
     "lucide-static": "^0.552.0",
+    "nitro": "^3.0.1-alpha.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.3.1",
