@@ -17,22 +17,9 @@ export default defineConfig({
       projects: ['./tsconfig.json'],
     }),
     tanstackStart({
-      spa: {
+      prerender: {
         enabled: true,
-        prerender: {
-          outputPath: 'index.html',
-          enabled: true,
-          crawlLinks: true,
-        },
       },
-      pages: [
-        {
-          path: '/docs',
-        },
-        {
-          path: '/api/search',
-        },
-      ],
     }),
     nitroV2Plugin({ preset: "vercel", compatibilityDate: "2025-10-30" }),
     react(),
