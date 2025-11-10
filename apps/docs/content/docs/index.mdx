@@ -1,0 +1,118 @@
+---
+title: Introduction
+description: OpenWorkflow is a TypeScript framework for building durable, resumable workflows that survive crashes and deploys.
+icon: Rocket
+---
+
+# OpenWorkflow
+
+OpenWorkflow is a TypeScript framework for building durable, resumable workflows that can pause for seconds or months, survive crashes and deploys, and resume exactly where they left off - all without extra servers to manage.
+
+## What is OpenWorkflow?
+
+OpenWorkflow allows developers to write **durable functions**, called workflows, that can survive process crashes, server restarts, and code deploys. It achieves this through a **worker-driven architecture** where stateless workers communicate with a durable backend (like PostgreSQL) to manage workflow state.
+
+## Key Features
+
+- **Durable Execution**: Workflows resume automatically after crashes or restarts
+- **Step Memoization**: Each step executes exactly once and its result is cached
+- **Worker-Driven**: No separate orchestrator server needed - just workers and a database
+- **Type-Safe**: Full TypeScript support with generics for input and output types
+- **Parallel Execution**: Run multiple steps concurrently with `Promise.all`
+- **Automatic Retries**: Built-in retry logic with exponential backoff
+- **Graceful Shutdown**: Workers wait for in-flight workflows before stopping
+- **Scalable**: Run multiple workers for high availability
+
+## When to Use OpenWorkflow
+
+OpenWorkflow is ideal for:
+
+- **Long-running processes**: Multi-step workflows that take minutes, hours, or days
+- **Mission-critical operations**: Payment processing, order fulfillment, data pipelines
+- **API orchestration**: Coordinating multiple external API calls with retries
+- **Background jobs**: Tasks that need to be reliable and resumable
+- **Event-driven workflows**: Complex business processes triggered by events
+
+## Quick Example
+
+```ts
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = await BackendPostgres.connect(process.env.DATABASE_URL);
+const ow = new OpenWorkflow({ backend });
+
+const sendWelcomeEmail = ow.defineWorkflow(
+  { name: "send-welcome-email" },
+  async ({ input, step }) => {
+    const user = await step.run({ name: "fetch-user" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    });
+
+    await step.run({ name: "send-email" }, async () => {
+      return await email.send({ to: user.email, subject: "Welcome!" });
+    });
+
+    return { user };
+  },
+);
+
+// Start a worker
+const worker = ow.newWorker();
+await worker.start();
+
+// Run the workflow
+await sendWelcomeEmail.run({ userId: "123" });
+```
+
+## How It Works
+
+1. **Define workflows** with steps that represent checkpoints
+2. **Start a worker** that polls your database for pending workflows
+3. **Trigger workflows** from your application code
+4. **Workers execute** the workflow, memoizing each step
+5. **If a worker crashes**, another worker picks up and resumes from the last completed step
+
+## Architecture Overview
+
+OpenWorkflow uses a unique **worker-driven model**:
+
+- **No central orchestrator**: Workers are the execution engine
+- **Database as queue**: Your PostgreSQL database serves as both queue and state store
+- **Stateless workers**: Workers can be started, stopped, and deployed independently
+- **Deterministic replay**: Workflows execute from the beginning on each run, but completed steps return cached results instantly
+
+<Cards>
+  <Card
+    title="Getting Started"
+    description="Install OpenWorkflow and create your first workflow"
+    href="/docs/getting-started"
+  />
+  <Card
+    title="Core Concepts"
+    description="Learn about workflows, steps, workers, and backends"
+    href="/docs/core-concepts"
+  />
+  <Card
+    title="Architecture"
+    description="Deep dive into how OpenWorkflow works under the hood"
+    href="/docs/architecture"
+  />
+  <Card
+    title="API Reference"
+    description="Complete API documentation for all OpenWorkflow components"
+    href="/docs/api-reference"
+  />
+</Cards>
+
+## Current Status
+
+OpenWorkflow is in **active development** (v0.1). The core features are stable and production-ready:
+
+- ✅ PostgreSQL backend
+- ✅ Worker with concurrency control
+- ✅ Step memoization & retries
+- ✅ Graceful shutdown
+- ✅ Parallel step execution
+
+Coming soon: CLI, Dashboard UI, workflow versioning, additional backends (Redis, SQLite), and more.
