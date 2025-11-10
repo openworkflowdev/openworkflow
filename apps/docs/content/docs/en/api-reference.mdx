@@ -26,6 +26,9 @@ Creates a new OpenWorkflow client instance.
 
 **Example:**
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 import { OpenWorkflow } from "openworkflow";
 import { BackendPostgres } from "@openworkflow/backend-postgres";
@@ -33,6 +36,9 @@ import { BackendPostgres } from "@openworkflow/backend-postgres";
 const backend = await BackendPostgres.connect(process.env.DATABASE_URL);
 const ow = new OpenWorkflow({ backend });
 ```
+
+</Tab>
+</Tabs>
 
 ### Methods
 
@@ -63,6 +69,9 @@ A `WorkflowDefinition` instance that can be used to start workflow runs.
 
 **Example:**
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const myWorkflow = ow.defineWorkflow(
   { name: "my-workflow" },
@@ -71,6 +80,9 @@ const myWorkflow = ow.defineWorkflow(
   }
 );
 ```
+
+</Tab>
+</Tabs>
 
 #### `newWorker()`
 
@@ -90,10 +102,16 @@ A `Worker` instance.
 
 **Example:**
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const worker = ow.newWorker({ concurrency: 10 });
 await worker.start();
 ```
+
+</Tab>
+</Tabs>
 
 ## WorkflowDefinition
 

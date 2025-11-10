@@ -20,6 +20,9 @@ A **workflow** is a durable function that orchestrates multiple steps. Workflows
 
 ### Defining a Workflow
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const myWorkflow = ow.defineWorkflow(
   { name: "my-workflow" },
@@ -29,6 +32,9 @@ const myWorkflow = ow.defineWorkflow(
   },
 );
 ```
+
+</Tab>
+</Tabs>
 
 ### Workflow Properties
 
@@ -45,6 +51,9 @@ The workflow function receives a context object with:
 - `step`: The step API for creating checkpoints
 - `version`: The workflow version (for versioning support)
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 async ({ input, step, version }) => {
   // Access input
@@ -59,13 +68,23 @@ async ({ input, step, version }) => {
 }
 ```
 
+</Tab>
+</Tabs>
+
 ## Steps
 
 **Steps** are the building blocks of workflows. Each step represents a checkpoint in your workflow's execution.
 
 ### Why Steps Matter
 
+<Callout type="error" title="Dangerous Without Steps">
+Without steps, crashes can cause duplicate charges, double emails, or data inconsistencies.
+</Callout>
+
 Imagine this scenario without steps:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 // ⚠️ Without steps - dangerous!
@@ -75,9 +94,19 @@ const workflow = async ({ input }) => {
 };
 ```
 
+</Tab>
+</Tabs>
+
 If the worker crashes after charging the customer, the workflow retries from the beginning and charges them twice!
 
+<Callout type="success" title="Safe With Steps">
+Steps provide automatic memoization, ensuring each operation executes exactly once.
+</Callout>
+
 With steps:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 // ✅ With steps - safe!
@@ -91,6 +120,9 @@ const workflow = async ({ input, step }) => {
   });
 };
 ```
+
+</Tab>
+</Tabs>
 
 Now if the worker crashes after the charge, the retry skips the charge step (cached) and goes straight to sending the email.
 
@@ -113,6 +145,9 @@ When a workflow replays (after a crash or restart):
 
 ### The `step.run()` API
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const result = await step.run(
   { name: "step-name" },
@@ -124,12 +159,15 @@ const result = await step.run(
 );
 ```
 
-**Important Rules:**
+</Tab>
+</Tabs>
 
+<Callout title="Important Rules">
 - Step names must be **unique** within a workflow
 - Step names must be **deterministic** (no dynamic names like `step-${Date.now()}`)
 - Step functions should be **idempotent** when possible
 - Steps execute **synchronously** in the worker
+</Callout>
 
 ## Workers
 
@@ -148,10 +186,16 @@ Workers are responsible for:
 
 ### Creating and Starting a Worker
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const worker = ow.newWorker({ concurrency: 10 });
 await worker.start();
 ```
+
+</Tab>
+</Tabs>
 
 ### Worker Concurrency
 
@@ -402,6 +446,9 @@ When a worker claims a workflow:
 
 ### Example
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const workflow = async ({ input, step }) => {
   // First execution: runs and caches result
@@ -423,6 +470,9 @@ const workflow = async ({ input, step }) => {
 };
 ```
 
+</Tab>
+</Tabs>
+
 ### Why Deterministic?
 
 Workflows must be deterministic because:
@@ -433,23 +483,43 @@ Workflows must be deterministic because:
 
 ### Rules for Deterministic Workflows
 
-✅ **Do:**
-
+<Callout type="success" title="✅ Do">
 - Put all side effects inside `step.run()`
 - Use deterministic step names
 - Use the input to make decisions
 - Use step results to make decisions
+</Callout>
 
-❌ **Don't:**
-
+<Callout type="error" title="❌ Don't">
 - Use `Date.now()` or `Math.random()` outside of steps
 - Make API calls outside of steps
 - Use dynamic step names like `step-${Date.now()}`
 - Change step order based on external state
+</Callout>
+
+## Workflow Organization
+
+Organize your workflows in separate files for better maintainability:
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <Folder name="workflows" defaultOpen>
+      <File name="send-welcome-email.ts" />
+      <File name="process-order.ts" />
+      <File name="sync-user-data.ts" />
+      <File name="index.ts" />
+    </Folder>
+    <File name="worker.ts" />
+    <File name="client.ts" />
+  </Folder>
+</Files>
 
 ## Putting It All Together
 
 Here's how all the concepts work together:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 // 1. Set up the client with a backend
@@ -484,6 +554,9 @@ const run = await processOrder.run({ orderId: "123", amount: 5000 });
 const result = await run.result();
 console.log(result); // { payment: {...}, shipment: {...} }
 ```
+
+</Tab>
+</Tabs>
 
 ## Next Steps
 

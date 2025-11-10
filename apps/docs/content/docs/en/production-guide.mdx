@@ -10,7 +10,11 @@ This guide covers best practices for deploying OpenWorkflow to production, inclu
 
 ## Production Checklist
 
-Before deploying to production, ensure you have:
+<Callout type="warn" title="Before Going to Production">
+Before deploying to production, ensure you have all items below configured. Missing any of these can lead to data loss, downtime, or performance issues.
+</Callout>
+
+Ensure you have:
 
 - ✅ **Production PostgreSQL database** with backups
 - ✅ **At least one worker process** running
@@ -36,6 +40,9 @@ Use a managed PostgreSQL service for production:
 
 ### Configuration
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 const backend = await BackendPostgres.connect(
   process.env.DATABASE_URL!,
@@ -44,6 +51,9 @@ const backend = await BackendPostgres.connect(
   }
 );
 ```
+
+</Tab>
+</Tabs>
 
 ### Connection String Format
 
@@ -76,9 +86,36 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON step_attempts TO openworkflow_app;
 
 ## Worker Deployment
 
+### Production Project Structure
+
+<Files>
+  <Folder name="/" defaultOpen>
+    <Folder name="src" defaultOpen>
+      <Folder name="workflows">
+        <File name="welcome-email.ts" />
+        <File name="order-processing.ts" />
+        <File name="index.ts" />
+      </Folder>
+      <File name="worker.ts" />
+      <File name="app.ts" />
+      <File name="config.ts" />
+    </Folder>
+    <Folder name="docker">
+      <File name="Dockerfile.worker" />
+      <File name="Dockerfile.app" />
+    </Folder>
+    <File name="docker-compose.yml" />
+    <File name="package.json" />
+    <File name=".env.production" />
+  </Folder>
+</Files>
+
 ### Standalone Worker Process
 
 Run workers as separate processes from your application:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts title="worker.ts"
 import { BackendPostgres } from "@openworkflow/backend-postgres";
@@ -112,6 +149,9 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 ```
+
+</Tab>
+</Tabs>
 
 ### Docker Deployment
 
@@ -210,6 +250,9 @@ spec:
 
 Start with these guidelines and adjust based on monitoring:
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 // Low-latency, many short workflows (< 1 second each)
 const worker = ow.newWorker({ concurrency: 100 });
@@ -220,6 +263,9 @@ const worker = ow.newWorker({ concurrency: 20 });
 // High-latency workflows (> 10 seconds each)
 const worker = ow.newWorker({ concurrency: 10 });
 ```
+
+</Tab>
+</Tabs>
 
 ### Monitoring Resource Usage
 
@@ -642,9 +688,11 @@ app.listen(3000);
 
 ## Security
 
-### Secrets Management
+<Callout type="error" title="Critical: Never Commit Secrets">
+Never hardcode database passwords, API keys, or other secrets in your code. Always use environment variables and secrets management systems.
+</Callout>
 
-Never hardcode secrets:
+### Secrets Management
 
 ```ts
 // ❌ Don't do this
@@ -672,57 +720,65 @@ Use secrets management:
 
 ## Troubleshooting
 
-### Workers Not Processing
+<Callout title="Common Production Issues">
+Click each section below to see symptoms, causes, and solutions for common production issues.
+</Callout>
+
+<Accordions>
+
+<Accordion title="Workers Not Processing Workflows">
 
 **Symptoms:** Workflows stay in `pending` status
 
 **Causes:**
-
 1. No workers running
 2. Worker crashed
 3. Database connection lost
 4. Query errors
 
 **Solutions:**
-
 1. Check worker logs
 2. Verify database connectivity
 3. Check `workflow_runs` table for pending workflows
 4. Restart workers
 
-### High Database Load
+</Accordion>
+
+<Accordion title="High Database Load">
 
 **Symptoms:** Slow workflow execution, high CPU on database
 
 **Causes:**
-
 1. Too many workers polling
 2. Missing indexes
 3. Large workflow/step payloads
 4. No data cleanup
 
 **Solutions:**
-
 1. Reduce worker concurrency
 2. Add database indexes
 3. Reduce input/output size
 4. Implement cleanup strategy
 
-### Memory Leaks
+</Accordion>
+
+<Accordion title="Memory Leaks">
 
 **Symptoms:** Worker memory usage grows over time
 
 **Causes:**
-
 1. Unclosed connections
 2. Large workflow payloads kept in memory
 3. Event listener leaks
 
 **Solutions:**
-
 1. Profile with `node --inspect`
 2. Monitor with `process.memoryUsage()`
 3. Restart workers periodically (e.g., daily)
+
+</Accordion>
+
+</Accordions>
 
 ## Next Steps
 

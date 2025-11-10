@@ -3,7 +3,6 @@ export const en = {
   nav: {
     title: 'OpenWorkflow',
     docs: 'Documentation',
-    github: 'GitHub',
     issues: 'Issues',
   },
 
@@ -119,7 +118,7 @@ export const en = {
     close: 'Close',
     copy: 'Copy',
     copied: 'Copied!',
-    search: 'Search documentation...',
+    search: 'Search...',
     searchPlaceholder: 'Search...',
     theme: {
       light: 'Light',

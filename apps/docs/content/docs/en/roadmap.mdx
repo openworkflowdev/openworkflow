@@ -1,0 +1,200 @@
+---
+title: Roadmap
+description: OpenWorkflow development roadmap and upcoming features
+icon: Map
+---
+
+# Roadmap
+
+OpenWorkflow is in active development and moving quickly. This page outlines what's been completed and what's coming next.
+
+<Callout type="info" title="Active Development">
+OpenWorkflow is currently in **v0.1** and under active development. The core features are stable and production-ready, but we're continuously adding new capabilities based on community feedback.
+</Callout>
+
+## Current Status: v0.1
+
+The v0.1 release includes core functionality for building durable workflows:
+
+### ✅ Completed Features
+
+- **PostgreSQL Backend** - Full support for PostgreSQL as the state backend
+- **Worker with Concurrency Control** - Run multiple workflows simultaneously with configurable concurrency
+- **Step Memoization & Retries** - Automatic caching of completed steps and retry logic
+- **Graceful Shutdown** - Workers wait for in-flight workflows before stopping
+- **Parallel Step Execution** - Execute multiple steps concurrently with `Promise.all`
+- **Type Safety** - Full TypeScript support with generic input/output types
+- **Deterministic Replay** - Workflows resume from the last completed step after crashes
+
+### 📝 Current Limitations
+
+<Callout type="warn" title="Note on Tooling">
+The v0.1 release doesn't yet include a dashboard UI or CLI. For now, you can inspect workflow and step state directly in PostgreSQL (`workflow_runs` and `step_attempts` tables). A CLI and dashboard are planned for an upcoming release to make debugging and monitoring much easier.
+</Callout>
+
+## Coming Soon
+
+### 🔧 Developer Tools
+
+<Cards>
+  <Card title="CLI Tool" icon={<span>💻</span>}>
+    Command-line interface for managing workflows, inspecting runs, and debugging issues
+  </Card>
+  <Card title="Dashboard UI" icon={<span>📊</span>}>
+    Web-based dashboard for monitoring workflows, viewing execution history, and managing workers
+  </Card>
+</Cards>
+
+**Use Cases:**
+- View all workflow runs and their statuses
+- Inspect step execution history
+- Retry failed workflows
+- Monitor worker health and performance
+- Debug workflow issues visually
+
+### 🔄 Workflow Management
+
+- **Workflow Versioning** - Deploy new workflow versions without breaking in-flight executions
+- **Configurable Retry Policies** - Fine-grained control over retry behavior per workflow or step
+- **Signals for External Events** - Send signals to running workflows to trigger actions
+- **Workflow Cancellation** - Gracefully cancel running workflows
+- **Scheduled Workflows** - Cron-like scheduling for recurring workflows
+- **Workflow Timeouts** - Set execution time limits per workflow
+
+### 🗄️ Additional Backends
+
+Expand beyond PostgreSQL to support more infrastructure options:
+
+- **Redis Backend** - Lower latency for high-throughput workflows with built-in pub/sub
+- **SQLite Backend** - Zero-configuration local development and embedded deployments
+- **DynamoDB Backend** (Under Consideration) - Serverless-native workflow execution
+
+### 🌍 Multi-Language SDKs
+
+Expand OpenWorkflow to more programming languages:
+
+- **Go SDK** - Planned for idiomatic Go workflow development
+- **Python SDK** - Planned for Python developers and data science workflows
+- **Rust SDK** (Under Consideration) - High-performance workflow execution
+
+### 🔐 Enterprise Features
+
+- **Audit Logging** - Complete audit trail of all workflow executions
+- **Role-Based Access Control** - Fine-grained permissions for workflows and workers
+- **Encryption at Rest** - Encrypt sensitive workflow data in the database
+- **Multi-Tenancy** - Isolate workflows by tenant/customer
+- **Observability** - OpenTelemetry integration for tracing and metrics
+
+## How to Contribute
+
+We welcome contributions! Here's how you can help:
+
+<Steps>
+
+<Step>
+
+### Check Existing Issues
+
+Browse [open issues](https://github.com/openworkflowdev/openworkflow/issues) on GitHub to see what's being worked on.
+
+</Step>
+
+<Step>
+
+### Propose New Features
+
+Have an idea? [Open a feature request](https://github.com/openworkflowdev/openworkflow/issues/new) to discuss it with the community.
+
+</Step>
+
+<Step>
+
+### Submit Pull Requests
+
+Found a bug or want to implement a feature? Submit a PR! Check out our [Contributing Guide](https://github.com/openworkflowdev/openworkflow/blob/main/CONTRIBUTING.md).
+
+</Step>
+
+</Steps>
+
+## Stay Updated
+
+<Cards>
+  <Card
+    title="GitHub"
+    description="Star the repo and watch for updates"
+    href="https://github.com/openworkflowdev/openworkflow"
+  />
+  <Card
+    title="Issues"
+    description="Report bugs and request features"
+    href="https://github.com/openworkflowdev/openworkflow/issues"
+  />
+  <Card
+    title="Discussions"
+    description="Join the community discussions"
+    href="https://github.com/openworkflowdev/openworkflow/discussions"
+  />
+</Cards>
+
+## Feedback
+
+Your feedback shapes the roadmap! If you have ideas for features or improvements:
+
+1. **Open an issue** on [GitHub](https://github.com/openworkflowdev/openworkflow/issues/new)
+2. **Join discussions** about upcoming features
+3. **Vote** on features you'd like to see prioritized
+
+<Callout title="Request Priority">
+Feature prioritization is based on:
+- **Community demand** - How many users request it
+- **Impact** - How much value it provides
+- **Complexity** - Implementation effort required
+- **Alignment** - Fit with OpenWorkflow's core philosophy
+</Callout>
+
+## Version History
+
+### v0.1.0 (Current)
+
+**Released:** January 2025
+
+Core features for building production-ready durable workflows:
+- PostgreSQL backend
+- Worker-driven architecture
+- Step memoization
+- Graceful shutdown
+- Parallel execution
+- TypeScript support
+
+### Future Versions
+
+- **v0.2.x** - CLI and Dashboard UI
+- **v0.3.x** - Workflow versioning and signals
+- **v0.4.x** - Additional backends (Redis, SQLite)
+- **v1.0.x** - Multi-language SDKs and enterprise features
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Getting Started"
+    description="Start building with OpenWorkflow today"
+    href="/docs/getting-started"
+  />
+  <Card
+    title="Examples"
+    description="See real-world workflow patterns"
+    href="/docs/examples"
+  />
+  <Card
+    title="Production Guide"
+    description="Deploy OpenWorkflow to production"
+    href="/docs/production-guide"
+  />
+  <Card
+    title="GitHub"
+    description="Contribute to the project"
+    href="https://github.com/openworkflowdev/openworkflow"
+  />
+</Cards>

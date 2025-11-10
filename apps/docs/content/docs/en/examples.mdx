@@ -14,6 +14,9 @@ Real-world examples demonstrating common patterns and use cases with OpenWorkflo
 
 The simplest possible workflow:
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
@@ -42,9 +45,15 @@ const result = await run.result();
 console.log(result.greeting); // "Hello, World!"
 ```
 
+</Tab>
+</Tabs>
+
 ### Send Welcome Email
 
 A common use case: sending a welcome email to new users.
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 interface SendWelcomeEmailInput {
@@ -89,7 +98,14 @@ app.post("/users", async (req, res) => {
 });
 ```
 
+</Tab>
+</Tabs>
+
 ## E-commerce Examples
+
+<Callout type="info" title="E-commerce Best Practices">
+These examples demonstrate critical patterns like parallel execution, compensating transactions, and idempotent payment processing.
+</Callout>
 
 ### Process Order
 
@@ -471,6 +487,10 @@ cron.schedule("0 9 * * *", async () => {
 
 ## Error Handling Examples
 
+<Callout type="warn" title="Error Handling Patterns">
+OpenWorkflow automatically retries failed steps with exponential backoff. Use try-catch blocks for custom error handling and compensating transactions.
+</Callout>
+
 ### Retry with Exponential Backoff
 
 Handle transient failures with retries.
@@ -490,6 +510,10 @@ const resilientAPICall = ow.defineWorkflow(
 ```
 
 ### Compensating Transaction (Saga Pattern)
+
+<Callout type="success" title="Saga Pattern">
+The saga pattern uses compensating transactions to rollback distributed operations when failures occur. This is critical for maintaining consistency across services.
+</Callout>
 
 Implement compensating actions for distributed transactions.
 
@@ -583,6 +607,28 @@ const fetchUserProfile = ow.defineWorkflow(
 ```
 
 ## Testing Workflows
+
+<Callout title="Testing Strategy">
+Test workflows at multiple levels: unit tests for individual steps, integration tests for complete workflows, and end-to-end tests for critical business flows.
+</Callout>
+
+### Example Test Structure
+
+<Files>
+  <Folder name="tests" defaultOpen>
+    <Folder name="unit">
+      <File name="email-service.test.ts" />
+      <File name="payment-service.test.ts" />
+    </Folder>
+    <Folder name="integration">
+      <File name="send-welcome-email.test.ts" />
+      <File name="process-order.test.ts" />
+    </Folder>
+    <Folder name="e2e">
+      <File name="complete-order-flow.test.ts" />
+    </Folder>
+  </Folder>
+</Files>
 
 ### Unit Testing Steps
 

@@ -35,6 +35,9 @@ OpenWorkflow is ideal for:
 
 ## Quick Example
 
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
 ```ts
 import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
@@ -64,6 +67,9 @@ await worker.start();
 // Run the workflow
 await sendWelcomeEmail.run({ userId: "123" });
 ```
+
+</Tab>
+</Tabs>
 
 ## How It Works
 

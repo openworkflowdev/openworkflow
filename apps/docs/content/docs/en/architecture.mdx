@@ -75,11 +75,16 @@ The source of truth for all workflow state. Responsibilities:
 
 ## The Execution Model: State Machine Replication
 
+<Callout title="Key Insight">
 OpenWorkflow treats each workflow run as a **state machine**. The worker's job is to advance the state of that machine from its last known checkpoint to the next one.
+</Callout>
 
 ### The Replay Loop
 
 When a worker claims a workflow run, it **always executes the code from the beginning**. This is the core of the deterministic replay model.
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 // A worker claims a workflow run.
@@ -101,6 +106,9 @@ const welcomeEmail = await step.run({ name: "welcome-email" }, async () => {
   return await email.send(user);
 });
 ```
+
+</Tab>
+</Tabs>
 
 ### Why Replay?
 
@@ -124,9 +132,16 @@ During replay:
 
 Here's what happens when you run a workflow:
 
-### 1. Workflow Registration
+<Steps>
+
+<Step>
+
+### Workflow Registration
 
 Workflows are defined in code. When a worker starts, it automatically discovers and registers workflows in an in-memory map:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 const ow = new OpenWorkflow({ backend });
@@ -140,15 +155,28 @@ const myWorkflow = ow.defineWorkflow({ name: "my-workflow" }, async ({ step }) =
 const worker = ow.newWorker();
 ```
 
+</Tab>
+</Tabs>
+
 There is no sync process with an external server.
 
-### 2. Workflow Invocation
+</Step>
+
+<Step>
+
+### Workflow Invocation
 
 Your application code uses the **Client** to start a new workflow run:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 const runHandle = await myWorkflow.run({ userId: "123" });
 ```
+
+</Tab>
+</Tabs>
 
 This creates a new entry in the `workflow_runs` table:
 
@@ -168,7 +196,11 @@ INSERT INTO workflow_runs (
 );
 ```
 
-### 3. Job Polling
+</Step>
+
+<Step>
+
+### Job Polling
 
 A **Worker** process polls the `workflow_runs` table, looking for jobs with:
 
@@ -196,7 +228,11 @@ SET status = 'running',
 WHERE id = 'run_abc123';
 ```
 
-### 4. Code Execution (Replay Loop)
+</Step>
+
+<Step>
+
+### Code Execution (Replay Loop)
 
 The worker loads the history of completed `step_attempts` for the claimed workflow run:
 
@@ -207,6 +243,9 @@ ORDER BY created_at ASC;
 ```
 
 It then executes the workflow code **from the beginning**, using the history to memoize results:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 async function executeWorkflow(workflowRun, stepHistory) {
@@ -243,7 +282,14 @@ async function executeWorkflow(workflowRun, stepHistory) {
 }
 ```
 
-### 5. Step Processing
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step>
+
+### Step Processing
 
 When the worker encounters a **new step** (not in history):
 
@@ -253,7 +299,11 @@ When the worker encounters a **new step** (not in history):
 
 All steps execute **synchronously** within the worker. There is no async queueing of steps.
 
-### 6. State Update
+</Step>
+
+<Step>
+
+### State Update
 
 After each step, the worker updates the backend. When the workflow completes:
 
@@ -265,9 +315,17 @@ SET status = 'succeeded',
 WHERE id = 'run_abc123';
 ```
 
+</Step>
+
+</Steps>
+
 ## The `availableAt` Mechanism
 
-The `availableAt` timestamp is the **core of OpenWorkflow's fault tolerance**. It serves multiple purposes:
+<Callout type="info" title="Core Fault Tolerance Mechanism">
+The `availableAt` timestamp is the **core of OpenWorkflow's fault tolerance**. It enables scheduling, heartbeating, crash recovery, and retry backoff—all with a single database field.
+</Callout>
+
+It serves multiple purposes:
 
 ### Scheduling
 

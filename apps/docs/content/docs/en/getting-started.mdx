@@ -44,7 +44,11 @@ Install the core OpenWorkflow package and the PostgreSQL backend:
 
 ## Database Setup
 
-OpenWorkflow requires a PostgreSQL database to store workflow state. If you don't have PostgreSQL installed, you can use Docker:
+<Callout type="warn" title="Database Required">
+OpenWorkflow requires a PostgreSQL database to store workflow state. All workflow runs and step attempts are persisted to ensure durability across crashes.
+</Callout>
+
+If you don't have PostgreSQL installed, you can use Docker:
 
 ```bash
 docker run -d \
@@ -76,9 +80,16 @@ export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 
 ## Create Your First Workflow
 
-### Step 1: Connect to the Backend
+<Steps>
+
+<Step>
+
+### Connect to the Backend
 
 Create a new file called `workflow.ts`:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 import { BackendPostgres } from "@openworkflow/backend-postgres";
@@ -89,11 +100,23 @@ const backend = await BackendPostgres.connect(databaseUrl);
 const ow = new OpenWorkflow({ backend });
 ```
 
-The backend will automatically create the necessary database tables (`workflow_runs` and `step_attempts`) on first connection.
+</Tab>
+</Tabs>
 
-### Step 2: Define a Workflow
+<Callout type="info">
+The backend will automatically create the necessary database tables (`workflow_runs` and `step_attempts`) on first connection.
+</Callout>
+
+</Step>
+
+<Step>
+
+### Define a Workflow
 
 A workflow is a durable function that orchestrates multiple steps:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 const sendWelcomeEmail = ow.defineWorkflow(
@@ -123,11 +146,21 @@ const sendWelcomeEmail = ow.defineWorkflow(
 );
 ```
 
+</Tab>
+</Tabs>
+
 Each `step.run()` creates a checkpoint. If the workflow crashes, it will resume from the last completed step.
 
-### Step 3: Start a Worker
+</Step>
+
+<Step>
+
+### Start a Worker
 
 Workers are background processes that execute workflows. Start one in the same file or a separate process:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 const worker = ow.newWorker();
@@ -136,9 +169,19 @@ await worker.start();
 console.log("Worker started. Waiting for workflows...");
 ```
 
-### Step 4: Run the Workflow
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step>
+
+### Run the Workflow
 
 Trigger the workflow from your application code:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 // Trigger the workflow asynchronously
@@ -151,9 +194,19 @@ const result = await runHandle.result();
 console.log("Workflow completed:", result);
 ```
 
+</Tab>
+</Tabs>
+
+</Step>
+
+</Steps>
+
 ## Complete Example
 
 Here's the full code:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts title="workflow.ts"
 import { BackendPostgres } from "@openworkflow/backend-postgres";
@@ -193,6 +246,9 @@ console.log(result); // { greeting: "Hello, Alice!", timestamp: "..." }
 await worker.stop();
 await backend.stop();
 ```
+
+</Tab>
+</Tabs>
 
 ## Run Your Workflow
 
@@ -243,11 +299,32 @@ If the worker crashes during execution, another worker will pick up the workflow
   />
 </Cards>
 
+## Project Structure
+
+Here's a recommended project structure for OpenWorkflow:
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <Folder name="workflows" defaultOpen>
+      <File name="welcome-email.ts" />
+      <File name="order-processing.ts" />
+      <File name="index.ts" />
+    </Folder>
+    <File name="worker.ts" />
+    <File name="app.ts" />
+  </Folder>
+  <File name="package.json" />
+  <File name=".env" />
+</Files>
+
 ## Common Patterns
 
 ### Pattern 1: API Route Handler
 
 Trigger workflows from your API:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 app.post("/users/:id/welcome", async (req, res) => {
@@ -256,9 +333,15 @@ app.post("/users/:id/welcome", async (req, res) => {
 });
 ```
 
+</Tab>
+</Tabs>
+
 ### Pattern 2: Separate Worker Process
 
 Run workers in a dedicated process:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts title="worker.ts"
 import { BackendPostgres } from "@openworkflow/backend-postgres";
@@ -281,9 +364,15 @@ process.on("SIGTERM", async () => {
 });
 ```
 
+</Tab>
+</Tabs>
+
 ### Pattern 3: With TypeScript Types
 
 Add type safety to your workflows:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
 
 ```ts
 interface SendEmailInput {
@@ -305,7 +394,14 @@ const sendEmail = ow.defineWorkflow<SendEmailInput, SendEmailOutput>(
 );
 ```
 
+</Tab>
+</Tabs>
+
 ## Troubleshooting
+
+<Callout type="warn" title="Common Issues">
+Most issues are related to database connectivity or worker configuration. Check the solutions below.
+</Callout>
 
 ### Database Connection Errors
 

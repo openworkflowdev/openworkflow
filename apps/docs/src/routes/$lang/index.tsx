@@ -67,48 +67,7 @@ function Home() {
           </div>
         </section>
 
-        {/* Code Example Section */}
-        <section className="container mx-auto px-4 py-16">
-          <div className="max-w-5xl mx-auto">
-            <div className="rounded-2xl border border-fd-border bg-gradient-to-br from-fd-background to-fd-muted/20 p-8 shadow-2xl">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500/60"></div>
-                  <div className="w-3 h-3 rounded-full bg-yellow-500/60"></div>
-                  <div className="w-3 h-3 rounded-full bg-green-500/60"></div>
-                </div>
-                <span className="text-sm text-fd-muted-foreground ml-2">
-                  workflow.ts
-                </span>
-              </div>
-              <CodeBlock lang="typescript">
-                <Pre>
-                  {`const sendWelcomeEmail = ow.defineWorkflow(
-  { name: "send-welcome-email" },
-  async ({ input, step }) => {
-    // Step 1: Fetch user
-    const user = await step.run({ name: "fetch-user" }, async () => {
-      return await db.users.findOne({ id: input.userId });
-    });
-
-    // Step 2: Send email
-    await step.run({ name: "send-email" }, async () => {
-      return await resend.emails.send({
-        to: user.email,
-        subject: "Welcome!",
-        html: "<h1>Welcome to our app!</h1>",
-      });
-    });
-
-    return { success: true };
-  }
-);`}
-                </Pre>
-              </CodeBlock>
-            </div>
-          </div>
-        </section>
-
+  
         {/* Features Grid */}
         <section className="container mx-auto px-4 py-20">
           <div className="max-w-6xl mx-auto">
@@ -203,44 +162,6 @@ function Home() {
           </div>
         </section>
 
-        {/* How It Works */}
-        <section className="container mx-auto px-4 py-20">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                {t.landing.howItWorks.title}
-              </h2>
-              <p className="text-lg text-fd-muted-foreground">
-                {t.landing.howItWorks.subtitle}
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-4 gap-8">
-              {t.landing.howItWorks.steps.map((stepData, i) => {
-                const colors = [
-                  'blue-500',
-                  'violet-500',
-                  'green-500',
-                  'orange-500',
-                ];
-                const color = colors[i];
-                return (
-                  <div key={i} className="text-center">
-                    <div
-                      className={`w-16 h-16 rounded-full bg-${color}/10 border-2 border-${color} flex items-center justify-center text-2xl font-bold text-${color} mx-auto mb-4`}
-                    >
-                      {i + 1}
-                    </div>
-                    <h3 className="font-semibold mb-2">{stepData.title}</h3>
-                    <p className="text-sm text-fd-muted-foreground">
-                      {stepData.description}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
 
         {/* Use Cases */}
         <section className="container mx-auto px-4 py-20 bg-fd-muted/20">
