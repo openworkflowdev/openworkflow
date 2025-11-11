@@ -19,21 +19,11 @@ export default defineConfig({
     tanstackStart({
       spa: {
         enabled: true,
-
         prerender: {
-          // outputPath: 'index.html',
           enabled: true,
           crawlLinks: true,
-          
-
         },
       },
-      prerender: {
-        enabled: true,
-        crawlLinks: true,
-        filter: ({ path }) => !path.startsWith('/docs/'),
-      },
-      
       pages: [
         {
           path: '/en/docs',
@@ -43,7 +33,15 @@ export default defineConfig({
         },
       ],
     }),
-    nitro(),
+    nitro({
+      publicAssets: [
+        // this is a temporary fix to https://github.com/TanStack/router/issues/5368
+        {
+          dir: "dist/client/__tsr",
+          baseURL: "/__tsr",
+        },
+      ],
+    }),
 
     react(),
   ],

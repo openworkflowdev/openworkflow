@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "preview": "vite preview",
+    "serve": "node .output/server/index.mjs ",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
