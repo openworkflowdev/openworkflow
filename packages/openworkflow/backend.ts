@@ -8,11 +8,15 @@ export interface Backend {
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>;
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>;
   claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
-  heartbeatWorkflowRun(params: HeartbeatWorkflowRunParams): Promise<void>;
+  heartbeatWorkflowRun(
+    params: HeartbeatWorkflowRunParams,
+  ): Promise<WorkflowRun>;
   markWorkflowRunSucceeded(
     params: MarkWorkflowRunSucceededParams,
-  ): Promise<void>;
-  markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<void>;
+  ): Promise<WorkflowRun>;
+  markWorkflowRunFailed(
+    params: MarkWorkflowRunFailedParams,
+  ): Promise<WorkflowRun>;
 
   // Step Attempts
   listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
@@ -20,8 +24,10 @@ export interface Backend {
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
   markStepAttemptSucceeded(
     params: MarkStepAttemptSucceededParams,
-  ): Promise<void>;
-  markStepAttemptFailed(params: MarkStepAttemptFailedParams): Promise<void>;
+  ): Promise<StepAttempt>;
+  markStepAttemptFailed(
+    params: MarkStepAttemptFailedParams,
+  ): Promise<StepAttempt>;
 }
 
 export interface CreateWorkflowRunParams {

@@ -343,7 +343,7 @@ class StepExecutor implements StepApi {
       const output = (result ?? null) as JsonValue | null;
 
       // mark success
-      await this.backend.markStepAttemptSucceeded({
+      const savedAttempt = await this.backend.markStepAttemptSucceeded({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
@@ -351,9 +351,9 @@ class StepExecutor implements StepApi {
       });
 
       // cache result
-      this.history.set(name, output);
+      this.history.set(name, savedAttempt.output);
 
-      return output as Output;
+      return savedAttempt.output as Output;
     } catch (error) {
       // mark failure
       await this.backend.markStepAttemptFailed({

@@ -192,17 +192,13 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const previousExpiry = claimed.availableAt;
-      await backend.heartbeatWorkflowRun({
+      const heartbeated = await backend.heartbeatWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         leaseDurationMs: 200,
       });
 
-      const refreshed = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-
-      expect(refreshed?.availableAt?.getTime()).toBeGreaterThan(
+      expect(heartbeated.availableAt?.getTime()).toBeGreaterThan(
         previousExpiry?.getTime() ?? Infinity,
       );
     });
@@ -220,20 +216,17 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const output = { ok: true };
-      await backend.markWorkflowRunSucceeded({
+      const succeeded = await backend.markWorkflowRunSucceeded({
         workflowRunId: claimed.id,
         workerId,
         output,
       });
 
-      const finished = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-      expect(finished?.status).toBe("succeeded");
-      expect(finished?.output).toEqual(output);
-      expect(finished?.error).toBeNull();
-      expect(finished?.finishedAt).not.toBeNull();
-      expect(finished?.availableAt).toBeNull();
+      expect(succeeded.status).toBe("succeeded");
+      expect(succeeded.output).toEqual(output);
+      expect(succeeded.error).toBeNull();
+      expect(succeeded.finishedAt).not.toBeNull();
+      expect(succeeded.availableAt).toBeNull();
     });
   });
 
@@ -251,26 +244,22 @@ describe("BackendPostgres", () => {
       const beforeFailTime = Date.now();
 
       const error = { message: "boom" };
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error,
       });
 
-      const rescheduled = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-
       // rescheduled, not permanently failed
-      expect(rescheduled?.status).toBe("pending");
-      expect(rescheduled?.error).toEqual(error);
-      expect(rescheduled?.output).toBeNull();
-      expect(rescheduled?.finishedAt).toBeNull();
-      expect(rescheduled?.workerId).toBeNull();
+      expect(failed.status).toBe("pending");
+      expect(failed.error).toEqual(error);
+      expect(failed.output).toBeNull();
+      expect(failed.finishedAt).toBeNull();
+      expect(failed.workerId).toBeNull();
 
-      expect(rescheduled?.availableAt).not.toBeNull();
-      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
-      const delayMs = rescheduled.availableAt.getTime() - beforeFailTime;
+      expect(failed.availableAt).not.toBeNull();
+      if (!failed.availableAt) throw new Error("Expected availableAt");
+      const delayMs = failed.availableAt.getTime() - beforeFailTime;
       expect(delayMs).toBeGreaterThanOrEqual(900); // ~1s with some tolerance
       expect(delayMs).toBeLessThan(1500);
     });
@@ -292,11 +281,13 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed");
       expect(claimed.attempts).toBe(1);
 
-      await backend.markWorkflowRunFailed({
+      const firstFailed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "first failure" },
       });
+
+      expect(firstFailed.status).toBe("pending");
 
       await sleep(1100); // wait for first backoff (~1s)
 
@@ -310,20 +301,17 @@ describe("BackendPostgres", () => {
       expect(claimed.attempts).toBe(2);
 
       const beforeSecondFail = Date.now();
-      await backend.markWorkflowRunFailed({
+      const secondFailed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "second failure" },
       });
 
-      const rescheduled = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-      expect(rescheduled?.status).toBe("pending");
+      expect(secondFailed.status).toBe("pending");
 
       // second attempt should have ~2s backoff (1s * 2^1)
-      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
-      const delayMs = rescheduled.availableAt.getTime() - beforeSecondFail;
+      if (!secondFailed.availableAt) throw new Error("Expected availableAt");
+      const delayMs = secondFailed.availableAt.getTime() - beforeSecondFail;
       expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
       expect(delayMs).toBeLessThan(2500);
 
@@ -447,20 +435,25 @@ describe("BackendPostgres", () => {
       });
       const output = { foo: "bar" };
 
-      await backend.markStepAttemptSucceeded({
+      const succeeded = await backend.markStepAttemptSucceeded({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         output,
       });
 
-      const succeeded = await backend.getStepAttempt({
+      expect(succeeded.status).toBe("succeeded");
+      expect(succeeded.output).toEqual(output);
+      expect(succeeded.error).toBeNull();
+      expect(succeeded.finishedAt).not.toBeNull();
+
+      const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(succeeded?.status).toBe("succeeded");
-      expect(succeeded?.output).toEqual(output);
-      expect(succeeded?.error).toBeNull();
-      expect(succeeded?.finishedAt).not.toBeNull();
+      expect(fetched?.status).toBe("succeeded");
+      expect(fetched?.output).toEqual(output);
+      expect(fetched?.error).toBeNull();
+      expect(fetched?.finishedAt).not.toBeNull();
     });
   });
 
@@ -478,20 +471,25 @@ describe("BackendPostgres", () => {
       });
       const error = { message: "nope" };
 
-      await backend.markStepAttemptFailed({
+      const failed = await backend.markStepAttemptFailed({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         error,
       });
 
-      const failed = await backend.getStepAttempt({
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toEqual(error);
+      expect(failed.output).toBeNull();
+      expect(failed.finishedAt).not.toBeNull();
+
+      const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(failed?.status).toBe("failed");
-      expect(failed?.error).toEqual(error);
-      expect(failed?.output).toBeNull();
-      expect(failed?.finishedAt).not.toBeNull();
+      expect(fetched?.status).toBe("failed");
+      expect(fetched?.error).toEqual(error);
+      expect(fetched?.output).toBeNull();
+      expect(fetched?.finishedAt).not.toBeNull();
     });
   });
 
@@ -603,19 +601,15 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should mark as permanently failed since retry backoff (1s) would exceed deadline (500ms)
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
       });
 
-      const failed = await backend.getWorkflowRun({
-        workflowRunId: created.id,
-      });
-
-      expect(failed?.status).toBe("failed");
-      expect(failed?.availableAt).toBeNull();
-      expect(failed?.finishedAt).not.toBeNull();
+      expect(failed.status).toBe("failed");
+      expect(failed.availableAt).toBeNull();
+      expect(failed.finishedAt).not.toBeNull();
 
       await backend.stop();
     });
@@ -645,19 +639,15 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should reschedule since retry backoff (1s) is before deadline (5s
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
       });
 
-      const rescheduled = await backend.getWorkflowRun({
-        workflowRunId: created.id,
-      });
-
-      expect(rescheduled?.status).toBe("pending");
-      expect(rescheduled?.availableAt).not.toBeNull();
-      expect(rescheduled?.finishedAt).toBeNull();
+      expect(failed.status).toBe("pending");
+      expect(failed.availableAt).not.toBeNull();
+      expect(failed.finishedAt).toBeNull();
 
       await backend.stop();
     });
