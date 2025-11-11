@@ -299,7 +299,7 @@ class StepExecutor implements StepApi {
   private backend: Backend;
   private workflowRunId: string;
   private workerId: string;
-  private readonly history = new Map<string, JsonValue | null>();
+  private readonly successfulAttemptsByName = new Map<string, StepAttempt>();
 
   constructor(options: StepExecutorOptions) {
     this.backend = options.backend;
@@ -309,7 +309,7 @@ class StepExecutor implements StepApi {
     // load successful attempts into history
     for (const attempt of options.attempts) {
       if (attempt.status === "succeeded") {
-        this.history.set(attempt.stepName, attempt.output);
+        this.successfulAttemptsByName.set(attempt.stepName, attempt);
       }
     }
   }
@@ -321,8 +321,9 @@ class StepExecutor implements StepApi {
     const { name } = config;
 
     // return cached result if available
-    if (this.history.has(name)) {
-      return this.history.get(name) as Output;
+    const existingAttempt = this.successfulAttemptsByName.get(name);
+    if (existingAttempt) {
+      return existingAttempt.output as Output;
     }
 
     // not in cache, create new step attempt
@@ -351,7 +352,7 @@ class StepExecutor implements StepApi {
       });
 
       // cache result
-      this.history.set(name, savedAttempt.output);
+      this.successfulAttemptsByName.set(name, savedAttempt);
 
       return savedAttempt.output as Output;
     } catch (error) {

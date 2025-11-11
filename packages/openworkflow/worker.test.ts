@@ -460,6 +460,75 @@ describe("Worker", () => {
     // without it (with 100ms sleep between ticks), it would take much longer
     expect(duration).toBeLessThan(3000); // should complete in under 3 seconds
   });
+
+  test("only failed steps re-execute on retry (known slow test - awaits result)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const executionCounts = {
+      stepA: 0,
+      stepB: 0,
+      stepC: 0,
+    };
+
+    const workflow = client.defineWorkflow(
+      { name: "mixed-retry" },
+      async ({ step }) => {
+        const a = await step.run({ name: "step-a" }, () => {
+          executionCounts.stepA++;
+          return "a-result";
+        });
+
+        const b = await step.run({ name: "step-b" }, () => {
+          executionCounts.stepB++;
+          if (executionCounts.stepB === 1) {
+            throw new Error("Step B fails on first attempt");
+          }
+          return "b-result";
+        });
+
+        const c = await step.run({ name: "step-c" }, () => {
+          executionCounts.stepC++;
+          return "c-result";
+        });
+
+        return { a, b, c };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first workflow attempt
+    // - step-a succeeds
+    // - step-b fails
+    // - step-c never runs (workflow fails at step-b)
+    await worker.tick();
+    await sleep(100);
+    expect(executionCounts.stepA).toBe(1);
+    expect(executionCounts.stepB).toBe(1);
+    expect(executionCounts.stepC).toBe(0);
+
+    // wait for backoff
+    await sleep(1100);
+
+    // second workflow attempt
+    // - step-a should be cached (not re-executed)
+    // - step-b should be re-executed (failed previously)
+    // - step-c should execute for first time
+    await worker.tick();
+    await sleep(100);
+    expect(executionCounts.stepA).toBe(1); // still 1, was cached
+    expect(executionCounts.stepB).toBe(2); // incremented, was retried
+    expect(executionCounts.stepC).toBe(1); // incremented, first execution
+
+    const result = await handle.result();
+    expect(result).toEqual({
+      a: "a-result",
+      b: "b-result",
+      c: "c-result",
+    });
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {
