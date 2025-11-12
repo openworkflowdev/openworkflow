@@ -85,7 +85,7 @@ export interface CreateStepAttemptParams {
   stepName: string;
   kind: StepKind;
   config: JsonValue;
-  context: JsonValue | null;
+  context: StepAttemptContext | null;
 }
 
 export interface GetStepAttemptParams {
@@ -131,8 +131,8 @@ export interface WorkflowRun {
   version: string | null;
   status: WorkflowRunStatus;
   idempotencyKey: string | null;
-  config: JsonValue;
-  context: JsonValue | null;
+  config: JsonValue; // user-defined config
+  context: JsonValue | null; // runtime execution metadata
   input: JsonValue | null;
   output: JsonValue | null;
   error: JsonValue | null;
@@ -152,6 +152,11 @@ export type StepKind = "function" | "sleep";
 
 export type StepAttemptStatus = "running" | "succeeded" | "failed";
 
+export interface StepAttemptContext {
+  kind: "sleep";
+  resumeAt: string;
+}
+
 /**
  * StepAttempt represents a single attempt of a step within a workflow.
  */
@@ -162,8 +167,8 @@ export interface StepAttempt {
   stepName: string;
   kind: StepKind;
   status: StepAttemptStatus;
-  config: JsonValue;
-  context: JsonValue | null;
+  config: JsonValue; // user-defined config
+  context: StepAttemptContext | null; // runtime execution metadata
   output: JsonValue | null;
   error: JsonValue | null;
   childWorkflowRunNamespaceId: string | null;

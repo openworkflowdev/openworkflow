@@ -791,6 +791,79 @@ describe("Worker", () => {
     expect(claimed?.status).toBe("running");
     expect(claimed?.workerId).toBe("test-worker");
   });
+
+  test("sleep is not skipped when worker crashes after creating sleep step but before marking workflow as sleeping (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let executionCount = 0;
+    let beforeSleepCount = 0;
+    let afterSleepCount = 0;
+
+    const workflow = client.defineWorkflow(
+      { name: "crash-during-sleep" },
+      async ({ step }) => {
+        executionCount++;
+
+        await step.run({ name: "before-sleep" }, () => {
+          beforeSleepCount++;
+          return "before";
+        });
+
+        // this sleep should NOT be skipped even if crash happens
+        await step.sleep("critical-pause", "200ms");
+
+        await step.run({ name: "after-sleep" }, () => {
+          afterSleepCount++;
+          return "after";
+        });
+
+        return { executionCount, beforeSleepCount, afterSleepCount };
+      },
+    );
+
+    const handle = await workflow.run();
+
+    // first worker processes the workflow until sleep
+    const worker1 = client.newWorker();
+    await worker1.tick();
+    await sleep(100);
+
+    const workflowAfterFirst = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(workflowAfterFirst?.status).toBe("sleeping");
+
+    const attemptsAfterFirst = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    const sleepStep = attemptsAfterFirst.find(
+      (a) => a.stepName === "critical-pause",
+    );
+    expect(sleepStep).toBeDefined();
+    expect(sleepStep?.kind).toBe("sleep");
+    expect(sleepStep?.status).toBe("running");
+
+    await sleep(50); // only 50ms of the 200ms sleep
+
+    // if there's a running sleep step, the workflow should be properly
+    // transitioned to sleeping
+    const worker2 = client.newWorker();
+    await worker2.tick();
+
+    // after-sleep step should NOT have executed yet
+    expect(afterSleepCount).toBe(0);
+
+    // wait for the full sleep duration to elapse then check to make sure
+    // workflow is claimable and resume
+    await sleep(200);
+    await worker2.tick();
+    await sleep(100);
+    expect(afterSleepCount).toBe(1);
+    const result = await handle.result();
+    expect(result.afterSleepCount).toBe(1);
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {

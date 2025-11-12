@@ -208,12 +208,28 @@ export class Worker {
         workflowRunId: execution.workflowRun.id,
       });
 
-      // mark any running sleep steps as succeeded
+      // mark any sleep steps as succeeded if their sleep duration has elapsed,
+      // or rethrow SleepSignal if still sleeping
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
         if (!attempt) continue;
 
-        if (attempt.status === "running" && attempt.kind === "sleep") {
+        if (
+          attempt.status === "running" &&
+          attempt.kind === "sleep" &&
+          attempt.context?.kind === "sleep"
+        ) {
+          const now = Date.now();
+          const resumeAt = new Date(attempt.context.resumeAt);
+          const resumeAtMs = resumeAt.getTime();
+
+          if (now < resumeAtMs) {
+            // sleep duration HAS NOT elapsed yet, throw signal to put workflow
+            // back to sleep
+            throw new SleepSignal(resumeAt);
+          }
+
+          // sleep duration HAS elapsed, mark the step as succeeded and continue
           const succeeded = await this.backend.markStepAttemptSucceeded({
             workflowRunId: execution.workflowRun.id,
             stepAttemptId: attempt.id,
@@ -417,20 +433,23 @@ class StepExecutor implements StepApi {
     if (existingAttempt) return;
 
     // create new step attempt for the sleep
+    const durationMs = parseDuration(duration);
+    const resumeAt = new Date(Date.now() + durationMs);
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName: name,
       kind: "sleep",
       config: {},
-      context: null,
+      context: {
+        kind: "sleep",
+        resumeAt: resumeAt.toISOString(),
+      },
     });
 
     // throw sleep signal to trigger postponement
     // we do not mark the step as succeeded here; it will be updated
     // when the workflow resumes
-    const durationMs = parseDuration(duration);
-    const resumeAt = new Date(Date.now() + durationMs);
     throw new SleepSignal(resumeAt);
   }
 }

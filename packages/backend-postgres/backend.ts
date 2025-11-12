@@ -23,6 +23,7 @@ import {
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
+  JsonValue,
 } from "openworkflow";
 
 interface BackendPostgresOptions {
@@ -349,7 +350,7 @@ export class BackendPostgres implements Backend {
         ${params.kind},
         'running',
         ${this.pg.json(params.config)},
-        ${this.pg.json(params.context)},
+        ${this.pg.json(params.context as JsonValue)},
         NOW(),
         NOW(),
         NOW()

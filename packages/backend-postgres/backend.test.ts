@@ -361,7 +361,7 @@ describe("BackendPostgres", () => {
         kind: "function",
         status: "running",
         config: { key: "val" },
-        context: { key: "val" },
+        context: null,
         output: null,
         error: null,
         childWorkflowRunNamespaceId: null,
