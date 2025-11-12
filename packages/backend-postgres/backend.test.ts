@@ -204,6 +204,36 @@ describe("BackendPostgres", () => {
     });
   });
 
+  describe("sleepWorkflowRun()", () => {
+    test("sets a running workflow to sleeping status until a future time", async () => {
+      const workerId = randomUUID();
+      await createPendingWorkflowRun(backend);
+
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 100,
+      });
+      if (!claimed) throw new Error("Expected workflow run to be claimed");
+
+      const sleepUntil = new Date(Date.now() + 5000); // 5 seconds from now
+
+      await backend.sleepWorkflowRun({
+        workflowRunId: claimed.id,
+        workerId,
+        availableAt: sleepUntil,
+      });
+
+      const fetched = await backend.getWorkflowRun({
+        workflowRunId: claimed.id,
+      });
+
+      expect(fetched).not.toBeNull();
+      expect(fetched?.availableAt?.getTime()).toBe(sleepUntil.getTime());
+      expect(fetched?.workerId).toBeNull();
+      expect(fetched?.status).toBe("sleeping");
+    });
+  });
+
   describe("markWorkflowRunSucceeded()", () => {
     test("marks running workflow runs as succeeded", async () => {
       const workerId = randomUUID();
@@ -264,7 +294,7 @@ describe("BackendPostgres", () => {
       expect(delayMs).toBeLessThan(1500);
     });
 
-    test("reschedules with increasing backoff on multiple failures (known slow test - awaits result)", async () => {
+    test("reschedules with increasing backoff on multiple failures (known slow test)", async () => {
       // this test needs isolated namespace
       const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
         namespaceId: randomUUID(),

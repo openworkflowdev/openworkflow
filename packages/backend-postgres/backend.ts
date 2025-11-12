@@ -19,6 +19,7 @@ import {
   MarkStepAttemptSucceededParams,
   MarkWorkflowRunFailedParams,
   MarkWorkflowRunSucceededParams,
+  SleepWorkflowRunParams,
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
@@ -145,7 +146,7 @@ export class BackendPostgres implements Backend {
           "finished_at" = NOW(),
           "updated_at" = NOW()
         WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running')
+          AND "status" IN ('pending', 'running', 'sleeping')
           AND "deadline_at" IS NOT NULL
           AND "deadline_at" <= NOW()
         RETURNING "id"
@@ -154,7 +155,7 @@ export class BackendPostgres implements Backend {
         SELECT "id"
         FROM "openworkflow"."workflow_runs"
         WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running')
+          AND "status" IN ('pending', 'running', 'sleeping')
           AND "available_at" <= NOW()
           AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
         ORDER BY
@@ -197,6 +198,25 @@ export class BackendPostgres implements Backend {
     `;
 
     if (!updated) throw new Error("Failed to heartbeat workflow run");
+
+    return updated;
+  }
+
+  async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE "openworkflow"."workflow_runs"
+      SET
+        "status" = 'sleeping',
+        "available_at" = ${params.availableAt},
+        "worker_id" = NULL,
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "worker_id" = ${params.workerId}
+      RETURNING *
+    `;
+
+    if (!updated) throw new Error("Failed to sleep workflow run");
 
     return updated;
   }

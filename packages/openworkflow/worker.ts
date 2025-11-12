@@ -10,11 +10,26 @@ import {
   StepFunctionConfig,
   WorkflowDefinition,
 } from "./client.js";
+import { parseDuration } from "./duration.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
 const DEFAULT_POLL_INTERVAL_MS = 100; // 100ms
 const DEFAULT_CONCURRENCY = 1;
+
+/**
+ * Signal thrown when a workflow needs to sleep. Contains the time when the
+ * workflow should resume.
+ */
+class SleepSignal extends Error {
+  readonly resumeAt: Date;
+
+  constructor(resumeAt: Date) {
+    super("SleepSignal");
+    this.name = "SleepSignal";
+    this.resumeAt = resumeAt;
+  }
+}
 
 /**
  * Configures how a Worker polls the backend, leases workflow runs, and
@@ -193,6 +208,24 @@ export class Worker {
         workflowRunId: execution.workflowRun.id,
       });
 
+      // mark any running sleep steps as succeeded
+      for (let i = 0; i < attempts.length; i++) {
+        const attempt = attempts[i];
+        if (!attempt) continue;
+
+        if (attempt.status === "running" && attempt.kind === "sleep") {
+          const succeeded = await this.backend.markStepAttemptSucceeded({
+            workflowRunId: execution.workflowRun.id,
+            stepAttemptId: attempt.id,
+            workerId: execution.workerId,
+            output: null,
+          });
+
+          // update cache w/ succeeded attempt
+          attempts[i] = succeeded;
+        }
+      }
+
       // create step executor
       const executor = new StepExecutor({
         backend: this.backend,
@@ -214,6 +247,17 @@ export class Worker {
         output: (output ?? null) as JsonValue,
       });
     } catch (error) {
+      // handle sleep signal by setting workflow to sleeping status
+      if (error instanceof SleepSignal) {
+        await this.backend.sleepWorkflowRun({
+          workflowRunId: execution.workflowRun.id,
+          workerId: execution.workerId,
+          availableAt: error.resumeAt,
+        });
+
+        return;
+      }
+
       // mark failure
       await this.backend.markWorkflowRunFailed({
         workflowRunId: execution.workflowRun.id,
@@ -365,6 +409,29 @@ class StepExecutor implements StepApi {
       });
       throw error;
     }
+  }
+
+  async sleep(name: string, duration: string): Promise<void> {
+    // return cached result if this sleep already completed
+    const existingAttempt = this.successfulAttemptsByName.get(name);
+    if (existingAttempt) return;
+
+    // create new step attempt for the sleep
+    await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName: name,
+      kind: "sleep",
+      config: {},
+      context: null,
+    });
+
+    // throw sleep signal to trigger postponement
+    // we do not mark the step as succeeded here; it will be updated
+    // when the workflow resumes
+    const durationMs = parseDuration(duration);
+    const resumeAt = new Date(Date.now() + durationMs);
+    throw new SleepSignal(resumeAt);
   }
 }
 

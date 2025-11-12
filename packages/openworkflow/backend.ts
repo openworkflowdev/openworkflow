@@ -11,6 +11,7 @@ export interface Backend {
   heartbeatWorkflowRun(
     params: HeartbeatWorkflowRunParams,
   ): Promise<WorkflowRun>;
+  sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
   markWorkflowRunSucceeded(
     params: MarkWorkflowRunSucceededParams,
   ): Promise<WorkflowRun>;
@@ -54,6 +55,12 @@ export interface HeartbeatWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   leaseDurationMs: number;
+}
+
+export interface SleepWorkflowRunParams {
+  workflowRunId: string;
+  workerId: string;
+  availableAt: Date;
 }
 
 export interface MarkWorkflowRunSucceededParams {
@@ -107,7 +114,12 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type WorkflowRunStatus = "pending" | "running" | "succeeded" | "failed";
+export type WorkflowRunStatus =
+  | "pending"
+  | "running"
+  | "sleeping"
+  | "succeeded"
+  | "failed";
 
 /**
  * WorkflowRun represents a single execution instance of a workflow.
@@ -136,7 +148,7 @@ export interface WorkflowRun {
   updatedAt: Date;
 }
 
-export type StepKind = "function";
+export type StepKind = "function" | "sleep";
 
 export type StepAttemptStatus = "running" | "succeeded" | "failed";
 

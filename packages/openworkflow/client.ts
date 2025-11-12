@@ -160,6 +160,7 @@ export interface StepApi {
     config: StepFunctionConfig,
     fn: StepFunction<Output>,
   ): Promise<Output>;
+  sleep(name: string, duration: string): Promise<void>;
 }
 
 /**
