@@ -190,6 +190,34 @@ const data = await step.run({ name: "fetch-external-api" }, async () => {
 Configure retry behavior at the workflow or step level (coming soon) or handle
 errors explicitly in your step functions.
 
+### Sleeping (Pausing) Workflows
+
+You can pause a workflow until a future time and, because sleeping releases the
+worker slot, you can pause thousands of workflows without tying up compute:
+
+```ts
+// Pause for 1 hour (durable, non-blocking)
+await step.sleep("wait-one-hour", "1h");
+```
+
+The sleep step is memoized after it completes. If the workflow is replayed again
+(e.g. due to a later retry) the completed sleep is not re-applied.
+
+#### Duration Formats
+
+Durations accept a number followed by a unit (no spaces):
+
+| Unit | Meaning      | Examples         |
+| ---- | ------------ | ---------------- |
+| ms   | milliseconds | `100ms`, `1.5ms` |
+| s    | seconds      | `5s`, `0.25s`    |
+| m    | minutes      | `2m`, `1.5m`     |
+| h    | hours        | `1h`, `0.25h`    |
+| d    | days         | `1d`, `0.5d`     |
+
+Invalid formats (missing unit, negative numbers, multiple units, spaces) throw
+an error and cause the workflow attempt to fail and (if configured) retry.
+
 ### Type Safety
 
 Workflows are fully typed. Define input and output types for compile-time
@@ -259,13 +287,14 @@ const result = await run.result();
 
 ## Roadmap
 
-**v0.1:**
+**v0.2:**
 
 - ✅ PostgreSQL backend
 - ✅ Worker with concurrency control
 - ✅ Step memoization & retries
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
+- ✅ Sleeping (pausing) workflows
 
 > Note: The v0.1 release doesn’t yet include a dashboard UI or CLI. For now, you
 > can inspect workflow and step state directly in PostgreSQL (workflow_runs and
