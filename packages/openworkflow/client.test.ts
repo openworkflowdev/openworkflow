@@ -97,6 +97,30 @@ describe("OpenWorkflow", () => {
     expect(handle.workflowRun.deadlineAt).not.toBeNull();
     expect(handle.workflowRun.deadlineAt?.getTime()).toBe(deadline.getTime());
   });
+
+  test("creates workflow run with version", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "versioned-test", version: "v2.0" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.version).toBe("v2.0");
+  });
+
+  test("creates workflow run without version", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "unversioned-test" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.version).toBeNull();
+  });
 });
 
 async function noopFn() {

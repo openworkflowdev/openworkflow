@@ -254,6 +254,7 @@ export class Worker {
       const output = await workflow.fn({
         input: execution.workflowRun.input as unknown,
         step: executor,
+        version: execution.workflowRun.version,
       });
 
       // mark success

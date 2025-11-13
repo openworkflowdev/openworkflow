@@ -864,6 +864,49 @@ describe("Worker", () => {
     const result = await handle.result();
     expect(result.afterSleepCount).toBe(1);
   });
+
+  test("version enables conditional code paths (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "conditional-workflow", version: "v2" },
+      async ({ version, step }) => {
+        return version === "v1"
+          ? await step.run({ name: "old-step" }, () => "old-logic")
+          : await step.run({ name: "new-step" }, () => "new-logic");
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toBe("new-logic");
+  });
+
+  test("workflow version is null when not specified", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "unversioned-workflow" },
+      async ({ version, step }) => {
+        const result = await step.run({ name: "check-version" }, () => {
+          return { version };
+        });
+        return result;
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result.version).toBeNull();
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {

@@ -256,6 +256,32 @@ const run = await myWorkflow.run({ data: "..." });
 const result = await run.result();
 ```
 
+### Workflow Versioning
+
+When you need to change workflow logic, use versioning for backwards
+compatibility.
+
+Define a workflow with an optional version:
+
+```ts
+const workflow = ow.defineWorkflow(
+  { name: "my-workflow", version: "v2" },
+  async ({ input, step, version }) => {
+    if (version === "v2") {
+      // v2 runs go here
+      await step.run({ name: "new-step" }, async () => {
+        // legacy logic
+      });
+    } else {
+      // v1 runs go here
+      await step.run({ name: "old-step" }, async () => {
+        // ...
+      });
+    }
+  },
+);
+```
+
 ## Production Checklist
 
 - **Database**: Use a production-ready Postgres instance
@@ -288,7 +314,7 @@ const result = await run.result();
 
 ## Roadmap
 
-**v0.2:**
+**Live in current `npm` release:**
 
 - ✅ PostgreSQL backend
 - ✅ Worker with concurrency control
@@ -297,16 +323,19 @@ const result = await run.result();
 - ✅ Parallel step execution
 - ✅ Sleeping (pausing) workflows
 
-> Note: The v0.1 release doesn’t yet include a dashboard UI or CLI. For now, you
-> can inspect workflow and step state directly in PostgreSQL (workflow_runs and
-> step_runs tables). A CLI and dashboard are planned for an upcoming release to
-> make debugging and monitoring much easier.
+**Coming in v0.3:**
+
+- ✅ Workflow versioning
 
 **Coming Soon:**
 
+> These releeases don't yet include a dashboard UI or CLI. For now, you can
+> inspect workflow and step state directly in PostgreSQL (workflow_runs and
+> step_runs tables). A CLI and dashboard are planned for an upcoming release to
+> make debugging and monitoring much easier.
+
 - CLI
 - Dashboard UI
-- Workflow versioning
 - Configurable retry policies
 - Signals for external events
 - Workflow cancellation

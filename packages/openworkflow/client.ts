@@ -41,7 +41,7 @@ export class OpenWorkflow {
     config: WorkflowDefinitionConfig,
     fn: WorkflowFunction<Input, Output>,
   ): WorkflowDefinition<Input, Output> {
-    const { name } = config;
+    const { name, version } = config;
 
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
@@ -50,6 +50,7 @@ export class OpenWorkflow {
     const definition = new WorkflowDefinition<Input, Output>({
       backend: this.backend,
       name,
+      ...(version !== undefined && { version }),
       fn,
     });
 
@@ -69,6 +70,7 @@ export class OpenWorkflow {
 export interface WorkflowDefinitionOptions<Input, Output> {
   backend: Backend;
   name: string;
+  version?: string;
   fn: WorkflowFunction<Input, Output>;
 }
 
@@ -80,6 +82,11 @@ export interface WorkflowDefinitionConfig {
    * The name of the workflow.
    */
   name: string;
+  /**
+   * Optional version string for the workflow. Use this to enable zero-downtime
+   * deployments when changing workflow logic.
+   */
+  version?: string;
 }
 
 /**
@@ -89,11 +96,13 @@ export interface WorkflowDefinitionConfig {
 export class WorkflowDefinition<Input, Output> {
   private backend: Backend;
   readonly name: string;
+  readonly version: string | null;
   readonly fn: WorkflowFunction<Input, Output>;
 
   constructor(options: WorkflowDefinitionOptions<Input, Output>) {
     this.backend = options.backend;
     this.name = options.name;
+    this.version = options.version ?? null;
     this.fn = options.fn;
   }
 
@@ -107,7 +116,7 @@ export class WorkflowDefinition<Input, Output> {
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: this.name,
-      version: null,
+      version: this.version,
       idempotencyKey: null,
       config: {},
       context: null,
@@ -131,6 +140,7 @@ export class WorkflowDefinition<Input, Output> {
 export interface WorkflowFunctionParams<Input> {
   input: Input;
   step: StepApi;
+  version: string | null;
 }
 
 /**
