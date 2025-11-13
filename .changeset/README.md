@@ -4,3 +4,4 @@
 3. `npm i` to update the package-lock.json
 4. Commit the version bump
 5. `npx @changesets/cli publish` to publish the new version to npm
+6. `git push --tags`
