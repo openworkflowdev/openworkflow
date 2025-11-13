@@ -199,8 +199,8 @@ const user = await step.run({ name: "fetch-user" }, async () => {
 });
 ```
 
-**`step.sleep(id, duration)`**: Pauses the workflow until a specified time. When
-encountered, the worker sets the workflow run's `status` to `sleeping` and
+**`step.sleep(name, duration)`**: Pauses the workflow until a specified time.
+When encountered, the worker sets the workflow run's `status` to `sleeping` and
 `availableAt` to the resume time, then releases the workflow. This frees up the
 worker slot for other work - it's not a blocking sleep but a durable pause.
 
