@@ -1,4 +1,5 @@
 import type { Backend, WorkflowRun } from "./backend.js";
+import { DurationString } from "./duration.js";
 import { Worker } from "./worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
@@ -170,7 +171,7 @@ export interface StepApi {
     config: StepFunctionConfig,
     fn: StepFunction<Output>,
   ): Promise<Output>;
-  sleep(name: string, duration: string): Promise<void>;
+  sleep(name: string, duration: DurationString): Promise<void>;
 }
 
 /**

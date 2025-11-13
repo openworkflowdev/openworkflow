@@ -10,7 +10,7 @@ import {
   StepFunctionConfig,
   WorkflowDefinition,
 } from "./client.js";
-import { parseDuration } from "./duration.js";
+import { DurationString, parseDuration } from "./duration.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
@@ -428,7 +428,7 @@ class StepExecutor implements StepApi {
     }
   }
 
-  async sleep(name: string, duration: string): Promise<void> {
+  async sleep(name: string, duration: DurationString): Promise<void> {
     // return cached result if this sleep already completed
     const existingAttempt = this.successfulAttemptsByName.get(name);
     if (existingAttempt) return;

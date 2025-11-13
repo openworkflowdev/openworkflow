@@ -193,10 +193,15 @@ describe("parseDuration", () => {
     });
 
     test("parses case-insensitive long format", () => {
+      // @ts-expect-error - mixed-case (not in type but accepted at runtime)
       expect(parseDuration("53 YeArS")).toBe(1_672_552_800_000);
+      // @ts-expect-error - mixed-case (not in type but accepted at runtime)
       expect(parseDuration("53 WeEkS")).toBe(32_054_400_000);
+      // @ts-expect-error - mixed-case (not in type but accepted at runtime)
       expect(parseDuration("53 DaYS")).toBe(4_579_200_000);
+      // @ts-expect-error - mixed-case (not in type but accepted at runtime)
       expect(parseDuration("53 HoUrs")).toBe(190_800_000);
+      // @ts-expect-error - mixed-case (not in type but accepted at runtime)
       expect(parseDuration("53 MiLliSeCondS")).toBe(53);
     });
   });
@@ -237,43 +242,55 @@ describe("parseDuration", () => {
 
   describe("error cases", () => {
     test("throws on invalid format", () => {
+      // @ts-expect-error - invalid format
       expect(() => parseDuration("invalid")).toThrow(
         'Invalid duration format: "invalid"',
       );
+      // @ts-expect-error - invalid format
       expect(() => parseDuration("10-.5")).toThrow(
         'Invalid duration format: "10-.5"',
       );
+      // @ts-expect-error - invalid format
       expect(() => parseDuration("foo")).toThrow(
         'Invalid duration format: "foo"',
       );
     });
 
     test("throws on empty string", () => {
+      // @ts-expect-error - empty string
       expect(() => parseDuration("")).toThrow('Invalid duration format: ""');
     });
 
     test("throws on missing number", () => {
+      // @ts-expect-error - unit without number
       expect(() => parseDuration("ms")).toThrow(
         'Invalid duration format: "ms"',
       );
+      // @ts-expect-error - unit without number
       expect(() => parseDuration("s")).toThrow('Invalid duration format: "s"');
+      // @ts-expect-error - unit without number
       expect(() => parseDuration("m")).toThrow('Invalid duration format: "m"');
+      // @ts-expect-error - unit without number
       expect(() => parseDuration("h")).toThrow('Invalid duration format: "h"');
     });
 
     test("throws on unknown unit", () => {
+      // @ts-expect-error - unknown unit
       expect(() => parseDuration("100x")).toThrow(
         'Invalid duration format: "100x"',
       );
+      // @ts-expect-error - unknown unit
       expect(() => parseDuration("5z")).toThrow(
         'Invalid duration format: "5z"',
       );
     });
 
     test("throws on multiple units", () => {
+      // @ts-expect-error - multiple units
       expect(() => parseDuration("1h30m")).toThrow(
         'Invalid duration format: "1h30m"',
       );
+      // @ts-expect-error - multiple units
       expect(() => parseDuration("5s100ms")).toThrow(
         'Invalid duration format: "5s100ms"',
       );
@@ -283,34 +300,44 @@ describe("parseDuration", () => {
       expect(() => parseDuration(" 5s")).toThrow(
         'Invalid duration format: " 5s"',
       );
+      // @ts-expect-error - trailing space
       expect(() => parseDuration("5s ")).toThrow(
         'Invalid duration format: "5s "',
       );
     });
 
     test("throws on special characters", () => {
+      // @ts-expect-error - special characters
       expect(() => parseDuration("5s!")).toThrow(
         'Invalid duration format: "5s!"',
       );
+      // @ts-expect-error - special characters
       expect(() => parseDuration("@5s")).toThrow(
         'Invalid duration format: "@5s"',
       );
     });
 
     test("throws on non-string types", () => {
+      // @ts-expect-error - non-string type
       expect(() => parseDuration(undefined as unknown as string)).toThrow(
         TypeError,
       );
+      // @ts-expect-error - non-string type
       expect(() => parseDuration(null as unknown as string)).toThrow(TypeError);
+      // @ts-expect-error - non-string type
       expect(() => parseDuration([] as unknown as string)).toThrow(TypeError);
+      // @ts-expect-error - non-string type
       expect(() => parseDuration({} as unknown as string)).toThrow(TypeError);
+      // @ts-expect-error - non-string type
       expect(() => parseDuration(Number.NaN as unknown as string)).toThrow(
         TypeError,
       );
       expect(() =>
+        // @ts-expect-error - non-string type
         parseDuration(Number.POSITIVE_INFINITY as unknown as string),
       ).toThrow(TypeError);
       expect(() =>
+        // @ts-expect-error - non-string type
         parseDuration(Number.NEGATIVE_INFINITY as unknown as string),
       ).toThrow(TypeError);
     });

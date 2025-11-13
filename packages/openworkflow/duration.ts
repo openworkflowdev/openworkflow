@@ -1,24 +1,46 @@
+type Years = "years" | "year" | "yrs" | "yr" | "y";
+type Months = "months" | "month" | "mo";
+type Weeks = "weeks" | "week" | "w";
+type Days = "days" | "day" | "d";
+type Hours = "hours" | "hour" | "hrs" | "hr" | "h";
+type Minutes = "minutes" | "minute" | "mins" | "min" | "m";
+type Seconds = "seconds" | "second" | "secs" | "sec" | "s";
+type Milliseconds = "milliseconds" | "millisecond" | "msecs" | "msec" | "ms";
+type Unit =
+  | Years
+  | Months
+  | Weeks
+  | Days
+  | Hours
+  | Minutes
+  | Seconds
+  | Milliseconds;
+type UnitAnyCase = Capitalize<Unit> | Uppercase<Unit> | Lowercase<Unit>;
+export type DurationString =
+  | `${number}`
+  | `${number}${UnitAnyCase}`
+  | `${number} ${UnitAnyCase}`;
+
 /**
  * Parse a duration string into milliseconds. Exmaples:
  * - short units: "1ms", "5s", "30m", "2h", "7d", "3w", "1y"
  * - long units: "1 millisecond", "5 seconds", "30 minutes", "2 hours", "7 days", "3 weeks", "1 year"
  */
-export function parseDuration(duration: string): number {
-  if (typeof duration !== "string") {
+export function parseDuration(str: DurationString): number {
+  if (typeof str !== "string") {
     throw new TypeError(
-      "Invalid duration format: expected a string but received " +
-        typeof duration,
+      "Invalid duration format: expected a string but received " + typeof str,
     );
   }
 
-  if (duration.length === 0) {
+  if (str.length === 0) {
     throw new Error('Invalid duration format: ""');
   }
 
-  const match = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i.exec(duration);
+  const match = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i.exec(str);
 
   if (!match?.[1]) {
-    throw new Error(`Invalid duration format: "${duration}"`);
+    throw new Error(`Invalid duration format: "${str}"`);
   }
 
   const numValue = Number.parseFloat(match[1]);
@@ -63,7 +85,7 @@ export function parseDuration(duration: string): number {
 
   const multiplier = multipliers[unit];
   if (multiplier === undefined) {
-    throw new Error(`Invalid duration format: "${duration}"`);
+    throw new Error(`Invalid duration format: "${str}"`);
   }
 
   return numValue * multiplier;
