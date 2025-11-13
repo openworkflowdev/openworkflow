@@ -258,7 +258,8 @@ const result = await run.result();
 
 ### Canceling Workflows
 
-You can cancel a workflow that is pending, running, or sleeping:
+You can cancel a workflow that is pending, running, or sleeping to prevent a
+workflow from continuing on to the next step:
 
 ```ts
 const handle = await myWorkflow.run({ data: "..." });
