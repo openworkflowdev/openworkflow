@@ -206,18 +206,21 @@ The sleep step is memoized after it completes. If the workflow is replayed again
 
 #### Duration Formats
 
-Durations accept a number followed by a unit (no spaces):
+Durations accept a number followed by a unit:
 
-| Unit | Meaning      | Examples         |
-| ---- | ------------ | ---------------- |
-| ms   | milliseconds | `100ms`, `1.5ms` |
-| s    | seconds      | `5s`, `0.25s`    |
-| m    | minutes      | `2m`, `1.5m`     |
-| h    | hours        | `1h`, `0.25h`    |
-| d    | days         | `1d`, `0.5d`     |
+| Unit         | Examples         |
+| ------------ | ---------------- |
+| milliseconds | `100ms`, `1.5ms` |
+| seconds      | `5s`, `0.25s`    |
+| minutes      | `2m`, `1.5m`     |
+| hours        | `1h`, `0.25h`    |
+| days         | `1d`, `0.5d`     |
+| weeks        | `1w`, `2w`       |
+| months       | `1mo`, `2mo`     |
+| years        | `1y`, `2yr`      |
 
-Invalid formats (missing unit, negative numbers, multiple units, spaces) throw
-an error and cause the workflow attempt to fail and (if configured) retry.
+For more examples of accepted duration formats, check out the
+[tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/duration.test.ts).
 
 ### Type Safety
 
