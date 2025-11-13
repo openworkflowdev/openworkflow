@@ -208,18 +208,18 @@ The sleep step is memoized after it completes. If the workflow is replayed again
 
 Durations accept a number followed by a unit:
 
-| Unit         | Examples         |
-| ------------ | ---------------- |
-| milliseconds | `100ms`, `1.5ms` |
-| seconds      | `5s`, `0.25s`    |
-| minutes      | `2m`, `1.5m`     |
-| hours        | `1h`, `0.25h`    |
-| days         | `1d`, `0.5d`     |
-| weeks        | `1w`, `2w`       |
-| months       | `1mo`, `2mo`     |
-| years        | `1y`, `2yr`      |
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
 
-For more examples of accepted duration formats, check out the
+See more examples of accepted duration formats and aliases in the
 [tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/duration.test.ts).
 
 ### Type Safety
