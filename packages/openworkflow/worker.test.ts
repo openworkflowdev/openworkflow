@@ -907,6 +907,177 @@ describe("Worker", () => {
     const result = await handle.result();
     expect(result.version).toBeNull();
   });
+
+  test("cancels a pending workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-pending" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, () => "result");
+        return { completed: true };
+      },
+    );
+
+    const handle = await workflow.run();
+
+    // cancel before worker processes it
+    await handle.cancel();
+
+    const workflowRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(workflowRun?.status).toBe("canceled");
+    expect(workflowRun?.finishedAt).not.toBeNull();
+    expect(workflowRun?.availableAt).toBeNull();
+    expect(workflowRun?.workerId).toBeNull();
+  });
+
+  test("cancels a sleeping workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-sleeping" },
+      async ({ step }) => {
+        await step.sleep("sleep-1", "1h");
+        return { completed: true };
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    // cancel while sleeping
+    await handle.cancel();
+
+    const canceled = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(canceled?.status).toBe("canceled");
+    expect(canceled?.finishedAt).not.toBeNull();
+    expect(canceled?.availableAt).toBeNull();
+    expect(canceled?.workerId).toBeNull();
+  });
+
+  test("cannot cancel a succeeded workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-succeeded" },
+      () => ({ completed: true }),
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result.completed).toBe(true);
+
+    // try to cancel after success
+    await expect(handle.cancel()).rejects.toThrow(
+      /Cannot cancel workflow run .* with status succeeded/,
+    );
+  });
+
+  test("cannot cancel a failed workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "cancel-failed" }, () => {
+      throw new Error("intentional failure");
+    });
+    const worker = client.newWorker();
+
+    const handle = await workflow.run({ value: 1 }, { deadlineAt: new Date() });
+    await worker.tick();
+
+    // wait for it to fail due to deadline
+    await sleep(100);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(failed?.status).toBe("failed");
+
+    // try to cancel after failure
+    await expect(handle.cancel()).rejects.toThrow(
+      /Cannot cancel workflow run .* with status failed/,
+    );
+  });
+
+  test("cannot cancel non-existent workflow", async () => {
+    const backend = await createBackend();
+
+    await expect(
+      backend.cancelWorkflowRun({
+        workflowRunId: "non-existent-id",
+      }),
+    ).rejects.toThrow(/Workflow run non-existent-id does not exist/);
+  });
+
+  test("worker handles when canceled workflow during execution", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepExecuted = false;
+    const workflow = client.defineWorkflow(
+      { name: "cancel-during-execution" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, async () => {
+          stepExecuted = true;
+          // simulate some work
+          await sleep(50);
+          return "result";
+        });
+        return { completed: true };
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+
+    // start processing in the background
+    const tickPromise = worker.tick();
+    await sleep(25);
+
+    // cancel while step is executing
+    await handle.cancel();
+
+    // wait for tick to complete
+    await tickPromise;
+
+    // step should have been executed but workflow should be canceled
+    expect(stepExecuted).toBe(true);
+    const canceled = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(canceled?.status).toBe("canceled");
+  });
+
+  test("result() rejects for canceled workflows", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-result" },
+      async ({ step }) => {
+        await step.sleep("sleep-1", "1h");
+        return { completed: true };
+      },
+    );
+
+    const handle = await workflow.run();
+    await handle.cancel();
+
+    await expect(handle.result()).rejects.toThrow(
+      /Workflow cancel-result was canceled/,
+    );
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {

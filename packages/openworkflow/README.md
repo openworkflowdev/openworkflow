@@ -256,6 +256,17 @@ const run = await myWorkflow.run({ data: "..." });
 const result = await run.result();
 ```
 
+### Canceling Workflows
+
+You can cancel a workflow that is pending, running, or sleeping:
+
+```ts
+const handle = await myWorkflow.run({ data: "..." });
+
+// Cancel the workflow
+await handle.cancel();
+```
+
 ### Workflow Versioning
 
 When you need to change workflow logic, use versioning for backwards
@@ -326,6 +337,7 @@ const workflow = ow.defineWorkflow(
 **Coming in v0.3:**
 
 - ✅ Workflow versioning
+- ✅ Workflow cancelation
 
 **Coming Soon:**
 
@@ -338,7 +350,7 @@ const workflow = ow.defineWorkflow(
 - Dashboard UI
 - Configurable retry policies
 - Signals for external events
-- Workflow cancellation
+- Workflow cancelation
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 

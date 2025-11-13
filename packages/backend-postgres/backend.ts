@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_NAMESPACE_ID,
   Backend,
+  CancelWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -309,6 +310,50 @@ export class BackendPostgres implements Backend {
     `;
 
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    return updated;
+  }
+
+  async cancelWorkflowRun(
+    params: CancelWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE "openworkflow"."workflow_runs"
+      SET
+        "status" = 'canceled',
+        "worker_id" = NULL,
+        "available_at" = NULL,
+        "finished_at" = NOW(),
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" IN ('pending', 'running', 'sleeping')
+      RETURNING *
+    `;
+
+    if (!updated) {
+      // workflow may already be in a terminal state
+      const existing = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      if (!existing) {
+        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
+      }
+
+      // if already canceled, just return it
+      if (existing.status === "canceled") {
+        return existing;
+      }
+
+      // throw error for succeeded/failed workflows
+      if (["succeeded", "failed"].includes(existing.status)) {
+        throw new Error(
+          `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
+        );
+      }
+
+      throw new Error("Failed to cancel workflow run");
+    }
 
     return updated;
   }

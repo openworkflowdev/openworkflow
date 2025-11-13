@@ -121,6 +121,21 @@ describe("OpenWorkflow", () => {
 
     expect(handle.workflowRun.version).toBeNull();
   });
+
+  test("cancels workflow run via handle", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "cancel-test" }, noopFn);
+    const handle = await workflow.run({ value: 1 });
+
+    await handle.cancel();
+
+    const workflowRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(workflowRun?.status).toBe("canceled");
+    expect(workflowRun?.finishedAt).not.toBeNull();
+  });
 });
 
 async function noopFn() {

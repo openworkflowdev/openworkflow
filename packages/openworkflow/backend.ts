@@ -18,6 +18,7 @@ export interface Backend {
   markWorkflowRunFailed(
     params: MarkWorkflowRunFailedParams,
   ): Promise<WorkflowRun>;
+  cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
 
   // Step Attempts
   listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
@@ -75,6 +76,10 @@ export interface MarkWorkflowRunFailedParams {
   error: JsonValue;
 }
 
+export interface CancelWorkflowRunParams {
+  workflowRunId: string;
+}
+
 export interface ListStepAttemptsParams {
   workflowRunId: string;
 }
@@ -119,7 +124,8 @@ export type WorkflowRunStatus =
   | "running"
   | "sleeping"
   | "succeeded"
-  | "failed";
+  | "failed"
+  | "canceled";
 
 /**
  * WorkflowRun represents a single execution instance of a workflow.

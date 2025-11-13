@@ -251,6 +251,12 @@ export class WorkflowRunHandle<Output> {
         );
       }
 
+      if (latest.status === "canceled") {
+        throw new Error(
+          `Workflow ${this.workflowRun.workflowName} was canceled`,
+        );
+      }
+
       if (Date.now() - start > this.resultTimeoutMs) {
         throw new Error(
           `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
@@ -261,5 +267,15 @@ export class WorkflowRunHandle<Output> {
         setTimeout(resolve, this.resultPollIntervalMs);
       });
     }
+  }
+
+  /**
+   * Cancels the workflow run. Only workflows in pending, running, or sleeping
+   * status can be canceled.
+   */
+  async cancel(): Promise<void> {
+    await this.backend.cancelWorkflowRun({
+      workflowRunId: this.workflowRun.id,
+    });
   }
 }

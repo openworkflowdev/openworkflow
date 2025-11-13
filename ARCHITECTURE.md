@@ -51,6 +51,8 @@ A workflow run can be in one of the following states:
   again.
 - **`succeeded`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed and all retries have been exhausted.
+- **`canceled`**: The workflow run has been explicitly canceled and will not be
+  processed further.
 
 ### 1.4. Step Attempt Statuses
 
@@ -231,6 +233,21 @@ exhausted, its status is set to `failed` permanently.
 Workflow runs can include an optional `deadlineAt` timestamp, specifying the
 time by which the workflow must complete. Steps and retries are skipped if they
 would exceed the deadline, making the run permanently `failed`.
+
+### 4.4. Workflow Cancelation
+
+Workflows can be explicitly canceled at any time via the Client API:
+
+```ts
+const handle = await workflow.run({ "..." });
+await handle.cancel();
+```
+
+**Handling cancelation during execution**: If a workflow is canceled while a
+worker is actively processing it, the worker will detect the cancelation. The
+worker will then stop further execution of the workflow code and mark the
+workflow as `canceled`. This ensures that partial work from the canceled
+workflow is not committed as a successful result.
 
 ## 5. Concurrency & Parallelism
 
