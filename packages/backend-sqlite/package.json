@@ -1,0 +1,25 @@
+{
+  "name": "@openworkflow/backend-sqlite",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./index.ts",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "openworkflow": "file:../openworkflow"
+  },
+  "peerDependencies": {
+    "openworkflow": "^0.2.0"
+  }
+}
