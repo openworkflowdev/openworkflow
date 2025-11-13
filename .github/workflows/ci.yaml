@@ -29,5 +29,8 @@ jobs:
       - run: npm ci
       - run: npm run format
       - run: npm run lint
-      - run: npm run test
       - run: npm run build
+      - run: npm run test:coverage
+      - uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
