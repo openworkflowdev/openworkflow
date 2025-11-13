@@ -214,6 +214,9 @@ export class BackendPostgres implements Backend {
         "updated_at" = NOW()
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
+      AND "status" != 'succeeded'
+      AND "status" != 'failed'
+      AND "status" != 'canceled'
       AND "worker_id" = ${params.workerId}
       RETURNING *
     `;

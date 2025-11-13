@@ -232,6 +232,57 @@ describe("BackendPostgres", () => {
       expect(fetched?.workerId).toBeNull();
       expect(fetched?.status).toBe("sleeping");
     });
+
+    test("fails when trying to sleep a canceled workflow", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      // succeeded run
+      let claimed = await createClaimedWorkflowRun(backend);
+      await backend.markWorkflowRunSucceeded({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        output: null,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      // failed run
+      claimed = await createClaimedWorkflowRun(backend);
+      await backend.markWorkflowRunFailed({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        error: null,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      // canceled run
+      claimed = await createClaimedWorkflowRun(backend);
+      await backend.cancelWorkflowRun({
+        workflowRunId: claimed.id,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      await backend.stop();
+    });
   });
 
   describe("markWorkflowRunSucceeded()", () => {
