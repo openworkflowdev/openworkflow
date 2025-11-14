@@ -1,0 +1,16 @@
+{
+  "name": "example-with-zod-schema",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@openworkflow/backend-postgres": "file:../../packages/backend-postgres",
+    "openworkflow": "file:../../packages/openworkflow",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}

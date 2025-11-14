@@ -1,6 +1,13 @@
-import type { Backend, WorkflowRun } from "./backend.js";
+import type { Backend, JsonValue, WorkflowRun } from "./backend.js";
 import { DurationString } from "./duration.js";
+import { type InferWorkflowSchemaIn, type InferWorkflowSchemaOut, type WorkflowInputSchema, type WorkflowSchemaParseFn, getWorkflowSchemaParseFn } from "./schema.js";
 import { Worker } from "./worker.js";
+
+
+
+
+
+
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -17,8 +24,11 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private registeredWorkflows = new Map<string, WorkflowDefinition<any, any>>();
+  private registeredWorkflows = new Map<
+    string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    WorkflowDefinition<any, any, any>
+  >();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
@@ -38,24 +48,57 @@ export class OpenWorkflow {
   /**
    * Define and register a new workflow.
    */
-  defineWorkflow<Input, Output>(
-    config: WorkflowDefinitionConfig,
-    fn: WorkflowFunction<Input, Output>,
-  ): WorkflowDefinition<Input, Output> {
+  defineWorkflow<
+    Input,
+    Output,
+    TSchema extends WorkflowInputSchema | undefined = undefined,
+  >(
+    config: WorkflowDefinitionConfig<TSchema>,
+    fn: WorkflowFunction<
+      TSchema extends WorkflowInputSchema
+        ? InferWorkflowSchemaOut<TSchema>
+        : Input,
+      Output
+    >,
+  ): WorkflowDefinition<
+    TSchema extends WorkflowInputSchema
+      ? InferWorkflowSchemaOut<TSchema>
+      : Input,
+    Output,
+    TSchema extends WorkflowInputSchema ? InferWorkflowSchemaIn<TSchema> : Input
+  > {
     const { name, version } = config;
+
+    type HandlerInput = TSchema extends WorkflowInputSchema
+      ? InferWorkflowSchemaOut<TSchema>
+      : Input;
+    type RunInput = TSchema extends WorkflowInputSchema
+      ? InferWorkflowSchemaIn<TSchema>
+      : Input;
 
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
     }
 
-    const definition = new WorkflowDefinition<Input, Output>({
+    const parser = config.schema
+      ? (getWorkflowSchemaParseFn(config.schema) as WorkflowSchemaParseFn<
+          HandlerInput,
+          RunInput | undefined
+        >)
+      : null;
+
+    const definition = new WorkflowDefinition<HandlerInput, Output, RunInput>({
       backend: this.backend,
       name,
       ...(version !== undefined && { version }),
-      fn,
+      fn: fn as WorkflowFunction<HandlerInput, Output>,
+      ...(parser && { parseInput: parser }),
     });
 
-    this.registeredWorkflows.set(name, definition);
+    this.registeredWorkflows.set(
+      name,
+      definition as WorkflowDefinition<unknown, unknown, unknown>,
+    );
 
     return definition;
   }
@@ -68,17 +111,22 @@ export class OpenWorkflow {
 /**
  * Options for WorkflowDefinition.
  */
-export interface WorkflowDefinitionOptions<Input, Output> {
+export interface WorkflowDefinitionOptions<Input, Output, RunInput> {
   backend: Backend;
   name: string;
   version?: string;
   fn: WorkflowFunction<Input, Output>;
+  parseInput?: WorkflowSchemaParseFn<Input, RunInput | undefined>;
 }
 
 /**
  * Config passed to `defineWorkflow()` when defining a workflow.
  */
-export interface WorkflowDefinitionConfig {
+export interface WorkflowDefinitionConfig<
+  TSchema extends WorkflowInputSchema | undefined =
+    | WorkflowInputSchema
+    | undefined,
+> {
   /**
    * The name of the workflow.
    */
@@ -88,32 +136,45 @@ export interface WorkflowDefinitionConfig {
    * deployments when changing workflow logic.
    */
   version?: string;
+  /**
+   * Optional schema used to validate inputs passed to `.run()`.
+   */
+  schema?: TSchema;
 }
 
 /**
  * Represents a workflow definition that can be used to start runs. Returned
  * from `client.defineWorkflow()`.
  */
-export class WorkflowDefinition<Input, Output> {
+export class WorkflowDefinition<Input, Output, RunInput = Input> {
   private backend: Backend;
   readonly name: string;
   readonly version: string | null;
   readonly fn: WorkflowFunction<Input, Output>;
+  private readonly parseInput: WorkflowSchemaParseFn<
+    Input,
+    RunInput | undefined
+  > | null;
 
-  constructor(options: WorkflowDefinitionOptions<Input, Output>) {
+  constructor(options: WorkflowDefinitionOptions<Input, Output, RunInput>) {
     this.backend = options.backend;
     this.name = options.name;
     this.version = options.version ?? null;
     this.fn = options.fn;
+    this.parseInput = options.parseInput ?? null;
   }
 
   /**
    * Starts a new workflow run.
    */
   async run(
-    input?: Input,
+    input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
+    const parsedInput = this.parseInput
+      ? await this.parseInput(input)
+      : ((input ?? undefined) as Input | undefined);
+
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: this.name,
@@ -121,7 +182,7 @@ export class WorkflowDefinition<Input, Output> {
       idempotencyKey: null,
       config: {},
       context: null,
-      input: input ?? null,
+      input: (parsedInput ?? null) as JsonValue | null,
       availableAt: null,
       deadlineAt: options?.deadlineAt ?? null,
     });

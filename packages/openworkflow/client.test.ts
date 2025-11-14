@@ -34,6 +34,55 @@ describe("OpenWorkflow", () => {
     expect(claimed?.input).toEqual({ docUrl: "https://example.com" });
   });
 
+  test("validates workflow input with schema before enqueueing", async () => {
+    const client = new OpenWorkflow({ backend });
+    const schema = {
+      parse(value: unknown) {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          typeof (value as { docUrl?: unknown }).docUrl !== "string"
+        ) {
+          throw new Error("Invalid schema input");
+        }
+
+        return {
+          docUrl: (value as { docUrl: string }).docUrl.toUpperCase(),
+        };
+      },
+    };
+
+    const workflow = client.defineWorkflow(
+      { name: "schema-parse-test", schema },
+      noopFn,
+    );
+    const handle = await workflow.run({ docUrl: "https://example.com" });
+
+    const stored = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(stored?.input).toEqual({ docUrl: "HTTPS://EXAMPLE.COM" });
+  });
+
+  test("rejects workflow run when schema validation fails", async () => {
+    const client = new OpenWorkflow({ backend });
+    const schema = {
+      parse(value: unknown) {
+        if (typeof value !== "string") {
+          throw new TypeError("Expected string");
+        }
+        return value;
+      },
+    };
+
+    const workflow = client.defineWorkflow(
+      { name: "schema-error-test", schema },
+      noopFn,
+    );
+
+    await expect(workflow.run(123 as never)).rejects.toThrow("Expected string");
+  });
+
   test("result resolves when workflow succeeds", async () => {
     const client = new OpenWorkflow({ backend });
 
