@@ -5,8 +5,7 @@ export default defineConfig({
     globalSetup: ["packages/backend-postgres/vitest.global-setup.ts"],
     exclude: ["**/dist", "benchmarks", "coverage", "examples", "node_modules"],
     coverage: {
-      include: ["packages/*/index.ts", "packages/*/*.ts"],
-      reporter: ["html"],
+      include: ["packages/**/*.ts"],
       thresholds: {
         statements: 80,
         branches: 70,
