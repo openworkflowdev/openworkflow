@@ -342,7 +342,7 @@ const workflow = ow.defineWorkflow(
 
 **Coming Soon:**
 
-> These releeases don't yet include a dashboard UI or CLI. For now, you can
+> These releases don't yet include a dashboard UI or CLI. For now, you can
 > inspect workflow and step state directly in PostgreSQL (workflow_runs and
 > step_runs tables). A CLI and dashboard are planned for an upcoming release to
 > make debugging and monitoring much easier.
