@@ -177,7 +177,7 @@ Represents a started workflow run. Returned from `workflowDef.run()`.
 result(): Promise<Output>
 ```
 
-Waits for the workflow run to complete and returns its result. Polls the database until the workflow reaches a terminal state (`succeeded` or `failed`).
+Waits for the workflow run to complete and returns its result. Polls the database until the workflow reaches a terminal state (such as `succeeded`, `failed`, or `canceled`).
 
 **Returns:**
 
@@ -186,6 +186,7 @@ The workflow's output value.
 **Throws:**
 
 - `Error` if the workflow fails
+- `Error` if the workflow is canceled
 - `Error` if the result times out (default: 5 minutes)
 
 **Example:**
@@ -280,6 +281,21 @@ const result = await step.run({ name: "fetch-data" }, async () => {
 - Step names must be deterministic (no `step-${Date.now()}`)
 - Step functions should be idempotent when possible
 - Steps execute synchronously in the worker
+
+#### `sleep()`
+
+```ts
+sleep(name: string, duration: DurationString): Promise<void>
+```
+
+Pauses the workflow until a specified time in the future. When encountered, the
+worker marks the workflow run as `sleeping`, sets its `availableAt` to the
+resume time, and releases the worker slot. When the sleep completes, the
+workflow can be picked up by any worker and resumes execution from after the
+sleep.
+
+The `duration` parameter is a parsed duration string. See **DurationString** and
+the “Sleeping (Pausing) Workflows” section for accepted formats.
 
 ## StepFunction
 
@@ -402,9 +418,11 @@ The interface that all backend implementations must implement.
 createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>
 getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>
 claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>
-heartbeatWorkflowRun(params: HeartbeatWorkflowRunParams): Promise<void>
-markWorkflowRunSucceeded(params: MarkWorkflowRunSucceededParams): Promise<void>
-markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<void>
+heartbeatWorkflowRun(params: HeartbeatWorkflowRunParams): Promise<WorkflowRun>
+sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>
+markWorkflowRunSucceeded(params: MarkWorkflowRunSucceededParams): Promise<WorkflowRun>
+markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<WorkflowRun>
+cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>
 ```
 
 #### Step Attempt Methods
@@ -413,8 +431,8 @@ markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<void>
 listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>
 createStepAttempt(params: CreateStepAttemptParams): Promise<StepAttempt>
 getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>
-markStepAttemptSucceeded(params: MarkStepAttemptSucceededParams): Promise<void>
-markStepAttemptFailed(params: MarkStepAttemptFailedParams): Promise<void>
+markStepAttemptSucceeded(params: MarkStepAttemptSucceededParams): Promise<StepAttempt>
+markStepAttemptFailed(params: MarkStepAttemptFailedParams): Promise<StepAttempt>
 ```
 
 ## BackendPostgres
@@ -478,20 +496,25 @@ Represents a workflow run record from the backend.
 
 ```ts
 interface WorkflowRun {
+  namespaceId: string;
   id: string;
   workflowName: string;
   version: string | null;
-  status: "pending" | "running" | "succeeded" | "failed";
+  status: "pending" | "running" | "sleeping" | "succeeded" | "failed" | "canceled";
   workerId: string | null;
+  idempotencyKey: string | null;
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
   output: JsonValue | null;
   error: JsonValue | null;
-  availableAt: Date;
+  attempts: number;
+  availableAt: Date | null;
   deadlineAt: Date | null;
   createdAt: Date;
-  completedAt: Date | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  updatedAt: Date;
 }
 ```
 
@@ -501,17 +524,22 @@ Represents a step attempt record from the backend.
 
 ```ts
 interface StepAttempt {
+  namespaceId: string;
   id: string;
   workflowRunId: string;
   stepName: string;
   kind: StepKind;
   status: "running" | "succeeded" | "failed";
   config: JsonValue;
-  context: JsonValue | null;
+  context: StepAttemptContext | null;
   output: JsonValue | null;
   error: JsonValue | null;
+  childWorkflowRunNamespaceId: string | null;
+  childWorkflowRunId: string | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
   createdAt: Date;
-  completedAt: Date | null;
+  updatedAt: Date;
 }
 ```
 
@@ -520,10 +548,23 @@ interface StepAttempt {
 The type of step.
 
 ```ts
-type StepKind = "run"
+type StepKind = "function" | "sleep"
 ```
 
-Currently only `"run"` is supported (via `step.run()`). Future versions may add other step types.
+`"function"` corresponds to steps created with `step.run()`, and `"sleep"`
+corresponds to durable sleep steps created with `step.sleep()`.
+
+### DurationString
+
+Type for duration strings accepted by `step.sleep`:
+
+```ts
+type DurationString = string; // e.g. "5s", "1h", "2d"
+```
+
+Durations accept a number followed by a unit like `ms`, `s`, `m`, `h`, `d`,
+`w`, `mo`, or `y`. See the “Sleeping (Pausing) Workflows” docs and the
+`duration.test.ts` file for concrete examples.
 
 ### JsonValue
 

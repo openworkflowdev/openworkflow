@@ -376,14 +376,17 @@ A workflow run progresses through several states:
 |--------|-------------|
 | `pending` | Workflow created, waiting for a worker to claim it |
 | `running` | Worker is actively executing the workflow |
+| `sleeping` | Workflow is paused until a future time (`step.sleep`) |
 | `succeeded` | Workflow completed successfully |
 | `failed` | Workflow failed and all retries exhausted |
+| `canceled` | Workflow was explicitly canceled and will not continue |
 
 ### Lifecycle Flow
 
 ```
-pending → running → succeeded
+pending → running → sleeping → running → succeeded
                   ↘ failed
+                  ↘ canceled
 ```
 
 ### Transitions
@@ -394,6 +397,7 @@ pending → running → succeeded
 4. **Complete**:
    - Success → status: `succeeded`
    - Failure → status: `failed`
+   - Canceled → status: `canceled`
 
 ### The `availableAt` Timestamp
 
@@ -403,6 +407,7 @@ The `availableAt` field controls when a workflow is visible to workers:
 - **Delayed execution**: `availableAt = NOW() + delay`
 - **Retry backoff**: `availableAt = NOW() + exponentialBackoff`
 - **Heartbeat**: `availableAt = NOW() + leaseDuration`
+ - **Sleep wake-up**: `availableAt = resumeTime` when a workflow calls `step.sleep`
 
 This single field enables:
 

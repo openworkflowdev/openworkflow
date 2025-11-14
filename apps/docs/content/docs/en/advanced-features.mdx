@@ -348,6 +348,37 @@ const workflow = ow.defineWorkflow(
 );
 ```
 
+## Sleeping (Pausing) Workflows
+
+You can pause a workflow until a future time and, because sleeping releases the
+worker slot, you can pause thousands of workflows without tying up compute:
+
+```ts
+// Pause for 1 hour (durable, non-blocking)
+await step.sleep("wait-one-hour", "1h");
+```
+
+The sleep step is memoized after it completes. If the workflow is replayed
+again (for example due to a later retry), the completed sleep is not re-applied.
+
+### Duration Formats
+
+Durations accept a number followed by a unit:
+
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
+
+Durations are parsed from strings; see the `DurationString` type in the SDK and
+the `duration.test.ts` file for more examples of accepted formats.
+
 ## Workflow Versioning
 
 Handle code changes safely while workflows are in-flight.
@@ -367,11 +398,13 @@ await step.run({ name: "new-step-name" }, ...);
 
 ### Solution: Version Parameter
 
-Use the `version` parameter for conditional logic:
+Use the `version` parameter for conditional logic. Workflows declare an optional
+`version` in `defineWorkflow`, and the resolved version is passed into the
+handler:
 
 ```ts
 const workflow = ow.defineWorkflow(
-  { name: "versioned-workflow" },
+  { name: "versioned-workflow", version: "v2" },
   async ({ input, step, version }) => {
     if (version === "v1") {
       // Old code path
@@ -388,11 +421,10 @@ const workflow = ow.defineWorkflow(
     }
   }
 );
-
-// Start workflows with specific versions
-await workflow.run({ input: "..." }, { version: "v1" });
-await workflow.run({ input: "..." }, { version: "v2" });
 ```
+
+New workflow runs will use the latest configured version; existing runs can
+continue to replay using the version they were created with.
 
 ### Best Practices
 
@@ -422,6 +454,22 @@ const runHandle = await myWorkflow.run({ userId: "123" });
 const result = await runHandle.result();
 console.log(result);
 ```
+
+### Canceling Workflows
+
+You can cancel a workflow that is pending, running, or sleeping to prevent it
+from continuing to the next step:
+
+```ts
+const handle = await myWorkflow.run({ data: "..." });
+
+// Cancel the workflow
+await handle.cancel();
+```
+
+Canceled workflows transition to a `canceled` status. If a workflow is canceled
+while a worker is processing it, the worker will detect the cancelation and stop
+execution before committing further progress.
 
 ### Async Fire-and-Forget
 

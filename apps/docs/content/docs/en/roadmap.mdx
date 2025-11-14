@@ -9,12 +9,12 @@ icon: Map
 OpenWorkflow is in active development and moving quickly. This page outlines what's been completed and what's coming next.
 
 <Callout type="info" title="Active Development">
-OpenWorkflow is currently in **v0.1** and under active development. The core features are stable and production-ready, but we're continuously adding new capabilities based on community feedback.
+OpenWorkflow is currently in **v0.2** and under active development. The core features are stable and production-ready, but we're continuously adding new capabilities based on community feedback.
 </Callout>
 
-## Current Status: v0.1
+## Current Status
 
-The v0.1 release includes core functionality for building durable workflows:
+The current release includes core functionality for building durable workflows:
 
 ### Completed Features
 
@@ -25,6 +25,7 @@ The v0.1 release includes core functionality for building durable workflows:
 - **Parallel Step Execution** - Execute multiple steps concurrently with `Promise.all`
 - **Type Safety** - Full TypeScript support with generic input/output types
 - **Deterministic Replay** - Workflows resume from the last completed step after crashes
+- **Sleeping (Pausing) Workflows** - Durable timers via `step.sleep` that free worker slots
 
 ### Current Limitations
 
@@ -155,11 +156,14 @@ Feature prioritization is based on:
 
 ## Version History
 
-### v0.1.0 (Current)
+### v0.2.0 (Current)
 
-**Released:** January 2025
+Core features for building production-ready durable workflows, plus:
+- Sleep workflows with `step.sleep(name, duration)`
 
-Core features for building production-ready durable workflows:
+### v0.1.0
+
+Initial release with core durable workflow features:
 - PostgreSQL backend
 - Worker-driven architecture
 - Step memoization
@@ -169,9 +173,9 @@ Core features for building production-ready durable workflows:
 
 ### Future Versions
 
-- **v0.2.x** - CLI and Dashboard UI
 - **v0.3.x** - Workflow versioning and signals
-- **v0.4.x** - Additional backends (Redis, SQLite)
+- **v0.4.x** - CLI and Dashboard UI
+- **v0.5.x** - Additional backends (Redis, SQLite)
 - **v1.0.x** - Multi-language SDKs and enterprise features
 
 ## Next Steps

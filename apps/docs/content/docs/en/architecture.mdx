@@ -202,23 +202,21 @@ INSERT INTO workflow_runs (
 
 ### Job Polling
 
-A **Worker** process polls the `workflow_runs` table, looking for jobs with:
-
-- `status = 'pending'`
-- `available_at <= NOW()`
-
-It uses an atomic query to claim a single workflow run:
+A **Worker** process polls the `workflow_runs` table, looking for runs whose
+`available_at` timestamp is in the past and whose status indicates that work is
+ready to be done (for example, newly created work, completed sleeps, or runs
+with an expired lease). A simplified version of this pattern looks like:
 
 ```sql
 SELECT * FROM workflow_runs
-WHERE status = 'pending'
-  AND available_at <= NOW()
+WHERE available_at <= NOW()
 ORDER BY available_at ASC
 LIMIT 1
 FOR UPDATE SKIP LOCKED;
 ```
 
-The worker then updates the claimed run:
+The worker then updates the claimed run to mark it as `running` and extend its
+lease:
 
 ```sql
 UPDATE workflow_runs
@@ -329,14 +327,9 @@ It serves multiple purposes:
 
 ### Scheduling
 
-Set `availableAt` to a future time to schedule a workflow:
-
-```ts
-await myWorkflow.run(
-  { userId: "123" },
-  { availableAt: new Date(Date.now() + 60000) } // Run in 1 minute
-);
-```
+Workflows can be scheduled for future execution by setting `available_at` in
+the future. Internally, OpenWorkflow uses this for features like durable
+sleeping (`step.sleep`) and retry backoff.
 
 ### Heartbeating
 
@@ -394,6 +387,25 @@ const result2 = await step.run({ name: "step-2" }, async () => {
   return await anotherApiCall();
 });
 ```
+
+### Sleeping Steps
+
+In addition to regular function steps, workflows can use durable sleeps to pause
+execution until a future time without tying up a worker slot:
+
+```ts
+// Pause for 1 hour (durable, non-blocking)
+await step.sleep("wait-one-hour", "1h");
+```
+
+When the worker encounters `step.sleep`:
+
+1. It marks the `workflow_run` as `sleeping`
+2. It sets `available_at` to the wake-up time
+3. It releases the workflow so other work can run
+
+When `available_at` is reached, another worker will claim the run and resume
+execution after the sleep.
 
 ### High Concurrency
 
@@ -483,6 +495,21 @@ If the deadline is reached:
 - The workflow is marked as `failed`
 - No further retries occur
 
+### Workflow Cancelation
+
+Workflows can also be explicitly canceled via the Client API:
+
+```ts
+const handle = await myWorkflow.run({ userId: "123" });
+
+// Later on, cancel the workflow
+await handle.cancel();
+```
+
+If a workflow is canceled while a worker is executing it, the worker will detect
+the cancelation, stop further execution, and mark the run as `canceled`. This
+prevents partially executed work from being committed as a successful result.
+
 ## Concurrency & Parallelism
 
 ### Workflow Concurrency
@@ -546,7 +573,7 @@ Workflows receive a `version` parameter for conditional logic:
 
 ```ts
 const workflow = ow.defineWorkflow(
-  { name: "versioned-workflow" },
+  { name: "versioned-workflow", version: "v2" },
   async ({ step, version }) => {
     if (version === "v1") {
       await step.run({ name: "old-step-name" }, ...);
@@ -619,7 +646,7 @@ CREATE TABLE workflow_runs (
   id UUID PRIMARY KEY,
   workflow_name TEXT NOT NULL,
   version TEXT,
-  status TEXT NOT NULL, -- 'pending' | 'running' | 'succeeded' | 'failed'
+  status TEXT NOT NULL, -- 'pending' | 'running' | 'sleeping' | 'succeeded' | 'failed' | 'canceled'
   worker_id TEXT,
   input JSONB,
   output JSONB,
