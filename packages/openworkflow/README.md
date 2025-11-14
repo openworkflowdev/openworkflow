@@ -366,24 +366,23 @@ const workflow = ow.defineWorkflow(
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
 - ✅ Sleeping (pausing) workflows
-
-**Coming in v0.3:**
-
 - ✅ Workflow versioning
 - ✅ Workflow cancelation
 
 **Coming Soon:**
 
-> These releeases don't yet include a dashboard UI or CLI. For now, you can
+> These releases don't yet include a dashboard UI or CLI. For now, you can
 > inspect workflow and step state directly in PostgreSQL (workflow_runs and
 > step_runs tables). A CLI and dashboard are planned for an upcoming release to
 > make debugging and monitoring much easier.
 
+- Improved local dev experience
 - CLI
 - Dashboard UI
+- Idempotency keys
+- Rollback / compensation functions
 - Configurable retry policies
 - Signals for external events
-- Workflow cancelation
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 
