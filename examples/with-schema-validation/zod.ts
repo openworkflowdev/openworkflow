@@ -12,7 +12,7 @@ const ow = new OpenWorkflow({ backend });
 const summarizeZodSchema = z.object({
   docUrl: z.url(),
   num: z.string(),
-})
+});
 
 /**
  * An example workflow that extracts, cleans, summarizes, and saves a document
