@@ -49,50 +49,34 @@ export class OpenWorkflow {
    * Define and register a new workflow.
    */
   defineWorkflow<
-    Input,
-    Output,
     TSchema extends WorkflowInputSchema | undefined = undefined,
+    Input = TSchema extends WorkflowInputSchema
+      ? InferWorkflowSchemaOut<TSchema>
+      : unknown,
+    RunInput = TSchema extends WorkflowInputSchema
+      ? InferWorkflowSchemaIn<TSchema>
+      : Input,
+    Output = unknown,
   >(
     config: WorkflowDefinitionConfig<TSchema>,
-    fn: WorkflowFunction<
-      TSchema extends WorkflowInputSchema
-        ? InferWorkflowSchemaOut<TSchema>
-        : Input,
-      Output
-    >,
-  ): WorkflowDefinition<
-    TSchema extends WorkflowInputSchema
-      ? InferWorkflowSchemaOut<TSchema>
-      : Input,
-    Output,
-    TSchema extends WorkflowInputSchema ? InferWorkflowSchemaIn<TSchema> : Input
-  > {
+    fn: WorkflowFunction<Input, Output>,
+  ): WorkflowDefinition<Input, Output, RunInput> {
     const { name, version } = config;
-
-    type HandlerInput = TSchema extends WorkflowInputSchema
-      ? InferWorkflowSchemaOut<TSchema>
-      : Input;
-    type RunInput = TSchema extends WorkflowInputSchema
-      ? InferWorkflowSchemaIn<TSchema>
-      : Input;
 
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
     }
 
-    const parser = config.schema
-      ? (getWorkflowSchemaParseFn(config.schema) as WorkflowSchemaParseFn<
-          HandlerInput,
-          RunInput | undefined
-        >)
-      : null;
-
-    const definition = new WorkflowDefinition<HandlerInput, Output, RunInput>({
+    const definition = new WorkflowDefinition<Input, Output, RunInput>({
       backend: this.backend,
       name,
       ...(version !== undefined && { version }),
-      fn: fn as WorkflowFunction<HandlerInput, Output>,
-      ...(parser && { parseInput: parser }),
+      fn,
+      ...(config.schema && {
+        parseInput: getWorkflowSchemaParseFn(
+          config.schema,
+        ) as WorkflowSchemaParseFn<Input, RunInput | undefined>,
+      }),
     });
 
     this.registeredWorkflows.set(name, definition);
