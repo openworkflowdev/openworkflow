@@ -337,9 +337,6 @@ const workflow = ow.defineWorkflow(
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
 - ✅ Sleeping (pausing) workflows
-
-**Coming in v0.3:**
-
 - ✅ Workflow versioning
 - ✅ Workflow cancelation
 
@@ -350,11 +347,13 @@ const workflow = ow.defineWorkflow(
 > step_runs tables). A CLI and dashboard are planned for an upcoming release to
 > make debugging and monitoring much easier.
 
+- Improved local dev experience
 - CLI
 - Dashboard UI
+- Idempotency keys
+- Rollback / compensation functions
 - Configurable retry policies
 - Signals for external events
-- Workflow cancelation
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 
