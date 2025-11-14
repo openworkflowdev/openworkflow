@@ -90,7 +90,7 @@ async function main() {
         num: String(i + 1),
       }),
     );
-    console.log(`Workflow run ${String(i + 1)} enqueued"`);
+    console.log(`Workflow run ${String(i + 1)} enqueued`);
   }
 
   // wait for all run handles to be created
