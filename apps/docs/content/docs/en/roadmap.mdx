@@ -16,7 +16,7 @@ OpenWorkflow is currently in **v0.1** and under active development. The core fea
 
 The v0.1 release includes core functionality for building durable workflows:
 
-### ✅ Completed Features
+### Completed Features
 
 - **PostgreSQL Backend** - Full support for PostgreSQL as the state backend
 - **Worker with Concurrency Control** - Run multiple workflows simultaneously with configurable concurrency
@@ -26,7 +26,7 @@ The v0.1 release includes core functionality for building durable workflows:
 - **Type Safety** - Full TypeScript support with generic input/output types
 - **Deterministic Replay** - Workflows resume from the last completed step after crashes
 
-### 📝 Current Limitations
+### Current Limitations
 
 <Callout type="warn" title="Note on Tooling">
 The v0.1 release doesn't yet include a dashboard UI or CLI. For now, you can inspect workflow and step state directly in PostgreSQL (`workflow_runs` and `step_attempts` tables). A CLI and dashboard are planned for an upcoming release to make debugging and monitoring much easier.
@@ -52,7 +52,7 @@ The v0.1 release doesn't yet include a dashboard UI or CLI. For now, you can ins
 - Monitor worker health and performance
 - Debug workflow issues visually
 
-### 🔄 Workflow Management
+### Workflow Management
 
 - **Workflow Versioning** - Deploy new workflow versions without breaking in-flight executions
 - **Configurable Retry Policies** - Fine-grained control over retry behavior per workflow or step
@@ -61,7 +61,7 @@ The v0.1 release doesn't yet include a dashboard UI or CLI. For now, you can ins
 - **Scheduled Workflows** - Cron-like scheduling for recurring workflows
 - **Workflow Timeouts** - Set execution time limits per workflow
 
-### 🗄️ Additional Backends
+### Additional Backends
 
 Expand beyond PostgreSQL to support more infrastructure options:
 
@@ -69,7 +69,7 @@ Expand beyond PostgreSQL to support more infrastructure options:
 - **SQLite Backend** - Zero-configuration local development and embedded deployments
 - **DynamoDB Backend** (Under Consideration) - Serverless-native workflow execution
 
-### 🌍 Multi-Language SDKs
+### Multi-Language SDKs
 
 Expand OpenWorkflow to more programming languages:
 
@@ -77,7 +77,7 @@ Expand OpenWorkflow to more programming languages:
 - **Python SDK** - Planned for Python developers and data science workflows
 - **Rust SDK** (Under Consideration) - High-performance workflow execution
 
-### 🔐 Enterprise Features
+### Enterprise Features
 
 - **Audit Logging** - Complete audit trail of all workflow executions
 - **Role-Based Access Control** - Fine-grained permissions for workflows and workers
