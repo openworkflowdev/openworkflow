@@ -37,7 +37,7 @@ function summarizeCustomSchema(value: unknown) {
     docUrl,
     num,
   };
-};
+}
 
 /**
  * An example workflow that extracts, cleans, summarizes, and saves a document
