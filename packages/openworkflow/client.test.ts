@@ -97,6 +97,45 @@ describe("OpenWorkflow", () => {
     expect(handle.workflowRun.deadlineAt).not.toBeNull();
     expect(handle.workflowRun.deadlineAt?.getTime()).toBe(deadline.getTime());
   });
+
+  test("creates workflow run with version", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "versioned-test", version: "v2.0" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.version).toBe("v2.0");
+  });
+
+  test("creates workflow run without version", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "unversioned-test" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.version).toBeNull();
+  });
+
+  test("cancels workflow run via handle", async () => {
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "cancel-test" }, noopFn);
+    const handle = await workflow.run({ value: 1 });
+
+    await handle.cancel();
+
+    const workflowRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(workflowRun?.status).toBe("canceled");
+    expect(workflowRun?.finishedAt).not.toBeNull();
+  });
 });
 
 async function noopFn() {

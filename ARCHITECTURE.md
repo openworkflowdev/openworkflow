@@ -46,8 +46,13 @@ A workflow run can be in one of the following states:
 - **`pending`**: The workflow run has been created and is waiting for a worker
   to claim it.
 - **`running`**: The workflow run is actively being executed by a worker.
+- **`sleeping`**: The workflow run is waiting for a duration to elapse
+  (`step.sleep`). The `availableAt` timestamp controls when it becomes available
+  again.
 - **`succeeded`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed and all retries have been exhausted.
+- **`canceled`**: The workflow run has been explicitly canceled and will not be
+  processed further.
 
 ### 1.4. Step Attempt Statuses
 
@@ -56,7 +61,8 @@ A step attempt can be in one of the following states:
 - **`running`**: The step attempt is currently being executed.
 - **`succeeded`**: The step attempt completed successfully and its result is
   stored.
-- **`failed`**: The step attempt failed.
+- **`failed`**: The step attempt failed. The workflow may create a new attempt
+  if it retries.
 
 ## 2. System Architecture Overview
 
@@ -116,9 +122,11 @@ of coordination. There is no separate orchestrator server.
     new workflow run. The Client creates a new entry in the `workflow_runs`
     table with a `pending` status.
 3.  **Job Polling**: A **Worker** process polls the `workflow_runs` table,
-    looking for jobs with `status = 'pending'` and an `availableAt` timestamp in
-    the past. It uses an atomic `FOR UPDATE SKIP LOCKED` query to claim a single
-    workflow run, setting its status to `running`.
+    looking for runs whose `availableAt` timestamp is in the past and whose
+    status is either `pending` (new work), `sleeping` (but done), or `running`
+    with an expired lease. It uses an atomic `FOR UPDATE SKIP LOCKED` query to
+    claim a single workflow run, setting its status to `running` and extending
+    the lease.
 4.  **Code Execution (Replay Loop)**: The Worker loads the history of completed
     `step_attempts` for the claimed workflow. It then executes the workflow code
     from the beginning, using the history to memoize results of
@@ -126,10 +134,11 @@ of coordination. There is no separate orchestrator server.
 5.  **Step Processing**: When the Worker encounters a new step, it creates a
     `step_attempt` record with status `running`, executes the step function, and
     then updates the `step_attempt` to `succeeded` upon completion. The Worker
-    continues executing inline until the workflow code completes.
+    continues executing inline until the workflow code completes or encounters a
+    sleep.
 6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
     it is created and completed, and updates the status of the `workflow_run`
-    (e.g., `succeeded`).
+    (e.g., `succeeded`, `sleeping`).
 
 ## 3. The Execution Model: State Machine Replication
 
@@ -192,6 +201,15 @@ const user = await step.run({ name: "fetch-user" }, async () => {
 });
 ```
 
+**`step.sleep(name, duration)`**: Pauses the workflow until a specified time.
+When encountered, the worker sets the workflow run's `status` to `sleeping` and
+`availableAt` to the resume time, then releases the workflow. This frees up the
+worker slot for other work - it's not a blocking sleep but a durable pause.
+
+```ts
+await step.sleep("wait-one-hour", "1h");
+```
+
 ## 4. Error Handling & Retries
 
 ### 4.1. Step Failures & Retries
@@ -215,6 +233,21 @@ exhausted, its status is set to `failed` permanently.
 Workflow runs can include an optional `deadlineAt` timestamp, specifying the
 time by which the workflow must complete. Steps and retries are skipped if they
 would exceed the deadline, making the run permanently `failed`.
+
+### 4.4. Workflow Cancelation
+
+Workflows can be explicitly canceled at any time via the Client API:
+
+```ts
+const handle = await workflow.run({ "..." });
+await handle.cancel();
+```
+
+**Handling cancelation during execution**: If a workflow is canceled while a
+worker is actively processing it, the worker will detect the cancelation. The
+worker will then stop further execution of the workflow code and mark the
+workflow as `canceled`. This ensures that partial work from the canceled
+workflow is not committed as a successful result.
 
 ## 5. Concurrency & Parallelism
 

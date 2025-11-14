@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/backend-postgres",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "exports": {
     ".": {
@@ -28,6 +28,6 @@
     "squawk-cli": "^2.30.0"
   },
   "peerDependencies": {
-    "openworkflow": "^0.1.0"
+    "openworkflow": "^0.2.0"
   }
 }

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
 describe("Worker", () => {
-  test("passes workflow input to handlers (known slow test - awaits result)", async () => {
+  test("passes workflow input to handlers (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -23,7 +23,7 @@ describe("Worker", () => {
     expect(result).toEqual(payload);
   });
 
-  test("processes workflow runs to completion (known slow test - awaits result)", async () => {
+  test("processes workflow runs to completion (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -40,7 +40,7 @@ describe("Worker", () => {
     expect(result).toBe(42);
   });
 
-  test("step.run reuses cached results (known slow test - awaits result)", async () => {
+  test("step.run reuses cached results (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -97,7 +97,7 @@ describe("Worker", () => {
     expect(updated?.availableAt).not.toBeNull();
   });
 
-  test("retries failed workflows automatically (known slow test - awaits result)", async () => {
+  test("retries failed workflows automatically (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -141,7 +141,7 @@ describe("Worker", () => {
     await worker.tick(); // no runs queued
   });
 
-  test("handles step functions that return undefined (known slow test - awaits result)", async () => {
+  test("handles step functions that return undefined (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -167,7 +167,7 @@ describe("Worker", () => {
     expect(result).toEqual({ success: true });
   });
 
-  test("executes steps synchronously within workflow (known slow test - awaits result)", async () => {
+  test("executes steps synchronously within workflow (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -199,7 +199,7 @@ describe("Worker", () => {
     expect(result).toEqual(["start", "step1", "between", "step2", "end"]);
   });
 
-  test("executes parallel steps with Promise.all (known slow test - awaits result)", async () => {
+  test("executes parallel steps with Promise.all (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -275,7 +275,7 @@ describe("Worker", () => {
     expect(completed).toBe(2);
   });
 
-  test("worker starts, processes work, and stops gracefully (known slow test - awaits result)", async () => {
+  test("worker starts, processes work, and stops gracefully (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -294,7 +294,7 @@ describe("Worker", () => {
     expect(result).toBe("complete");
   });
 
-  test("recovers from crashes during parallel step execution (known slow test - awaits result)", async () => {
+  test("recovers from crashes during parallel step execution (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -341,7 +341,7 @@ describe("Worker", () => {
     expect(attemptCount).toBe(2);
   });
 
-  test("reclaims workflow run when heartbeat stops (known slow test - awaits result)", async () => {
+  test("reclaims workflow run when heartbeat stops (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -427,7 +427,7 @@ describe("Worker", () => {
     await worker.stop();
   });
 
-  test("worker only sleeps between claims when no work is available (known slow test - awaits result)", async () => {
+  test("worker only sleeps between claims when no work is available (known slow test)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -459,6 +459,624 @@ describe("Worker", () => {
     // with this conditional sleep, all workflows should complete quickly
     // without it (with 100ms sleep between ticks), it would take much longer
     expect(duration).toBeLessThan(3000); // should complete in under 3 seconds
+  });
+
+  test("only failed steps re-execute on retry (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const executionCounts = {
+      stepA: 0,
+      stepB: 0,
+      stepC: 0,
+    };
+
+    const workflow = client.defineWorkflow(
+      { name: "mixed-retry" },
+      async ({ step }) => {
+        const a = await step.run({ name: "step-a" }, () => {
+          executionCounts.stepA++;
+          return "a-result";
+        });
+
+        const b = await step.run({ name: "step-b" }, () => {
+          executionCounts.stepB++;
+          if (executionCounts.stepB === 1) {
+            throw new Error("Step B fails on first attempt");
+          }
+          return "b-result";
+        });
+
+        const c = await step.run({ name: "step-c" }, () => {
+          executionCounts.stepC++;
+          return "c-result";
+        });
+
+        return { a, b, c };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first workflow attempt
+    // - step-a succeeds
+    // - step-b fails
+    // - step-c never runs (workflow fails at step-b)
+    await worker.tick();
+    await sleep(100);
+    expect(executionCounts.stepA).toBe(1);
+    expect(executionCounts.stepB).toBe(1);
+    expect(executionCounts.stepC).toBe(0);
+
+    // wait for backoff
+    await sleep(1100);
+
+    // second workflow attempt
+    // - step-a should be cached (not re-executed)
+    // - step-b should be re-executed (failed previously)
+    // - step-c should execute for first time
+    await worker.tick();
+    await sleep(100);
+    expect(executionCounts.stepA).toBe(1); // still 1, was cached
+    expect(executionCounts.stepB).toBe(2); // incremented, was retried
+    expect(executionCounts.stepC).toBe(1); // incremented, first execution
+
+    const result = await handle.result();
+    expect(result).toEqual({
+      a: "a-result",
+      b: "b-result",
+      c: "c-result",
+    });
+  });
+
+  test("step.sleep postpones workflow execution (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepCount = 0;
+    const workflow = client.defineWorkflow(
+      { name: "sleep-test" },
+      async ({ step }) => {
+        const before = await step.run({ name: "before-sleep" }, () => {
+          stepCount++;
+          return "before";
+        });
+
+        await step.sleep("pause", "100ms");
+
+        const after = await step.run({ name: "after-sleep" }, () => {
+          stepCount++;
+          return "after";
+        });
+
+        return { before, after };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution - runs before-sleep, then sleeps
+    await worker.tick();
+    await sleep(50); // wait for processing
+    expect(stepCount).toBe(1);
+
+    // verify workflow was postponed with sleeping status
+    const slept = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(slept?.status).toBe("sleeping");
+    expect(slept?.workerId).toBeNull(); // released during sleep
+    expect(slept?.availableAt).not.toBeNull();
+    if (!slept?.availableAt) throw new Error("availableAt should be set");
+    const delayMs = slept.availableAt.getTime() - Date.now();
+    expect(delayMs).toBeGreaterThan(0);
+    expect(delayMs).toBeLessThan(150); // should be ~100ms
+
+    // verify sleep step is in "running" state during sleep
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    const sleepStep = attempts.find((a) => a.stepName === "pause");
+    expect(sleepStep?.status).toBe("running");
+
+    // wait for sleep duration
+    await sleep(150);
+
+    // second execution (after sleep)
+    await worker.tick();
+    await sleep(50); // wait for processing
+    expect(stepCount).toBe(2);
+
+    // verify sleep step is now "succeeded"
+    const refreshedAttempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    const completedSleepStep = refreshedAttempts.find(
+      (a) => a.stepName === "pause",
+    );
+    expect(completedSleepStep?.status).toBe("succeeded");
+
+    const result = await handle.result();
+    expect(result).toEqual({ before: "before", after: "after" });
+  });
+
+  test("step.sleep is cached on replay", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let step1Count = 0;
+    let step2Count = 0;
+    const workflow = client.defineWorkflow(
+      { name: "sleep-cache-test" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, () => {
+          step1Count++;
+          return "one";
+        });
+
+        // this should only postpone once
+        await step.sleep("wait", "50ms");
+
+        await step.run({ name: "step-2" }, () => {
+          step2Count++;
+          return "two";
+        });
+
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first attempt: execute step-1, then sleep (step-2 not executed)
+    await worker.tick();
+    await sleep(50);
+    expect(step1Count).toBe(1);
+    expect(step2Count).toBe(0);
+
+    await sleep(100); // wait for sleep to complete
+
+    // second attempt: step-1 is cached (not re-executed), sleep is cached, step-2 executes
+    await worker.tick();
+    await sleep(50);
+    expect(step1Count).toBe(1); // still 1, was cached
+    expect(step2Count).toBe(1); // now 1, executed after sleep
+
+    const result = await handle.result();
+    expect(result).toBe("done");
+  });
+
+  test("step.sleep throws error for invalid duration format", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "invalid-duration" },
+      async ({ step }) => {
+        await step.sleep("bad", "invalid");
+        return "should-not-reach";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    await worker.tick();
+    await sleep(100);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.error).toBeDefined();
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain("Invalid duration format");
+  });
+
+  test("step.sleep handles multiple sequential sleeps (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let executionCount = 0;
+    const workflow = client.defineWorkflow(
+      { name: "sequential-sleeps" },
+      async ({ step }) => {
+        executionCount++;
+
+        await step.run({ name: "step-1" }, () => "one");
+        await step.sleep("sleep-1", "50ms");
+        await step.run({ name: "step-2" }, () => "two");
+        await step.sleep("sleep-2", "50ms");
+        await step.run({ name: "step-3" }, () => "three");
+
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution: step-1, then sleep-1
+    await worker.tick();
+    await sleep(50);
+    expect(executionCount).toBe(1);
+
+    // verify first sleep is running
+    const attempts1 = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts1.find((a) => a.stepName === "sleep-1")?.status).toBe(
+      "running",
+    );
+
+    // wait for first sleep
+    await sleep(100);
+
+    // second execution: sleep-1 succeeded, step-2, then sleep-2
+    await worker.tick();
+    await sleep(50);
+    expect(executionCount).toBe(2);
+
+    // verify second sleep is running
+    const attempts2 = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts2.find((a) => a.stepName === "sleep-1")?.status).toBe(
+      "succeeded",
+    );
+    expect(attempts2.find((a) => a.stepName === "sleep-2")?.status).toBe(
+      "running",
+    );
+
+    // wait for second sleep
+    await sleep(100);
+
+    // third execution: sleep-2 succeeded, step-3, complete
+    await worker.tick();
+    await sleep(50);
+    expect(executionCount).toBe(3);
+
+    const result = await handle.result();
+    expect(result).toBe("done");
+
+    // verify all steps succeeded
+    const finalAttempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(finalAttempts.length).toBe(5); // 3 regular steps + 2 sleeps
+    expect(finalAttempts.every((a) => a.status === "succeeded")).toBe(true);
+  });
+
+  test("sleeping workflows can be claimed after availableAt", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "sleeping-claim-test" },
+      async ({ step }) => {
+        await step.run({ name: "before" }, () => "before");
+        await step.sleep("wait", "100ms");
+        await step.run({ name: "after" }, () => "after");
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution - sleep
+    await worker.tick();
+    await sleep(50);
+
+    // verify workflow is in sleeping state
+    const sleeping = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(sleeping?.status).toBe("sleeping");
+    expect(sleeping?.workerId).toBeNull();
+
+    // wait for sleep duration
+    await sleep(100);
+
+    // verify workflow can be claimed again
+    const claimed = await backend.claimWorkflowRun({
+      workerId: "test-worker",
+      leaseDurationMs: 30_000,
+    });
+    expect(claimed?.id).toBe(handle.workflowRun.id);
+    expect(claimed?.status).toBe("running");
+    expect(claimed?.workerId).toBe("test-worker");
+  });
+
+  test("sleep is not skipped when worker crashes after creating sleep step but before marking workflow as sleeping (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let executionCount = 0;
+    let beforeSleepCount = 0;
+    let afterSleepCount = 0;
+
+    const workflow = client.defineWorkflow(
+      { name: "crash-during-sleep" },
+      async ({ step }) => {
+        executionCount++;
+
+        await step.run({ name: "before-sleep" }, () => {
+          beforeSleepCount++;
+          return "before";
+        });
+
+        // this sleep should NOT be skipped even if crash happens
+        await step.sleep("critical-pause", "200ms");
+
+        await step.run({ name: "after-sleep" }, () => {
+          afterSleepCount++;
+          return "after";
+        });
+
+        return { executionCount, beforeSleepCount, afterSleepCount };
+      },
+    );
+
+    const handle = await workflow.run();
+
+    // first worker processes the workflow until sleep
+    const worker1 = client.newWorker();
+    await worker1.tick();
+    await sleep(100);
+
+    const workflowAfterFirst = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(workflowAfterFirst?.status).toBe("sleeping");
+
+    const attemptsAfterFirst = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    const sleepStep = attemptsAfterFirst.find(
+      (a) => a.stepName === "critical-pause",
+    );
+    expect(sleepStep).toBeDefined();
+    expect(sleepStep?.kind).toBe("sleep");
+    expect(sleepStep?.status).toBe("running");
+
+    await sleep(50); // only 50ms of the 200ms sleep
+
+    // if there's a running sleep step, the workflow should be properly
+    // transitioned to sleeping
+    const worker2 = client.newWorker();
+    await worker2.tick();
+
+    // after-sleep step should NOT have executed yet
+    expect(afterSleepCount).toBe(0);
+
+    // wait for the full sleep duration to elapse then check to make sure
+    // workflow is claimable and resume
+    await sleep(200);
+    await worker2.tick();
+    await sleep(100);
+    expect(afterSleepCount).toBe(1);
+    const result = await handle.result();
+    expect(result.afterSleepCount).toBe(1);
+  });
+
+  test("version enables conditional code paths (known slow test)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "conditional-workflow", version: "v2" },
+      async ({ version, step }) => {
+        return version === "v1"
+          ? await step.run({ name: "old-step" }, () => "old-logic")
+          : await step.run({ name: "new-step" }, () => "new-logic");
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result).toBe("new-logic");
+  });
+
+  test("workflow version is null when not specified", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "unversioned-workflow" },
+      async ({ version, step }) => {
+        const result = await step.run({ name: "check-version" }, () => {
+          return { version };
+        });
+        return result;
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result.version).toBeNull();
+  });
+
+  test("cancels a pending workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-pending" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, () => "result");
+        return { completed: true };
+      },
+    );
+
+    const handle = await workflow.run();
+
+    // cancel before worker processes it
+    await handle.cancel();
+
+    const workflowRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(workflowRun?.status).toBe("canceled");
+    expect(workflowRun?.finishedAt).not.toBeNull();
+    expect(workflowRun?.availableAt).toBeNull();
+    expect(workflowRun?.workerId).toBeNull();
+  });
+
+  test("cancels a sleeping workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-sleeping" },
+      async ({ step }) => {
+        await step.sleep("sleep-1", "1h");
+        return { completed: true };
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    // cancel while sleeping
+    await handle.cancel();
+
+    const canceled = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(canceled?.status).toBe("canceled");
+    expect(canceled?.finishedAt).not.toBeNull();
+    expect(canceled?.availableAt).toBeNull();
+    expect(canceled?.workerId).toBeNull();
+  });
+
+  test("cannot cancel a succeeded workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-succeeded" },
+      () => ({ completed: true }),
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+    await worker.tick();
+
+    const result = await handle.result();
+    expect(result.completed).toBe(true);
+
+    // try to cancel after success
+    await expect(handle.cancel()).rejects.toThrow(
+      /Cannot cancel workflow run .* with status succeeded/,
+    );
+  });
+
+  test("cannot cancel a failed workflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "cancel-failed" }, () => {
+      throw new Error("intentional failure");
+    });
+    const worker = client.newWorker();
+
+    const handle = await workflow.run({ value: 1 }, { deadlineAt: new Date() });
+    await worker.tick();
+
+    // wait for it to fail due to deadline
+    await sleep(100);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(failed?.status).toBe("failed");
+
+    // try to cancel after failure
+    await expect(handle.cancel()).rejects.toThrow(
+      /Cannot cancel workflow run .* with status failed/,
+    );
+  });
+
+  test("cannot cancel non-existent workflow", async () => {
+    const backend = await createBackend();
+
+    await expect(
+      backend.cancelWorkflowRun({
+        workflowRunId: "non-existent-id",
+      }),
+    ).rejects.toThrow(/Workflow run non-existent-id does not exist/);
+  });
+
+  test("worker handles when canceled workflow during execution", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepExecuted = false;
+    const workflow = client.defineWorkflow(
+      { name: "cancel-during-execution" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, async () => {
+          stepExecuted = true;
+          // simulate some work
+          await sleep(50);
+          return "result";
+        });
+        return { completed: true };
+      },
+    );
+    const worker = client.newWorker();
+
+    const handle = await workflow.run();
+
+    // start processing in the background
+    const tickPromise = worker.tick();
+    await sleep(25);
+
+    // cancel while step is executing
+    await handle.cancel();
+
+    // wait for tick to complete
+    await tickPromise;
+
+    // step should have been executed but workflow should be canceled
+    expect(stepExecuted).toBe(true);
+    const canceled = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(canceled?.status).toBe("canceled");
+  });
+
+  test("result() rejects for canceled workflows", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "cancel-result" },
+      async ({ step }) => {
+        await step.sleep("sleep-1", "1h");
+        return { completed: true };
+      },
+    );
+
+    const handle = await workflow.run();
+    await handle.cancel();
+
+    await expect(handle.result()).rejects.toThrow(
+      /Workflow cancel-result was canceled/,
+    );
   });
 });
 

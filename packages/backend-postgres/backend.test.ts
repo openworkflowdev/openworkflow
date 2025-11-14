@@ -192,19 +192,96 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const previousExpiry = claimed.availableAt;
-      await backend.heartbeatWorkflowRun({
+      const heartbeated = await backend.heartbeatWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         leaseDurationMs: 200,
       });
 
-      const refreshed = await backend.getWorkflowRun({
+      expect(heartbeated.availableAt?.getTime()).toBeGreaterThan(
+        previousExpiry?.getTime() ?? Infinity,
+      );
+    });
+  });
+
+  describe("sleepWorkflowRun()", () => {
+    test("sets a running workflow to sleeping status until a future time", async () => {
+      const workerId = randomUUID();
+      await createPendingWorkflowRun(backend);
+
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 100,
+      });
+      if (!claimed) throw new Error("Expected workflow run to be claimed");
+
+      const sleepUntil = new Date(Date.now() + 5000); // 5 seconds from now
+
+      await backend.sleepWorkflowRun({
+        workflowRunId: claimed.id,
+        workerId,
+        availableAt: sleepUntil,
+      });
+
+      const fetched = await backend.getWorkflowRun({
         workflowRunId: claimed.id,
       });
 
-      expect(refreshed?.availableAt?.getTime()).toBeGreaterThan(
-        previousExpiry?.getTime() ?? Infinity,
-      );
+      expect(fetched).not.toBeNull();
+      expect(fetched?.availableAt?.getTime()).toBe(sleepUntil.getTime());
+      expect(fetched?.workerId).toBeNull();
+      expect(fetched?.status).toBe("sleeping");
+    });
+
+    test("fails when trying to sleep a canceled workflow", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      // succeeded run
+      let claimed = await createClaimedWorkflowRun(backend);
+      await backend.markWorkflowRunSucceeded({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        output: null,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      // failed run
+      claimed = await createClaimedWorkflowRun(backend);
+      await backend.markWorkflowRunFailed({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        error: null,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      // canceled run
+      claimed = await createClaimedWorkflowRun(backend);
+      await backend.cancelWorkflowRun({
+        workflowRunId: claimed.id,
+      });
+      await expect(
+        backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId ?? "",
+          availableAt: new Date(Date.now() + 60_000),
+        }),
+      ).rejects.toThrow("Failed to sleep workflow run");
+
+      await backend.stop();
     });
   });
 
@@ -220,20 +297,17 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const output = { ok: true };
-      await backend.markWorkflowRunSucceeded({
+      const succeeded = await backend.markWorkflowRunSucceeded({
         workflowRunId: claimed.id,
         workerId,
         output,
       });
 
-      const finished = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-      expect(finished?.status).toBe("succeeded");
-      expect(finished?.output).toEqual(output);
-      expect(finished?.error).toBeNull();
-      expect(finished?.finishedAt).not.toBeNull();
-      expect(finished?.availableAt).toBeNull();
+      expect(succeeded.status).toBe("succeeded");
+      expect(succeeded.output).toEqual(output);
+      expect(succeeded.error).toBeNull();
+      expect(succeeded.finishedAt).not.toBeNull();
+      expect(succeeded.availableAt).toBeNull();
     });
   });
 
@@ -251,31 +325,27 @@ describe("BackendPostgres", () => {
       const beforeFailTime = Date.now();
 
       const error = { message: "boom" };
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error,
       });
 
-      const rescheduled = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-
       // rescheduled, not permanently failed
-      expect(rescheduled?.status).toBe("pending");
-      expect(rescheduled?.error).toEqual(error);
-      expect(rescheduled?.output).toBeNull();
-      expect(rescheduled?.finishedAt).toBeNull();
-      expect(rescheduled?.workerId).toBeNull();
+      expect(failed.status).toBe("pending");
+      expect(failed.error).toEqual(error);
+      expect(failed.output).toBeNull();
+      expect(failed.finishedAt).toBeNull();
+      expect(failed.workerId).toBeNull();
 
-      expect(rescheduled?.availableAt).not.toBeNull();
-      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
-      const delayMs = rescheduled.availableAt.getTime() - beforeFailTime;
+      expect(failed.availableAt).not.toBeNull();
+      if (!failed.availableAt) throw new Error("Expected availableAt");
+      const delayMs = failed.availableAt.getTime() - beforeFailTime;
       expect(delayMs).toBeGreaterThanOrEqual(900); // ~1s with some tolerance
       expect(delayMs).toBeLessThan(1500);
     });
 
-    test("reschedules with increasing backoff on multiple failures (known slow test - awaits result)", async () => {
+    test("reschedules with increasing backoff on multiple failures (known slow test)", async () => {
       // this test needs isolated namespace
       const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
         namespaceId: randomUUID(),
@@ -292,11 +362,13 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed");
       expect(claimed.attempts).toBe(1);
 
-      await backend.markWorkflowRunFailed({
+      const firstFailed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "first failure" },
       });
+
+      expect(firstFailed.status).toBe("pending");
 
       await sleep(1100); // wait for first backoff (~1s)
 
@@ -310,20 +382,17 @@ describe("BackendPostgres", () => {
       expect(claimed.attempts).toBe(2);
 
       const beforeSecondFail = Date.now();
-      await backend.markWorkflowRunFailed({
+      const secondFailed = await backend.markWorkflowRunFailed({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "second failure" },
       });
 
-      const rescheduled = await backend.getWorkflowRun({
-        workflowRunId: claimed.id,
-      });
-      expect(rescheduled?.status).toBe("pending");
+      expect(secondFailed.status).toBe("pending");
 
       // second attempt should have ~2s backoff (1s * 2^1)
-      if (!rescheduled?.availableAt) throw new Error("Expected availableAt");
-      const delayMs = rescheduled.availableAt.getTime() - beforeSecondFail;
+      if (!secondFailed.availableAt) throw new Error("Expected availableAt");
+      const delayMs = secondFailed.availableAt.getTime() - beforeSecondFail;
       expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
       expect(delayMs).toBeLessThan(2500);
 
@@ -343,7 +412,7 @@ describe("BackendPostgres", () => {
         kind: "function",
         status: "running",
         config: { key: "val" },
-        context: { key: "val" },
+        context: null,
         output: null,
         error: null,
         childWorkflowRunNamespaceId: null,
@@ -447,20 +516,25 @@ describe("BackendPostgres", () => {
       });
       const output = { foo: "bar" };
 
-      await backend.markStepAttemptSucceeded({
+      const succeeded = await backend.markStepAttemptSucceeded({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         output,
       });
 
-      const succeeded = await backend.getStepAttempt({
+      expect(succeeded.status).toBe("succeeded");
+      expect(succeeded.output).toEqual(output);
+      expect(succeeded.error).toBeNull();
+      expect(succeeded.finishedAt).not.toBeNull();
+
+      const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(succeeded?.status).toBe("succeeded");
-      expect(succeeded?.output).toEqual(output);
-      expect(succeeded?.error).toBeNull();
-      expect(succeeded?.finishedAt).not.toBeNull();
+      expect(fetched?.status).toBe("succeeded");
+      expect(fetched?.output).toEqual(output);
+      expect(fetched?.error).toBeNull();
+      expect(fetched?.finishedAt).not.toBeNull();
     });
   });
 
@@ -478,20 +552,25 @@ describe("BackendPostgres", () => {
       });
       const error = { message: "nope" };
 
-      await backend.markStepAttemptFailed({
+      const failed = await backend.markStepAttemptFailed({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         error,
       });
 
-      const failed = await backend.getStepAttempt({
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toEqual(error);
+      expect(failed.output).toBeNull();
+      expect(failed.finishedAt).not.toBeNull();
+
+      const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(failed?.status).toBe("failed");
-      expect(failed?.error).toEqual(error);
-      expect(failed?.output).toBeNull();
-      expect(failed?.finishedAt).not.toBeNull();
+      expect(fetched?.status).toBe("failed");
+      expect(fetched?.error).toEqual(error);
+      expect(fetched?.output).toBeNull();
+      expect(fetched?.finishedAt).not.toBeNull();
     });
   });
 
@@ -603,19 +682,15 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should mark as permanently failed since retry backoff (1s) would exceed deadline (500ms)
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
       });
 
-      const failed = await backend.getWorkflowRun({
-        workflowRunId: created.id,
-      });
-
-      expect(failed?.status).toBe("failed");
-      expect(failed?.availableAt).toBeNull();
-      expect(failed?.finishedAt).not.toBeNull();
+      expect(failed.status).toBe("failed");
+      expect(failed.availableAt).toBeNull();
+      expect(failed.finishedAt).not.toBeNull();
 
       await backend.stop();
     });
@@ -645,19 +720,219 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should reschedule since retry backoff (1s) is before deadline (5s
-      await backend.markWorkflowRunFailed({
+      const failed = await backend.markWorkflowRunFailed({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
       });
 
-      const rescheduled = await backend.getWorkflowRun({
+      expect(failed.status).toBe("pending");
+      expect(failed.availableAt).not.toBeNull();
+      expect(failed.finishedAt).toBeNull();
+
+      await backend.stop();
+    });
+  });
+
+  describe("cancelWorkflowRun()", () => {
+    test("cancels a pending workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const created = await createPendingWorkflowRun(backend);
+      expect(created.status).toBe("pending");
+
+      const canceled = await backend.cancelWorkflowRun({
         workflowRunId: created.id,
       });
 
-      expect(rescheduled?.status).toBe("pending");
-      expect(rescheduled?.availableAt).not.toBeNull();
-      expect(rescheduled?.finishedAt).toBeNull();
+      expect(canceled.status).toBe("canceled");
+      expect(canceled.workerId).toBeNull();
+      expect(canceled.availableAt).toBeNull();
+      expect(canceled.finishedAt).not.toBeNull();
+      expect(deltaSeconds(canceled.finishedAt)).toBeLessThan(1);
+
+      await backend.stop();
+    });
+
+    test("cancels a running workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const created = await createClaimedWorkflowRun(backend);
+      expect(created.status).toBe("running");
+      expect(created.workerId).not.toBeNull();
+
+      const canceled = await backend.cancelWorkflowRun({
+        workflowRunId: created.id,
+      });
+
+      expect(canceled.status).toBe("canceled");
+      expect(canceled.workerId).toBeNull();
+      expect(canceled.availableAt).toBeNull();
+      expect(canceled.finishedAt).not.toBeNull();
+
+      await backend.stop();
+    });
+
+    test("cancels a sleeping workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      // put workflow to sleep
+      const sleepUntil = new Date(Date.now() + 60_000); // 1 minute from now
+      const sleeping = await backend.sleepWorkflowRun({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        availableAt: sleepUntil,
+      });
+      expect(sleeping.status).toBe("sleeping");
+
+      const canceled = await backend.cancelWorkflowRun({
+        workflowRunId: sleeping.id,
+      });
+
+      expect(canceled.status).toBe("canceled");
+      expect(canceled.workerId).toBeNull();
+      expect(canceled.availableAt).toBeNull();
+      expect(canceled.finishedAt).not.toBeNull();
+
+      await backend.stop();
+    });
+
+    test("throws error when canceling a succeeded workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      // mark as succeeded
+      await backend.markWorkflowRunSucceeded({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId ?? "",
+        output: { result: "success" },
+      });
+
+      await expect(
+        backend.cancelWorkflowRun({
+          workflowRunId: claimed.id,
+        }),
+      ).rejects.toThrow(/Cannot cancel workflow run .* with status succeeded/);
+
+      await backend.stop();
+    });
+
+    test("throws error when canceling a failed workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      // create with deadline that's already passed to make it fail
+      const workflowWithDeadline = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: new Date(Date.now() - 1000), // deadline in the past
+      });
+
+      // try to claim it, which should mark it as failed due to deadline
+      const claimed = await backend.claimWorkflowRun({
+        workerId: randomUUID(),
+        leaseDurationMs: 100,
+      });
+
+      // if claim succeeds, manually fail it
+      if (claimed?.workerId) {
+        await backend.markWorkflowRunFailed({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId,
+          error: { message: "test error" },
+        });
+      }
+
+      // get a workflow that's definitely failed
+      const failedRun = await backend.getWorkflowRun({
+        workflowRunId: workflowWithDeadline.id,
+      });
+
+      if (failedRun?.status === "failed") {
+        await expect(
+          backend.cancelWorkflowRun({
+            workflowRunId: failedRun.id,
+          }),
+        ).rejects.toThrow(/Cannot cancel workflow run .* with status failed/);
+      }
+
+      await backend.stop();
+    });
+
+    test("is idempotent when canceling an already canceled workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const created = await createPendingWorkflowRun(backend);
+
+      const firstCancel = await backend.cancelWorkflowRun({
+        workflowRunId: created.id,
+      });
+      expect(firstCancel.status).toBe("canceled");
+
+      const secondCancel = await backend.cancelWorkflowRun({
+        workflowRunId: created.id,
+      });
+      expect(secondCancel.status).toBe("canceled");
+      expect(secondCancel.id).toBe(firstCancel.id);
+
+      await backend.stop();
+    });
+
+    test("throws error when canceling a non-existent workflow run", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const nonExistentId = randomUUID();
+
+      await expect(
+        backend.cancelWorkflowRun({
+          workflowRunId: nonExistentId,
+        }),
+      ).rejects.toThrow(`Workflow run ${nonExistentId} does not exist`);
+
+      await backend.stop();
+    });
+
+    test("canceled workflow is not claimed by workers", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+
+      const created = await createPendingWorkflowRun(backend);
+
+      // cancel the workflow
+      await backend.cancelWorkflowRun({
+        workflowRunId: created.id,
+      });
+
+      // try to claim work
+      const claimed = await backend.claimWorkflowRun({
+        workerId: randomUUID(),
+        leaseDurationMs: 100,
+      });
+
+      // should not claim the canceled workflow
+      expect(claimed).toBeNull();
 
       await backend.stop();
     });

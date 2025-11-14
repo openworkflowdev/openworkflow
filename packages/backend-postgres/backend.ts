@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_NAMESPACE_ID,
   Backend,
+  CancelWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -19,9 +20,11 @@ import {
   MarkStepAttemptSucceededParams,
   MarkWorkflowRunFailedParams,
   MarkWorkflowRunSucceededParams,
+  SleepWorkflowRunParams,
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
+  JsonValue,
 } from "openworkflow";
 
 interface BackendPostgresOptions {
@@ -145,7 +148,7 @@ export class BackendPostgres implements Backend {
           "finished_at" = NOW(),
           "updated_at" = NOW()
         WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running')
+          AND "status" IN ('pending', 'running', 'sleeping')
           AND "deadline_at" IS NOT NULL
           AND "deadline_at" <= NOW()
         RETURNING "id"
@@ -154,7 +157,7 @@ export class BackendPostgres implements Backend {
         SELECT "id"
         FROM "openworkflow"."workflow_runs"
         WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running')
+          AND "status" IN ('pending', 'running', 'sleeping')
           AND "available_at" <= NOW()
           AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
         ORDER BY
@@ -183,8 +186,8 @@ export class BackendPostgres implements Backend {
 
   async heartbeatWorkflowRun(
     params: HeartbeatWorkflowRunParams,
-  ): Promise<void> {
-    const [updated] = await this.pg`
+  ): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
         "available_at" = ${this.pg`NOW() + ${params.leaseDurationMs} * INTERVAL '1 millisecond'`},
@@ -193,15 +196,40 @@ export class BackendPostgres implements Backend {
       AND "id" = ${params.workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
-      RETURNING "id"
+      RETURNING *
     `;
+
     if (!updated) throw new Error("Failed to heartbeat workflow run");
+
+    return updated;
+  }
+
+  async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE "openworkflow"."workflow_runs"
+      SET
+        "status" = 'sleeping',
+        "available_at" = ${params.availableAt},
+        "worker_id" = NULL,
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" != 'succeeded'
+      AND "status" != 'failed'
+      AND "status" != 'canceled'
+      AND "worker_id" = ${params.workerId}
+      RETURNING *
+    `;
+
+    if (!updated) throw new Error("Failed to sleep workflow run");
+
+    return updated;
   }
 
   async markWorkflowRunSucceeded(
     params: MarkWorkflowRunSucceededParams,
-  ): Promise<void> {
-    const [updated] = await this.pg`
+  ): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
         "status" = 'succeeded',
@@ -215,14 +243,17 @@ export class BackendPostgres implements Backend {
       AND "id" = ${params.workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
-      RETURNING "id"
+      RETURNING *
     `;
+
     if (!updated) throw new Error("Failed to mark workflow run succeeded");
+
+    return updated;
   }
 
   async markWorkflowRunFailed(
     params: MarkWorkflowRunFailedParams,
-  ): Promise<void> {
+  ): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
       DEFAULT_RETRY_POLICY;
@@ -233,7 +264,7 @@ export class BackendPostgres implements Backend {
     // if the next retry would exceed the deadline, the run is marked as
     // 'failed' and finalized, otherwise, the run is rescheduled with an updated
     // 'available_at' timestamp for the next retry
-    await this.pg`
+    const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
         "status" = CASE
@@ -278,7 +309,56 @@ export class BackendPostgres implements Backend {
       AND "id" = ${workflowRunId}
       AND "status" = 'running'
       AND "worker_id" = ${params.workerId}
+      RETURNING *
     `;
+
+    if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    return updated;
+  }
+
+  async cancelWorkflowRun(
+    params: CancelWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE "openworkflow"."workflow_runs"
+      SET
+        "status" = 'canceled',
+        "worker_id" = NULL,
+        "available_at" = NULL,
+        "finished_at" = NOW(),
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" IN ('pending', 'running', 'sleeping')
+      RETURNING *
+    `;
+
+    if (!updated) {
+      // workflow may already be in a terminal state
+      const existing = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      if (!existing) {
+        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
+      }
+
+      // if already canceled, just return it
+      if (existing.status === "canceled") {
+        return existing;
+      }
+
+      // throw error for succeeded/failed workflows
+      if (["succeeded", "failed"].includes(existing.status)) {
+        throw new Error(
+          `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
+        );
+      }
+
+      throw new Error("Failed to cancel workflow run");
+    }
+
+    return updated;
   }
 
   async listStepAttempts(
@@ -318,7 +398,7 @@ export class BackendPostgres implements Backend {
         ${params.kind},
         'running',
         ${this.pg.json(params.config)},
-        ${this.pg.json(params.context)},
+        ${this.pg.json(params.context as JsonValue)},
         NOW(),
         NOW(),
         NOW()
@@ -346,8 +426,8 @@ export class BackendPostgres implements Backend {
 
   async markStepAttemptSucceeded(
     params: MarkStepAttemptSucceededParams,
-  ): Promise<void> {
-    const [updated] = await this.pg`
+  ): Promise<StepAttempt> {
+    const [updated] = await this.pg<StepAttempt[]>`
       UPDATE "openworkflow"."step_attempts" sa
       SET
         "status" = 'succeeded',
@@ -364,15 +444,18 @@ export class BackendPostgres implements Backend {
       AND wr."id" = sa."workflow_run_id"
       AND wr."status" = 'running'
       AND wr."worker_id" = ${params.workerId}
-      RETURNING sa."id"
+      RETURNING sa.*
     `;
+
     if (!updated) throw new Error("Failed to mark step attempt succeeded");
+
+    return updated;
   }
 
   async markStepAttemptFailed(
     params: MarkStepAttemptFailedParams,
-  ): Promise<void> {
-    const [updated] = await this.pg`
+  ): Promise<StepAttempt> {
+    const [updated] = await this.pg<StepAttempt[]>`
       UPDATE "openworkflow"."step_attempts" sa
       SET
         "status" = 'failed',
@@ -389,9 +472,12 @@ export class BackendPostgres implements Backend {
       AND wr."id" = sa."workflow_run_id"
       AND wr."status" = 'running'
       AND wr."worker_id" = ${params.workerId}
-      RETURNING sa."id"
+      RETURNING sa.*
     `;
+
     if (!updated) throw new Error("Failed to mark step attempt failed");
+
+    return updated;
   }
 }
 

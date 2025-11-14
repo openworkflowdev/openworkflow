@@ -2,6 +2,7 @@
 
 [![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
 [![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/github/openworkflowdev/openworkflow/graph/badge.svg?token=T618G8O4XS)](https://codecov.io/github/openworkflowdev/openworkflow)
 
 OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
@@ -190,6 +191,37 @@ const data = await step.run({ name: "fetch-external-api" }, async () => {
 Configure retry behavior at the workflow or step level (coming soon) or handle
 errors explicitly in your step functions.
 
+### Sleeping (Pausing) Workflows
+
+You can pause a workflow until a future time and, because sleeping releases the
+worker slot, you can pause thousands of workflows without tying up compute:
+
+```ts
+// Pause for 1 hour (durable, non-blocking)
+await step.sleep("wait-one-hour", "1h");
+```
+
+The sleep step is memoized after it completes. If the workflow is replayed again
+(e.g. due to a later retry) the completed sleep is not re-applied.
+
+#### Duration Formats
+
+Durations accept a number followed by a unit:
+
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
+
+See more examples of accepted duration formats and aliases in the
+[tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/duration.test.ts).
+
 ### Type Safety
 
 Workflows are fully typed. Define input and output types for compile-time
@@ -227,6 +259,44 @@ const run = await myWorkflow.run({ data: "..." });
 const result = await run.result();
 ```
 
+### Canceling Workflows
+
+You can cancel a workflow that is pending, running, or sleeping to prevent a
+workflow from continuing on to the next step:
+
+```ts
+const handle = await myWorkflow.run({ data: "..." });
+
+// Cancel the workflow
+await handle.cancel();
+```
+
+### Workflow Versioning
+
+When you need to change workflow logic, use versioning for backwards
+compatibility.
+
+Define a workflow with an optional version:
+
+```ts
+const workflow = ow.defineWorkflow(
+  { name: "my-workflow", version: "v2" },
+  async ({ input, step, version }) => {
+    if (version === "v2") {
+      // v2 runs go here
+      await step.run({ name: "new-step" }, async () => {
+        // legacy logic
+      });
+    } else {
+      // v1 runs go here
+      await step.run({ name: "old-step" }, async () => {
+        // ...
+      });
+    }
+  },
+);
+```
+
 ## Production Checklist
 
 - **Database**: Use a production-ready Postgres instance
@@ -259,27 +329,32 @@ const result = await run.result();
 
 ## Roadmap
 
-**v0.1:**
+**Live in current `npm` release:**
 
 - ✅ PostgreSQL backend
 - ✅ Worker with concurrency control
 - ✅ Step memoization & retries
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
+- ✅ Sleeping (pausing) workflows
 
-> Note: The v0.1 release doesn’t yet include a dashboard UI or CLI. For now, you
-> can inspect workflow and step state directly in PostgreSQL (workflow_runs and
-> step_runs tables). A CLI and dashboard are planned for an upcoming release to
-> make debugging and monitoring much easier.
+**Coming in v0.3:**
+
+- ✅ Workflow versioning
+- ✅ Workflow cancelation
 
 **Coming Soon:**
 
+> These releeases don't yet include a dashboard UI or CLI. For now, you can
+> inspect workflow and step state directly in PostgreSQL (workflow_runs and
+> step_runs tables). A CLI and dashboard are planned for an upcoming release to
+> make debugging and monitoring much easier.
+
 - CLI
 - Dashboard UI
-- Workflow versioning
 - Configurable retry policies
 - Signals for external events
-- Workflow cancellation
+- Workflow cancelation
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 

@@ -8,11 +8,17 @@ export interface Backend {
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>;
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>;
   claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
-  heartbeatWorkflowRun(params: HeartbeatWorkflowRunParams): Promise<void>;
+  heartbeatWorkflowRun(
+    params: HeartbeatWorkflowRunParams,
+  ): Promise<WorkflowRun>;
+  sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
   markWorkflowRunSucceeded(
     params: MarkWorkflowRunSucceededParams,
-  ): Promise<void>;
-  markWorkflowRunFailed(params: MarkWorkflowRunFailedParams): Promise<void>;
+  ): Promise<WorkflowRun>;
+  markWorkflowRunFailed(
+    params: MarkWorkflowRunFailedParams,
+  ): Promise<WorkflowRun>;
+  cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
 
   // Step Attempts
   listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
@@ -20,8 +26,10 @@ export interface Backend {
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
   markStepAttemptSucceeded(
     params: MarkStepAttemptSucceededParams,
-  ): Promise<void>;
-  markStepAttemptFailed(params: MarkStepAttemptFailedParams): Promise<void>;
+  ): Promise<StepAttempt>;
+  markStepAttemptFailed(
+    params: MarkStepAttemptFailedParams,
+  ): Promise<StepAttempt>;
 }
 
 export interface CreateWorkflowRunParams {
@@ -50,6 +58,12 @@ export interface HeartbeatWorkflowRunParams {
   leaseDurationMs: number;
 }
 
+export interface SleepWorkflowRunParams {
+  workflowRunId: string;
+  workerId: string;
+  availableAt: Date;
+}
+
 export interface MarkWorkflowRunSucceededParams {
   workflowRunId: string;
   workerId: string;
@@ -62,6 +76,10 @@ export interface MarkWorkflowRunFailedParams {
   error: JsonValue;
 }
 
+export interface CancelWorkflowRunParams {
+  workflowRunId: string;
+}
+
 export interface ListStepAttemptsParams {
   workflowRunId: string;
 }
@@ -72,7 +90,7 @@ export interface CreateStepAttemptParams {
   stepName: string;
   kind: StepKind;
   config: JsonValue;
-  context: JsonValue | null;
+  context: StepAttemptContext | null;
 }
 
 export interface GetStepAttemptParams {
@@ -101,7 +119,13 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type WorkflowRunStatus = "pending" | "running" | "succeeded" | "failed";
+export type WorkflowRunStatus =
+  | "pending"
+  | "running"
+  | "sleeping"
+  | "succeeded"
+  | "failed"
+  | "canceled";
 
 /**
  * WorkflowRun represents a single execution instance of a workflow.
@@ -113,8 +137,8 @@ export interface WorkflowRun {
   version: string | null;
   status: WorkflowRunStatus;
   idempotencyKey: string | null;
-  config: JsonValue;
-  context: JsonValue | null;
+  config: JsonValue; // user-defined config
+  context: JsonValue | null; // runtime execution metadata
   input: JsonValue | null;
   output: JsonValue | null;
   error: JsonValue | null;
@@ -130,9 +154,14 @@ export interface WorkflowRun {
   updatedAt: Date;
 }
 
-export type StepKind = "function";
+export type StepKind = "function" | "sleep";
 
 export type StepAttemptStatus = "running" | "succeeded" | "failed";
+
+export interface StepAttemptContext {
+  kind: "sleep";
+  resumeAt: string;
+}
 
 /**
  * StepAttempt represents a single attempt of a step within a workflow.
@@ -144,8 +173,8 @@ export interface StepAttempt {
   stepName: string;
   kind: StepKind;
   status: StepAttemptStatus;
-  config: JsonValue;
-  context: JsonValue | null;
+  config: JsonValue; // user-defined config
+  context: StepAttemptContext | null; // runtime execution metadata
   output: JsonValue | null;
   error: JsonValue | null;
   childWorkflowRunNamespaceId: string | null;
