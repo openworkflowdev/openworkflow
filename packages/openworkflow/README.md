@@ -132,7 +132,7 @@ await summarizeDoc.run({ docUrl: "not-a-url" });
 
 Any validator function works as long as it throws on invalid data (great for
 custom logic or lightweight checks). Libraries such as Zod, ArkType, Valibot,
-Yup, Scale, and Superstruct also work out of the box.
+Yup.
 
 ### Steps
 
