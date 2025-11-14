@@ -2,6 +2,9 @@
  * Structural types for supported workflow input schemas. These mirror the
  * public shapes from common validation libraries so we can infer types without
  * depending on those packages directly.
+ *
+ * This file has been inspired by the `schemaTask` provided by trigger.dev.
+ * See reference file: https://github.com/triggerdotdev/trigger.dev/blob/main/packages/core/src/v3/types/schemas.ts
  */
 export interface WorkflowSchemaZodLike<TInput, TParsed> {
   _input: TInput;
@@ -59,8 +62,8 @@ export type WorkflowSchemaWithoutIn<TInput> =
   | WorkflowSchemaScaleLike<TInput>;
 
 export type WorkflowInputSchema =
-  | WorkflowSchemaWithInOut<any, any>
-  | WorkflowSchemaWithoutIn<any>;
+  | WorkflowSchemaWithInOut<unknown, unknown>
+  | WorkflowSchemaWithoutIn<unknown>;
 
 export type InferWorkflowSchema<TSchema extends WorkflowInputSchema> =
   TSchema extends WorkflowSchemaWithInOut<infer TIn, infer TOut>
@@ -97,45 +100,119 @@ export function getWorkflowSchemaParseFn<TSchema extends WorkflowInputSchema>(
   InferWorkflowSchemaOut<TSchema>,
   InferWorkflowSchemaIn<TSchema>
 > {
-  const parser = schema as any;
+  if (hasCallableProperty(schema, "assert")) {
+    const schemaWithAssert: WorkflowSchemaArkTypeLike<
+      InferWorkflowSchemaIn<TSchema>,
+      InferWorkflowSchemaOut<TSchema>
+    > &
+      WorkflowSchemaScaleLike<InferWorkflowSchemaOut<TSchema>> & {
+        assert: WorkflowSchemaScaleLike<
+          InferWorkflowSchemaOut<TSchema>
+        >["assert"];
+      } =
+      schema as WorkflowSchemaArkTypeLike<
+        InferWorkflowSchemaIn<TSchema>,
+        InferWorkflowSchemaOut<TSchema>
+      > &
+        WorkflowSchemaScaleLike<InferWorkflowSchemaOut<TSchema>> & {
+          assert: WorkflowSchemaScaleLike<
+            InferWorkflowSchemaOut<TSchema>
+          >["assert"];
+        };
 
-  if (typeof parser === "function" && typeof parser.assert === "function") {
-    // arktype-style schema functions expose both a callable validator and an assert helper
-    return parser.assert.bind(parser);
-  }
+    const assertFn: WorkflowSchemaScaleLike<
+      InferWorkflowSchemaOut<TSchema>
+    >["assert"] = schemaWithAssert.assert;
 
-  if (typeof parser === "function") {
-    // valibot >= v0.31 or any custom validator function
-    return parser;
-  }
-
-  if (typeof parser.parseAsync === "function") {
-    // zod schemas prefer parseAsync when available
-    return parser.parseAsync.bind(parser);
-  }
-
-  if (typeof parser.parse === "function") {
-    // zod schemas (legacy sync) or valibot < v0.13
-    return parser.parse.bind(parser);
-  }
-
-  if (typeof parser.validateSync === "function") {
-    // yup schemas
-    return parser.validateSync.bind(parser);
-  }
-
-  if (typeof parser.create === "function") {
-    // superstruct schemas
-    return parser.create.bind(parser);
-  }
-
-  if (typeof parser.assert === "function") {
-    // scale and similar assertion-based validators
-    return (value) => {
-      parser.assert(value);
+    return (value: InferWorkflowSchemaIn<TSchema>) => {
+      assertFn(value);
       return value as InferWorkflowSchemaOut<TSchema>;
     };
   }
 
+  if (typeof schema === "function") {
+    return schema as WorkflowSchemaParseFn<
+      InferWorkflowSchemaOut<TSchema>,
+      InferWorkflowSchemaIn<TSchema>
+    >;
+  }
+
+  if (hasCallableProperty(schema, "parseAsync")) {
+    const schemaWithParseAsync =
+      schema as WorkflowSchemaZodLike<
+        InferWorkflowSchemaIn<TSchema>,
+        InferWorkflowSchemaOut<TSchema>
+      > & {
+        parseAsync: (
+          value: InferWorkflowSchemaIn<TSchema>,
+        ) => Promise<InferWorkflowSchemaOut<TSchema>>;
+      };
+
+    return (value: InferWorkflowSchemaIn<TSchema>) =>
+      schemaWithParseAsync.parseAsync(value);
+  }
+
+  if (hasCallableProperty(schema, "parse")) {
+    const schemaWithParse =
+      schema as WorkflowSchemaZodLike<
+        InferWorkflowSchemaIn<TSchema>,
+        InferWorkflowSchemaOut<TSchema>
+      > &
+        WorkflowSchemaSimpleParse<InferWorkflowSchemaOut<TSchema>> & {
+          parse: (
+            value: InferWorkflowSchemaIn<TSchema>,
+          ) => InferWorkflowSchemaOut<TSchema>;
+        };
+
+    return (value: InferWorkflowSchemaIn<TSchema>) =>
+      schemaWithParse.parse(value);
+  }
+
+  if (hasCallableProperty(schema, "validateSync")) {
+    const schemaWithValidate =
+      schema as WorkflowSchemaYupLike<InferWorkflowSchemaOut<TSchema>> & {
+        validateSync: (
+          value: InferWorkflowSchemaIn<TSchema>,
+        ) => InferWorkflowSchemaOut<TSchema>;
+      };
+
+    return (value: InferWorkflowSchemaIn<TSchema>) =>
+      schemaWithValidate.validateSync(value);
+  }
+
+  if (hasCallableProperty(schema, "create")) {
+    const schemaWithCreate =
+      schema as WorkflowSchemaSuperstructLike<
+        InferWorkflowSchemaOut<TSchema>
+      > & {
+        create: (
+          value: InferWorkflowSchemaIn<TSchema>,
+        ) => InferWorkflowSchemaOut<TSchema>;
+      };
+
+    return (value: InferWorkflowSchemaIn<TSchema>) =>
+      schemaWithCreate.create(value);
+  }
+
   throw new Error("Could not find a schema validator");
+}
+
+type SchemaWithProperty<TKey extends string> = WorkflowInputSchema &
+  Record<TKey, (...args: never[]) => unknown>;
+
+function hasCallableProperty<TKey extends string>(
+  schema: WorkflowInputSchema,
+  property: TKey,
+): schema is SchemaWithProperty<TKey> {
+  if (typeof schema === "function") {
+    const candidate = schema as unknown as Record<string, unknown>;
+    return typeof candidate[property] === "function";
+  }
+
+  if (typeof schema === "object") {
+    const candidate = schema as unknown as Record<string, unknown>;
+    return typeof candidate[property] === "function";
+  }
+
+  return false;
 }

@@ -1,7 +1,15 @@
+import { type as arkType } from "arktype";
+import { randomUUID } from "node:crypto";
+import * as v from "valibot";
+import {
+  object as yupObject,
+  number as yupNumber,
+  string as yupString,
+} from "yup";
+import { z } from "zod";
 import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 describe("OpenWorkflow", () => {
@@ -34,53 +42,201 @@ describe("OpenWorkflow", () => {
     expect(claimed?.input).toEqual({ docUrl: "https://example.com" });
   });
 
-  test("validates workflow input with schema before enqueueing", async () => {
-    const client = new OpenWorkflow({ backend });
-    const schema = {
-      parse(value: unknown) {
-        if (
-          typeof value !== "object" ||
-          value === null ||
-          typeof (value as { docUrl?: unknown }).docUrl !== "string"
-        ) {
-          throw new Error("Invalid schema input");
-        }
+  describe("schema validation", () => {
+    describe("custom schema", () => {
+      test("accepts valid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const schema = {
+          // eslint-disable-next-line sonarjs/no-nested-functions
+          parse(value: unknown) {
+            if (
+              typeof value !== "object" ||
+              value === null ||
+              typeof (value as { docUrl?: unknown }).docUrl !== "string"
+            ) {
+              throw new Error("Invalid schema input");
+            }
 
-        return {
-          docUrl: (value as { docUrl: string }).docUrl.toUpperCase(),
+            return {
+              docUrl: (value as { docUrl: string }).docUrl.toUpperCase(),
+            };
+          },
         };
-      },
-    };
 
-    const workflow = client.defineWorkflow(
-      { name: "schema-parse-test", schema },
-      noopFn,
-    );
-    const handle = await workflow.run({ docUrl: "https://example.com" });
+        const workflow = client.defineWorkflow(
+          { name: "schema-custom-valid", schema },
+          noopFn,
+        );
+        const handle = await workflow.run({ docUrl: "https://example.com" });
 
-    const stored = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
+        const stored = await backend.getWorkflowRun({
+          workflowRunId: handle.workflowRun.id,
+        });
+        expect(stored?.input).toEqual({ docUrl: "HTTPS://EXAMPLE.COM" });
+
+        await handle.cancel();
+      });
+
+      test("rejects invalid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const schema = {
+          // eslint-disable-next-line sonarjs/no-nested-functions
+          parse(value: unknown) {
+            if (typeof value !== "string") {
+              throw new TypeError("Expected string");
+            }
+            return value;
+          },
+        };
+
+        const workflow = client.defineWorkflow(
+          { name: "schema-custom-invalid", schema },
+          noopFn,
+        );
+
+        await expect(workflow.run(123 as never)).rejects.toThrow(
+          "Expected string",
+        );
+      });
     });
-    expect(stored?.input).toEqual({ docUrl: "HTTPS://EXAMPLE.COM" });
-  });
 
-  test("rejects workflow run when schema validation fails", async () => {
-    const client = new OpenWorkflow({ backend });
-    const schema = {
-      parse(value: unknown) {
-        if (typeof value !== "string") {
-          throw new TypeError("Expected string");
-        }
-        return value;
-      },
-    };
+    describe("Zod schema", () => {
+      const schema = z.object({
+        userId: z.uuid(),
+        count: z.number().int().positive(),
+      });
 
-    const workflow = client.defineWorkflow(
-      { name: "schema-error-test", schema },
-      noopFn,
-    );
+      test("accepts valid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-zod-valid", schema },
+          noopFn,
+        );
 
-    await expect(workflow.run(123 as never)).rejects.toThrow("Expected string");
+        const handle = await workflow.run({
+          userId: randomUUID(),
+          count: 3,
+        });
+
+        await handle.cancel();
+      });
+
+      test("rejects invalid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-zod-invalid", schema },
+          noopFn,
+        );
+
+        await expect(
+          workflow.run({ userId: "not-a-uuid", count: 0 } as never),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe("ArkType schema", () => {
+      const schema = arkType({
+        name: "string",
+        platform: "'android' | 'ios'",
+      });
+
+      test("accepts valid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-arktype-valid", schema },
+          noopFn,
+        );
+
+        const handle = await workflow.run({
+          name: "Riley",
+          platform: "android",
+        });
+
+        await handle.cancel();
+      });
+
+      test("rejects invalid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-arktype-invalid", schema },
+          noopFn,
+        );
+
+        await expect(
+          workflow.run({ name: "Riley", platform: "web" } as never),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe("Valibot schema", () => {
+      const schema = v.parser(
+        v.object({
+          key1: v.string(),
+          key2: v.number(),
+        }),
+      );
+
+      test("accepts valid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-valibot-valid", schema },
+          noopFn,
+        );
+
+        const handle = await workflow.run({
+          key1: "value",
+          key2: 42,
+        });
+
+        await handle.cancel();
+      });
+
+      test("rejects invalid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-valibot-invalid", schema },
+          noopFn,
+        );
+
+        await expect(
+          workflow.run({ key1: "value", key2: "oops" } as never),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe("Yup schema", () => {
+      const schema = yupObject({
+        name: yupString().required(),
+        age: yupNumber().required().integer().positive(),
+      });
+
+      test("accepts valid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-yup-valid", schema },
+          noopFn,
+        );
+
+        const handle = await workflow.run({
+          name: "Mona",
+          age: 32,
+        });
+
+        await handle.cancel();
+      });
+
+      test("rejects invalid input", async () => {
+        const client = new OpenWorkflow({ backend });
+        const workflow = client.defineWorkflow(
+          { name: "schema-yup-invalid", schema },
+          noopFn,
+        );
+
+        await expect(
+          workflow.run({ name: "Mona", age: -10 } as never),
+        ).rejects.toThrow();
+      });
+    });
   });
 
   test("result resolves when workflow succeeds", async () => {

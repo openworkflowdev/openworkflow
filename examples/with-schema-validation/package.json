@@ -3,12 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx index.ts"
+    "arktype": "tsx arktype.ts",
+    "custom": "tsx custom.ts",
+    "valibot": "tsx valibot.ts",
+    "yup": "tsx yup.ts",
+    "zod": "tsx zod.ts"
   },
   "dependencies": {
     "@openworkflow/backend-postgres": "file:../../packages/backend-postgres",
+    "arktype": "catalog:",
     "openworkflow": "file:../../packages/openworkflow",
-    "zod": "^4.1.12"
+    "valibot": "catalog:",
+    "yup": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "tsx": "^4.20.6"
