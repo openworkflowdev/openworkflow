@@ -1,4 +1,4 @@
-import type { Backend, JsonValue, WorkflowRun } from "./backend.js";
+import type { Backend, WorkflowRun } from "./backend.js";
 import { DurationString } from "./duration.js";
 import {
   type InferWorkflowSchemaIn,
@@ -95,10 +95,7 @@ export class OpenWorkflow {
       ...(parser && { parseInput: parser }),
     });
 
-    this.registeredWorkflows.set(
-      name,
-      definition as WorkflowDefinition<unknown, unknown, unknown>,
-    );
+    this.registeredWorkflows.set(name, definition);
 
     return definition;
   }
@@ -182,7 +179,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
       idempotencyKey: null,
       config: {},
       context: null,
-      input: (parsedInput ?? null) as JsonValue | null,
+      input: parsedInput ?? null,
       availableAt: null,
       deadlineAt: options?.deadlineAt ?? null,
     });
