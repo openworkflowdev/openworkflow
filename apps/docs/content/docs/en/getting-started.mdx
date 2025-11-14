@@ -1,0 +1,434 @@
+---
+title: Getting Started
+description: Install OpenWorkflow and create your first durable workflow in minutes
+icon: Rocket
+---
+
+# Getting Started
+
+This guide will walk you through installing OpenWorkflow, setting up a PostgreSQL backend, and creating your first durable workflow.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Node.js**: Version 20 or higher
+- **PostgreSQL**: A running PostgreSQL instance (local or remote)
+
+## Installation
+
+Install the core OpenWorkflow package and the PostgreSQL backend:
+
+<Tabs items={['npm', 'pnpm', 'yarn', 'bun']}>
+  <Tab value="npm">
+    ```bash
+    npm install openworkflow @openworkflow/backend-postgres
+    ```
+  </Tab>
+  <Tab value="pnpm">
+    ```bash
+    pnpm add openworkflow @openworkflow/backend-postgres
+    ```
+  </Tab>
+  <Tab value="yarn">
+    ```bash
+    yarn add openworkflow @openworkflow/backend-postgres
+    ```
+  </Tab>
+  <Tab value="bun">
+    ```bash
+    bun add openworkflow @openworkflow/backend-postgres
+    ```
+  </Tab>
+</Tabs>
+
+## Database Setup
+
+<Callout type="warn" title="Database Required">
+OpenWorkflow requires a PostgreSQL database to store workflow state. All workflow runs and step attempts are persisted to ensure durability across crashes.
+</Callout>
+
+If you don't have PostgreSQL installed, you can use Docker:
+
+```bash
+docker run -d \
+  --name openworkflow-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:16
+```
+
+### Connection String
+
+You'll need a PostgreSQL connection URL in this format:
+
+```
+postgresql://username:password@hostname:port/database
+```
+
+Example for local development:
+
+```
+postgresql://postgres:postgres@localhost:5432/postgres
+```
+
+Store this in an environment variable:
+
+```bash
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+```
+
+## Create Your First Workflow
+
+<Steps>
+
+<Step>
+
+### Connect to the Backend
+
+Create a new file called `workflow.ts`:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { OpenWorkflow } from "openworkflow";
+
+const databaseUrl = process.env.DATABASE_URL!;
+const backend = await BackendPostgres.connect(databaseUrl);
+const ow = new OpenWorkflow({ backend });
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="info">
+The backend will automatically create the necessary database tables (`workflow_runs` and `step_attempts`) on first connection.
+</Callout>
+
+</Step>
+
+<Step>
+
+### Define a Workflow
+
+A workflow is a durable function that orchestrates multiple steps:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+const sendWelcomeEmail = ow.defineWorkflow(
+  { name: "send-welcome-email" },
+  async ({ input, step }) => {
+    // Step 1: Fetch user from database
+    const user = await step.run({ name: "fetch-user" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    });
+
+    // Step 2: Send email
+    await step.run({ name: "send-email" }, async () => {
+      return await emailService.send({
+        to: user.email,
+        subject: "Welcome!",
+        html: "<h1>Welcome to our app!</h1>",
+      });
+    });
+
+    // Step 3: Mark email as sent
+    await step.run({ name: "mark-sent" }, async () => {
+      await db.users.update(input.userId, { welcomeEmailSent: true });
+    });
+
+    return { success: true, userId: input.userId };
+  },
+);
+```
+
+</Tab>
+</Tabs>
+
+Each `step.run()` creates a checkpoint. If the workflow crashes, it will resume from the last completed step.
+
+</Step>
+
+<Step>
+
+### Start a Worker
+
+Workers are background processes that execute workflows. Start one in the same file or a separate process:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+const worker = ow.newWorker();
+await worker.start();
+
+console.log("Worker started. Waiting for workflows...");
+```
+
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step>
+
+### Run the Workflow
+
+Trigger the workflow from your application code:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+// Trigger the workflow asynchronously
+const runHandle = await sendWelcomeEmail.run({ userId: "user_123" });
+
+console.log(`Workflow started with ID: ${runHandle.workflowRun.id}`);
+
+// Optional: Wait for the result
+const result = await runHandle.result();
+console.log("Workflow completed:", result);
+```
+
+</Tab>
+</Tabs>
+
+</Step>
+
+</Steps>
+
+## Complete Example
+
+Here's the full code:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts title="workflow.ts"
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { OpenWorkflow } from "openworkflow";
+
+// Connect to backend
+const backend = await BackendPostgres.connect(process.env.DATABASE_URL!);
+const ow = new OpenWorkflow({ backend });
+
+// Define workflow
+const greetUser = ow.defineWorkflow(
+  { name: "greet-user" },
+  async ({ input, step }) => {
+    const greeting = await step.run({ name: "generate-greeting" }, async () => {
+      return `Hello, ${input.name}!`;
+    });
+
+    const timestamp = await step.run({ name: "get-timestamp" }, async () => {
+      return new Date().toISOString();
+    });
+
+    return { greeting, timestamp };
+  },
+);
+
+// Start worker
+const worker = ow.newWorker({ concurrency: 10 });
+await worker.start();
+
+// Run workflow
+const run = await greetUser.run({ name: "Alice" });
+const result = await run.result();
+
+console.log(result); // { greeting: "Hello, Alice!", timestamp: "..." }
+
+// Graceful shutdown
+await worker.stop();
+await backend.stop();
+```
+
+</Tab>
+</Tabs>
+
+## Run Your Workflow
+
+Execute the script:
+
+```bash
+node workflow.ts
+```
+
+You should see:
+
+```
+Worker started. Waiting for workflows...
+{ greeting: "Hello, Alice!", timestamp: "2024-01-15T10:30:00.000Z" }
+```
+
+## What Happens Under the Hood
+
+1. **Workflow Creation**: A row is inserted into the `workflow_runs` table with status `pending`
+2. **Worker Claims**: The worker polls the database and claims the workflow
+3. **Step Execution**: Each step is executed and recorded in `step_attempts`
+4. **Completion**: The workflow status is updated to `succeeded`
+
+If the worker crashes during execution, another worker will pick up the workflow and resume from the last completed step.
+
+## Next Steps
+
+<Cards>
+  <Card
+    title="Core Concepts"
+    description="Understand workflows, steps, workers, and the execution model"
+    href="/en/docs/core-concepts"
+  />
+  <Card
+    title="Type Safety"
+    description="Learn how to add TypeScript types to your workflows"
+    href="/en/docs/advanced-features#type-safety"
+  />
+  <Card
+    title="Parallel Execution"
+    description="Run multiple steps concurrently with Promise.all"
+    href="/en/docs/advanced-features#parallel-steps"
+  />
+  <Card
+    title="Production Guide"
+    description="Deploy OpenWorkflow to production with confidence"
+    href="/en/docs/production-guide"
+  />
+</Cards>
+
+## Project Structure
+
+Here's a recommended project structure for OpenWorkflow:
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <Folder name="workflows" defaultOpen>
+      <File name="welcome-email.ts" />
+      <File name="order-processing.ts" />
+      <File name="index.ts" />
+    </Folder>
+    <File name="worker.ts" />
+    <File name="app.ts" />
+  </Folder>
+  <File name="package.json" />
+  <File name=".env" />
+</Files>
+
+## Common Patterns
+
+### Pattern 1: API Route Handler
+
+Trigger workflows from your API:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+app.post("/users/:id/welcome", async (req, res) => {
+  const run = await sendWelcomeEmail.run({ userId: req.params.id });
+  res.json({ workflowRunId: run.workflowRun.id });
+});
+```
+
+</Tab>
+</Tabs>
+
+### Pattern 2: Separate Worker Process
+
+Run workers in a dedicated process:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts title="worker.ts"
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = await BackendPostgres.connect(process.env.DATABASE_URL!);
+const ow = new OpenWorkflow({ backend });
+
+// Import all workflow definitions
+import "./workflows/welcome-email.js";
+import "./workflows/order-processing.js";
+
+const worker = ow.newWorker({ concurrency: 20 });
+await worker.start();
+
+process.on("SIGTERM", async () => {
+  await worker.stop();
+  await backend.stop();
+  process.exit(0);
+});
+```
+
+</Tab>
+</Tabs>
+
+### Pattern 3: With TypeScript Types
+
+Add type safety to your workflows:
+
+<Tabs groupId="language" items={['TypeScript']} persist>
+<Tab value="TypeScript">
+
+```ts
+interface SendEmailInput {
+  userId: string;
+  emailType: "welcome" | "confirmation";
+}
+
+interface SendEmailOutput {
+  success: boolean;
+  emailId: string;
+}
+
+const sendEmail = ow.defineWorkflow<SendEmailInput, SendEmailOutput>(
+  { name: "send-email" },
+  async ({ input, step }) => {
+    // input is typed as SendEmailInput
+    // return must match SendEmailOutput
+  },
+);
+```
+
+</Tab>
+</Tabs>
+
+## Troubleshooting
+
+<Callout type="warn" title="Common Issues">
+Most issues are related to database connectivity or worker configuration. Check the solutions below.
+</Callout>
+
+### Database Connection Errors
+
+If you see connection errors:
+
+1. Verify PostgreSQL is running: `psql -U postgres -h localhost`
+2. Check your connection string format
+3. Ensure the database exists
+
+### Worker Not Picking Up Workflows
+
+If workflows aren't executing:
+
+1. Ensure the worker is started: `await worker.start()`
+2. Check workflow names match between definition and run
+3. Verify the database connection is active
+
+### Steps Not Memoizing
+
+If steps re-execute on retry:
+
+1. Ensure step names are unique within a workflow
+2. Don't use dynamic step names (they must be deterministic)
+3. Check that the backend connection is stable
+
+## Learn More
+
+- [Core Concepts](/en/docs/core-concepts) - Deep dive into workflows, steps, and workers
+- [Architecture](/en/docs/architecture) - Understand the execution model
+- [API Reference](/en/docs/api-reference) - Complete API documentation
