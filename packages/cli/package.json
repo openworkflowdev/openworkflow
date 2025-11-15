@@ -1,0 +1,13 @@
+{
+  "name": "@openworkflow/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ow": "./bin/cli.ts"
+  },
+  "dependencies": {
+    "@openworkflow/dashboard": "file:../dashboard",
+    "commander": "^14.0.2",
+    "openworkflow": "file:../openworkflow"
+  }
+}

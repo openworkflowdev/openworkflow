@@ -58,6 +58,21 @@ export class OpenWorkflow {
 
     return definition;
   }
+
+  async serve(options?: { port?: number }): Promise<void> {
+    let observability: typeof import("./observability.js");
+
+    try {
+      observability = await import("./observability.js");
+    } catch {
+      throw new Error(
+        "Install @openworkflow/dashboard to enable observability:\n\n" +
+          "npm install @openworkflow/dashboard\n",
+      );
+    }
+
+    observability.serve({ ow: this, port: options?.port ?? 3000 });
+  }
 }
 
 //

@@ -1,0 +1,13 @@
+{
+  "name": "@openworkflow/dashboard",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@hono/node-server": "^1.0.0",
+    "hono": "^4.0.0"
+  }
+}
