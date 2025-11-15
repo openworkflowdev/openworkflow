@@ -22,4 +22,3 @@ any PRs start.
 
 PRs that skip these steps may be closed.
 
-=> Before working on something, [file an issue first](https://github.com/openworkflowdev/openworkflow/issues/new) so everything can be clarified.
