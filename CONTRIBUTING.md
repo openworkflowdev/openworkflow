@@ -21,4 +21,3 @@ why it belongs in OpenWorkflow. The core team will help confirm direction before
 any PRs start.
 
 PRs that skip these steps may be closed.
-
