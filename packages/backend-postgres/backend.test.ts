@@ -444,6 +444,26 @@ describe("BackendPostgres", () => {
     });
   });
 
+  describe("getStepAttempt()", () => {
+    test("returns a persisted step attempt", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      const created = await backend.createStepAttempt({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        stepName: randomUUID(),
+        kind: "function",
+        config: {},
+        context: null,
+      });
+
+      const got = await backend.getStepAttempt({
+        stepAttemptId: created.id,
+      });
+      expect(got).toEqual(created);
+    });
+  });
+
   describe("listStepAttempts()", () => {
     test("lists step attempts ordered by creation time", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
