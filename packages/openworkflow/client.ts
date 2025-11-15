@@ -154,7 +154,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
   ): Promise<WorkflowRunHandle<Output>> {
     const parsedInput = this.parseInput
       ? await this.parseInput(input)
-      : ((input ?? undefined) as Input | undefined);
+      : (input ?? undefined);
 
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({

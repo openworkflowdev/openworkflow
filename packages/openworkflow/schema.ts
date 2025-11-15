@@ -1,68 +1,63 @@
-/**
- * Structural types for supported workflow input schemas. These mirror the
- * public shapes from common validation libraries so we can infer types without
- * depending on those packages directly.
- *
- * This file has been inspired by the `schemaTask` provided by trigger.dev.
- * See reference file: https://github.com/triggerdotdev/trigger.dev/blob/main/packages/core/src/v3/types/schemas.ts
- */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
-
-export interface WorkflowSchemaZodLike<TInput, TParsed> {
-  _input: TInput;
-  _output: TParsed;
-  parse?: (value: unknown) => TParsed;
-  parseAsync?: (value: unknown) => Promise<TParsed>;
-  safeParse?: (value: unknown) => { success: boolean; data?: TParsed };
+export interface WorkflowSchemaZodLike<Input, Output> {
+  _input: Input;
+  _output: Output;
+  parse?: (value: unknown) => Output;
+  parseAsync?: (value: unknown) => Promise<Output>;
+  safeParse?: (value: unknown) => { success: boolean; data?: Output };
 }
 
-export interface WorkflowSchemaValibotLike<TInput, TParsed> {
+export interface WorkflowSchemaValibotLike<Input, Output> {
   schema: {
     _types?: {
-      input: TInput;
-      output: TParsed;
+      input: Input;
+      output: Output;
     };
   };
 }
 
-export interface WorkflowSchemaArkTypeLike<TInput, TParsed> {
-  inferIn: TInput;
-  infer: TParsed;
-  assert?: (value: unknown) => asserts value is TParsed;
+export interface WorkflowSchemaArkTypeLike<Input, Output> {
+  inferIn: Input;
+  infer: Output;
+  assert?: (value: unknown) => asserts value is Output;
 }
 
-export type WorkflowSchemaPlainValidator<TInput> = (
+export type WorkflowSchemaPlainValidator<Input> = (
   value: unknown,
-) => Promise<TInput> | TInput;
+) => Promise<Input> | Input;
 
-export interface WorkflowSchemaSimpleParse<TInput> {
-  parse: (value: unknown) => TInput;
+export interface WorkflowSchemaSimpleParse<Input> {
+  parse: (value: unknown) => Input;
 }
 
-export interface WorkflowSchemaSuperstructLike<TInput> {
-  create: (value: unknown) => TInput;
+export interface WorkflowSchemaSuperstructLike<Input> {
+  create: (value: unknown) => Input;
 }
 
-export interface WorkflowSchemaYupLike<TInput> {
-  validateSync: (value: unknown) => TInput;
+export interface WorkflowSchemaYupLike<Input> {
+  validateSync: (value: unknown) => Input;
 }
 
-export interface WorkflowSchemaScaleLike<TInput> {
-  assert(value: unknown): asserts value is TInput;
+export interface WorkflowSchemaScaleLike<Input> {
+  assert(value: unknown): asserts value is Input;
 }
 
-export type WorkflowSchemaWithInOut<TInput, TParsed> =
-  | WorkflowSchemaZodLike<TInput, TParsed>
-  | WorkflowSchemaValibotLike<TInput, TParsed>
-  | WorkflowSchemaArkTypeLike<TInput, TParsed>;
+export type WorkflowSchemaWithInOut<Input, Output> =
+  | WorkflowSchemaZodLike<Input, Output>
+  | WorkflowSchemaValibotLike<Input, Output>
+  | WorkflowSchemaArkTypeLike<Input, Output>;
 
-export type WorkflowSchemaWithoutIn<TInput> =
-  | WorkflowSchemaPlainValidator<TInput>
-  | WorkflowSchemaSimpleParse<TInput>
-  | WorkflowSchemaSuperstructLike<TInput>
-  | WorkflowSchemaYupLike<TInput>
-  | WorkflowSchemaScaleLike<TInput>;
+export type WorkflowSchemaWithoutIn<Input> =
+  | WorkflowSchemaPlainValidator<Input>
+  | WorkflowSchemaSimpleParse<Input>
+  | WorkflowSchemaSuperstructLike<Input>
+  | WorkflowSchemaYupLike<Input>
+  | WorkflowSchemaScaleLike<Input>;
 
 export type WorkflowInputSchema =
   | WorkflowSchemaWithInOut<any, any>
