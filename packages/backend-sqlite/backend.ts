@@ -150,79 +150,89 @@ export class BackendSqlite implements Backend {
     const newAvailableAt = addMilliseconds(currentTime, params.leaseDurationMs);
 
     // SQLite doesn't have SKIP LOCKED, so we need to handle claims differently
-    // We'll use a transaction to ensure atomicity
+    this.db.exec("BEGIN IMMEDIATE");
 
-    // 1. mark any deadline-expired workflow runs as failed
-    const expireStmt = this.db.prepare(`
-      UPDATE "workflow_runs"
-      SET
-        "status" = 'failed',
-        "error" = ?,
-        "worker_id" = NULL,
-        "available_at" = NULL,
-        "finished_at" = ?,
-        "updated_at" = ?
-      WHERE "namespace_id" = ?
-        AND "status" IN ('pending', 'running', 'sleeping')
-        AND "deadline_at" IS NOT NULL
-        AND "deadline_at" <= ?
-    `);
+    try {
+      // 1. mark any deadline-expired workflow runs as failed
+      const expireStmt = this.db.prepare(`
+        UPDATE "workflow_runs"
+        SET
+          "status" = 'failed',
+          "error" = ?,
+          "worker_id" = NULL,
+          "available_at" = NULL,
+          "finished_at" = ?,
+          "updated_at" = ?
+        WHERE "namespace_id" = ?
+          AND "status" IN ('pending', 'running', 'sleeping')
+          AND "deadline_at" IS NOT NULL
+          AND "deadline_at" <= ?
+      `);
 
-    expireStmt.run(
-      toJSON({ message: "Workflow run deadline exceeded" }),
-      currentTime,
-      currentTime,
-      this.namespaceId,
-      currentTime,
-    );
+      expireStmt.run(
+        toJSON({ message: "Workflow run deadline exceeded" }),
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        currentTime,
+      );
 
-    // 2. find an available workflow run to claim
-    const findStmt = this.db.prepare(`
-      SELECT "id"
-      FROM "workflow_runs"
-      WHERE "namespace_id" = ?
-        AND "status" IN ('pending', 'running', 'sleeping')
-        AND "available_at" <= ?
-        AND ("deadline_at" IS NULL OR "deadline_at" > ?)
-      ORDER BY
-        CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
-        "available_at",
-        "created_at"
-      LIMIT 1
-    `);
+      // 2. find an available workflow run to claim
+      const findStmt = this.db.prepare(`
+        SELECT "id"
+        FROM "workflow_runs"
+        WHERE "namespace_id" = ?
+          AND "status" IN ('pending', 'running', 'sleeping')
+          AND "available_at" <= ?
+          AND ("deadline_at" IS NULL OR "deadline_at" > ?)
+        ORDER BY
+          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
+          "available_at",
+          "created_at"
+        LIMIT 1
+      `);
 
-    const candidate = findStmt.get(
-      this.namespaceId,
-      currentTime,
-      currentTime,
-    ) as { id: string } | undefined;
+      const candidate = findStmt.get(
+        this.namespaceId,
+        currentTime,
+        currentTime,
+      ) as { id: string } | undefined;
 
-    if (!candidate) return null;
+      if (!candidate) {
+        this.db.exec("COMMIT");
+        return null;
+      }
 
-    // 3. claim the workflow run
-    const claimStmt = this.db.prepare(`
-      UPDATE "workflow_runs"
-      SET
-        "status" = 'running',
-        "attempts" = "attempts" + 1,
-        "worker_id" = ?,
-        "available_at" = ?,
-        "started_at" = COALESCE("started_at", ?),
-        "updated_at" = ?
-      WHERE "id" = ?
-        AND "namespace_id" = ?
-    `);
+      // 3. claim the workflow run
+      const claimStmt = this.db.prepare(`
+        UPDATE "workflow_runs"
+        SET
+          "status" = 'running',
+          "attempts" = "attempts" + 1,
+          "worker_id" = ?,
+          "available_at" = ?,
+          "started_at" = COALESCE("started_at", ?),
+          "updated_at" = ?
+        WHERE "id" = ?
+          AND "namespace_id" = ?
+      `);
 
-    claimStmt.run(
-      params.workerId,
-      newAvailableAt,
-      currentTime,
-      currentTime,
-      candidate.id,
-      this.namespaceId,
-    );
+      claimStmt.run(
+        params.workerId,
+        newAvailableAt,
+        currentTime,
+        currentTime,
+        candidate.id,
+        this.namespaceId,
+      );
 
-    return await this.getWorkflowRun({ workflowRunId: candidate.id });
+      this.db.exec("COMMIT");
+
+      return await this.getWorkflowRun({ workflowRunId: candidate.id });
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   async heartbeatWorkflowRun(

@@ -1,20 +1,8 @@
 {
-  "extends": ["@tsconfig/node22/tsconfig.json", "@tsconfig/strictest/tsconfig.json"],
+  "extends": ["../../tsconfig.json"],
   "compilerOptions": {
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "./dist",
     "rootDir": ".",
-    "sourceMap": true,
-    "composite": true
+    "outDir": "dist"
   },
-  "include": [
-    "*.ts"
-  ],
-  "exclude": [
-    "dist",
-    "node_modules",
-    "*.test.ts"
-  ]
+  "include": ["**/*.ts"]
 }
-

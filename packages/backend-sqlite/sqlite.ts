@@ -10,7 +10,10 @@ export const DEFAULT_DATABASE_PATH = ":memory:";
  */
 export function newDatabase(path: string = DEFAULT_DATABASE_PATH): Database {
   const db = new DatabaseSync(path);
-  db.exec("PRAGMA journal_mode = WAL;");
+  // Only enable WAL mode for file-based databases
+  if (path !== ":memory:") {
+    db.exec("PRAGMA journal_mode = WAL;");
+  }
   db.exec("PRAGMA foreign_keys = ON;");
   return db;
 }
@@ -35,6 +38,8 @@ export function migrations(): string[] {
     // 1 - add workflow_runs and step_attempts tables
     `BEGIN;
 
+    PRAGMA defer_foreign_keys = ON;
+
     CREATE TABLE IF NOT EXISTS "workflow_runs" (
       "namespace_id" TEXT NOT NULL,
       "id" TEXT NOT NULL,
@@ -58,7 +63,10 @@ export function migrations(): string[] {
       "finished_at" TEXT,
       "created_at" TEXT NOT NULL,
       "updated_at" TEXT NOT NULL,
-      PRIMARY KEY ("namespace_id", "id")
+      PRIMARY KEY ("namespace_id", "id"),
+      FOREIGN KEY ("parent_step_attempt_namespace_id", "parent_step_attempt_id")
+        REFERENCES "step_attempts" ("namespace_id", "id")
+        ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS "step_attempts" (
@@ -79,7 +87,13 @@ export function migrations(): string[] {
       "finished_at" TEXT,
       "created_at" TEXT NOT NULL,
       "updated_at" TEXT NOT NULL,
-      PRIMARY KEY ("namespace_id", "id")
+      PRIMARY KEY ("namespace_id", "id"),
+      FOREIGN KEY ("namespace_id", "workflow_run_id")
+        REFERENCES "workflow_runs" ("namespace_id", "id")
+        ON DELETE CASCADE,
+      FOREIGN KEY ("child_workflow_run_namespace_id", "child_workflow_run_id")
+        REFERENCES "workflow_runs" ("namespace_id", "id")
+        ON DELETE SET NULL
     );
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
@@ -90,16 +104,19 @@ export function migrations(): string[] {
     // 2 - foreign keys
     `BEGIN;
 
-    -- SQLite requires recreating tables to add foreign keys if not defined initially
-    -- Since we're just defining them in the schema, they're already there with PRAGMA foreign_keys = ON
+    -- Foreign keys are defined in migration 1 since SQLite requires them during table creation
+    -- This migration exists for version parity with PostgreSQL backend
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
     VALUES (2);
 
     COMMIT;`,
 
-    // 3 - validate foreign keys (no-op for SQLite, validation happens automatically)
+    // 3 - validate foreign keys
     `BEGIN;
+
+    -- Foreign key validation happens automatically in SQLite when PRAGMA foreign_keys = ON
+    -- This migration exists for version parity with PostgreSQL backend
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
     VALUES (3);
