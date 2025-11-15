@@ -718,7 +718,7 @@ describe("BackendSqlite", () => {
       });
       expect(claimed).not.toBeNull();
 
-      // should reschedule since retry backoff (1s) is before deadline (5s
+      // should reschedule since retry backoff (1s) is before deadline (5s)
       const failed = await backend.markWorkflowRunFailed({
         workflowRunId: created.id,
         workerId,
