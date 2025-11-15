@@ -23,7 +23,7 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 20 # EOL: Apr 30, 2026
       - run: npm ci
