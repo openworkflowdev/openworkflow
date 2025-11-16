@@ -39,6 +39,12 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
+  "devDependencies": {
+    "arktype": "^2.1.26",
+    "valibot": "^1.1.0",
+    "yup": "^1.7.1",
+    "zod": "^4.1.12"
+  },
   "engines": {
     "node": ">=20"
   }
