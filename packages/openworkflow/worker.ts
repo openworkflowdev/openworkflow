@@ -32,6 +32,17 @@ class SleepSignal extends Error {
 }
 
 /**
+ * Error thrown when workflow execution is non-deterministic during replay.
+ * This occurs when the step name or order doesn't match the recorded history.
+ */
+export class NonDeterministicError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NonDeterministicError";
+  }
+}
+
+/**
  * Configures how a Worker polls the backend, leases workflow runs, and
  * registers workflows.
  */
@@ -361,11 +372,14 @@ class StepExecutor implements StepApi {
   private workflowRunId: string;
   private workerId: string;
   private readonly successfulAttemptsByName = new Map<string, StepAttempt>();
+  private readonly history: StepAttempt[];
+  private replayIndex = 0;
 
   constructor(options: StepExecutorOptions) {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
+    this.history = options.attempts;
 
     // load successful attempts into history
     for (const attempt of options.attempts) {
@@ -380,6 +394,9 @@ class StepExecutor implements StepApi {
     fn: StepFunction<Output>,
   ): Promise<Output> {
     const { name } = config;
+
+    // validate step order during replay
+    this.validateReplayOrder(name);
 
     // return cached result if available
     const existingAttempt = this.successfulAttemptsByName.get(name);
@@ -429,6 +446,9 @@ class StepExecutor implements StepApi {
   }
 
   async sleep(name: string, duration: DurationString): Promise<void> {
+    // validate step order during replay
+    this.validateReplayOrder(name);
+
     // return cached result if this sleep already completed
     const existingAttempt = this.successfulAttemptsByName.get(name);
     if (existingAttempt) return;
@@ -452,6 +472,23 @@ class StepExecutor implements StepApi {
     // we do not mark the step as succeeded here; it will be updated
     // when the workflow resumes
     throw new SleepSignal(resumeAt);
+  }
+
+  /**
+   * Validate that the current step matches the expected step from history.
+   * Throws NonDeterministicError if there's a mismatch.
+   */
+  private validateReplayOrder(stepName: string): void {
+    // if we're replaying and there's a step in history at this position
+    if (this.replayIndex < this.history.length) {
+      const expectedStep = this.history[this.replayIndex];
+      if (expectedStep && expectedStep.stepName !== stepName) {
+        throw new NonDeterministicError(
+          `Step order mismatch during replay: expected step "${expectedStep.stepName}" at position ${String(this.replayIndex)}, but got "${stepName}"`,
+        );
+      }
+    }
+    this.replayIndex++;
   }
 }
 

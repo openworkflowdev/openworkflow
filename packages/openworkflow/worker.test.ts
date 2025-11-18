@@ -1078,6 +1078,332 @@ describe("Worker", () => {
       /Workflow cancel-result was canceled/,
     );
   });
+
+  test("throws NonDeterministicError when step order changes on replay", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let useAlternateOrder = false;
+    const workflow = client.defineWorkflow(
+      { name: "non-deterministic-order" },
+      async ({ step }) => {
+        if (useAlternateOrder) {
+          // different order on replay - should fail
+          await step.run({ name: "step-2" }, () => "two");
+          await step.run({ name: "step-1" }, () => "one");
+        } else {
+          await step.run({ name: "step-1" }, () => "one");
+          // sleep to ensure workflow continues on next tick
+          await step.sleep("wait", "50ms");
+          await step.run({ name: "step-2" }, () => "two");
+        }
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution: step-1, then sleep
+    await worker.tick();
+    await sleep(50);
+
+    // check that step-1 and sleep were recorded
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]?.stepName).toBe("step-1");
+    expect(attempts[1]?.stepName).toBe("wait");
+
+    // now change order for replay
+    useAlternateOrder = true;
+
+    await sleep(100); // wait for sleep to complete
+
+    // replay should detect non-determinism and fail
+    await worker.tick();
+    await sleep(50);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.error).toBeDefined();
+    // @ts-expect-error - test suite
+    expect(failed?.error?.name).toBe("NonDeterministicError");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain("Step order mismatch");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('expected step "step-1"');
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('but got "step-2"');
+  });
+
+  test("throws NonDeterministicError when step name changes on replay", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let useAlternateName = false;
+    const workflow = client.defineWorkflow(
+      { name: "non-deterministic-name" },
+      async ({ step }) => {
+        const name = useAlternateName ? "different-step" : "original-step";
+        await step.run({ name }, () => "value");
+        // sleep to ensure workflow continues on next tick
+        await step.sleep("wait", "50ms");
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution with original name
+    await worker.tick();
+    await sleep(50);
+
+    await sleep(100); // wait for sleep to complete
+
+    // now change name for replay
+    useAlternateName = true;
+
+    // replay should detect non-determinism and fail
+    await worker.tick();
+    await sleep(50);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.error).toBeDefined();
+    // @ts-expect-error - test suite
+    expect(failed?.error?.name).toBe("NonDeterministicError");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain("Step order mismatch");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('expected step "original-step"');
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('but got "different-step"');
+  });
+
+  test("allows adding new steps after replay (deterministic growth)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let addExtraStep = false;
+    const workflow = client.defineWorkflow(
+      { name: "deterministic-growth" },
+      async ({ step }) => {
+        await step.run({ name: "step-1" }, () => "one");
+        // sleep to ensure workflow continues on next tick
+        await step.sleep("wait", "50ms");
+        if (addExtraStep) {
+          await step.run({ name: "step-2" }, () => "two");
+        }
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution: only step-1, then sleep
+    await worker.tick();
+    await sleep(50);
+
+    // now add extra step for replay
+    addExtraStep = true;
+
+    await sleep(100); // wait for sleep to complete
+
+    // replay should complete step-1 from cache, skip sleep, then add step-2
+    await worker.tick();
+    await sleep(50);
+
+    const result = await handle.result();
+    expect(result).toBe("done");
+
+    // verify all steps were recorded
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts).toHaveLength(3);
+    expect(attempts[0]?.stepName).toBe("step-1");
+    expect(attempts[1]?.stepName).toBe("wait");
+    expect(attempts[2]?.stepName).toBe("step-2");
+  });
+
+  test("throws NonDeterministicError when sleep order changes", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let swapSleeps = false;
+    const workflow = client.defineWorkflow(
+      { name: "non-deterministic-sleep" },
+      async ({ step }) => {
+        if (swapSleeps) {
+          await step.sleep("sleep-2", "50ms");
+          await step.sleep("sleep-1", "50ms");
+        } else {
+          await step.sleep("sleep-1", "50ms");
+          await step.sleep("sleep-2", "50ms");
+        }
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first execution: sleep-1 recorded
+    await worker.tick();
+    await sleep(100);
+
+    // verify first sleep was recorded
+    const attempts1 = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts1).toHaveLength(1);
+    expect(attempts1[0]?.stepName).toBe("sleep-1");
+
+    // now swap order for replay
+    swapSleeps = true;
+
+    // replay should detect non-determinism
+    await worker.tick();
+    await sleep(50);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.error).toBeDefined();
+    // @ts-expect-error - test suite
+    expect(failed?.error?.name).toBe("NonDeterministicError");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain("Step order mismatch");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('expected step "sleep-1"');
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('but got "sleep-2"');
+  });
+
+  test("allows deterministic workflows with conditional steps", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow<{ runBranch: boolean }, string>(
+      { name: "deterministic-conditional" },
+      async ({ step, input }) => {
+        const result = await step.run({ name: "check" }, () => input.runBranch);
+
+        return result
+          ? await step.run({ name: "branch-a" }, () => "a")
+          : await step.run({ name: "branch-b" }, () => "b");
+      },
+    );
+
+    const worker = client.newWorker();
+
+    // test branch A
+    const handleA = await workflow.run({ runBranch: true });
+    await worker.tick();
+    await sleep(50);
+    const resultA = await handleA.result();
+    expect(resultA).toBe("a");
+
+    // verify only check and branch-a were executed
+    const attemptsA = await backend.listStepAttempts({
+      workflowRunId: handleA.workflowRun.id,
+    });
+    expect(attemptsA).toHaveLength(2);
+    expect(attemptsA[0]?.stepName).toBe("check");
+    expect(attemptsA[1]?.stepName).toBe("branch-a");
+
+    // test branch B
+    const handleB = await workflow.run({ runBranch: false });
+    await worker.tick();
+    await sleep(50);
+    const resultB = await handleB.result();
+    expect(resultB).toBe("b");
+
+    // verify only check and branch-b were executed
+    const attemptsB = await backend.listStepAttempts({
+      workflowRunId: handleB.workflowRun.id,
+    });
+    expect(attemptsB).toHaveLength(2);
+    expect(attemptsB[0]?.stepName).toBe("check");
+    expect(attemptsB[1]?.stepName).toBe("branch-b");
+  });
+
+  test("enforces deterministic order even within Promise.all", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let swapOrder = false;
+    const workflow = client.defineWorkflow(
+      { name: "parallel-determinism" },
+      async ({ step }) => {
+        // eslint-disable-next-line unicorn/prefer-ternary
+        if (swapOrder) {
+          await Promise.all([
+            step.run({ name: "B" }, () => "b"),
+            step.run({ name: "A" }, () => "a"),
+          ]);
+        } else {
+          await Promise.all([
+            step.run({ name: "A" }, () => "a"),
+            step.run({ name: "B" }, () => "b"),
+          ]);
+        }
+        // sleep to force workflow to pause and resume
+        await step.sleep("wait", "50ms");
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // 1. [A, B] order, then sleeps
+    await worker.tick();
+    await sleep(50);
+
+    // verify A and B were recorded in correct order
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(attempts).toHaveLength(3);
+    expect(attempts[0]?.stepName).toBe("A");
+    expect(attempts[1]?.stepName).toBe("B");
+    expect(attempts[2]?.stepName).toBe("wait");
+
+    // 2. Swap to [B, A] and replay
+    swapOrder = true;
+    await sleep(100); // wait for sleep to complete
+
+    await worker.tick();
+    await sleep(50);
+
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+
+    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.error).toBeDefined();
+    // @ts-expect-error - test suite
+    expect(failed?.error?.name).toBe("NonDeterministicError");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain("Step order mismatch");
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('expected step "A"');
+    // @ts-expect-error - test suite
+    expect(failed?.error?.message).toContain('but got "B"');
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {
