@@ -354,6 +354,7 @@ const workflow = ow.defineWorkflow(
 - Rollback / compensation functions
 - Configurable retry policies
 - Signals for external events
+- Native OpenTelemetry integration
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 
