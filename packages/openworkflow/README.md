@@ -1,6 +1,6 @@
 # OpenWorkflow
 
-[![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
+[![npm version](https://img.shields.io/npm/v/openworkflow)](https://www.npmjs.com/package/openworkflow)
 [![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/github/openworkflowdev/openworkflow/graph/badge.svg?token=T618G8O4XS)](https://codecov.io/github/openworkflowdev/openworkflow)
 
