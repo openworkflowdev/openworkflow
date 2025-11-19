@@ -146,9 +146,11 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
       const resolved = result instanceof Promise ? await result : result;
 
       if (resolved.issues) {
-        throw new Error(
-          resolved.issues.map(issue => issue.message).join("; ") || "Validation failed"
-        );
+        const messages =
+          Array.isArray(resolved.issues) && resolved.issues.length > 0
+            ? resolved.issues.map(issue => issue.message).join("; ")
+            : "Validation failed";
+        throw new Error(messages);
       }
 
       parsedInput = resolved.value;
