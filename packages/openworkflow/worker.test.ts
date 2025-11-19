@@ -578,7 +578,7 @@ describe("Worker", () => {
     const attempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    const sleepStep = attempts.find((a) => a.stepName === "pause");
+    const sleepStep = attempts.data.find((a) => a.stepName === "pause");
     expect(sleepStep?.status).toBe("running");
 
     // wait for sleep duration
@@ -593,7 +593,7 @@ describe("Worker", () => {
     const refreshedAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    const completedSleepStep = refreshedAttempts.find(
+    const completedSleepStep = refreshedAttempts.data.find(
       (a) => a.stepName === "pause",
     );
     expect(completedSleepStep?.status).toBe("succeeded");
@@ -709,7 +709,7 @@ describe("Worker", () => {
     const attempts1 = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(attempts1.find((a) => a.stepName === "sleep-1")?.status).toBe(
+    expect(attempts1.data.find((a) => a.stepName === "sleep-1")?.status).toBe(
       "running",
     );
 
@@ -725,10 +725,10 @@ describe("Worker", () => {
     const attempts2 = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(attempts2.find((a) => a.stepName === "sleep-1")?.status).toBe(
+    expect(attempts2.data.find((a) => a.stepName === "sleep-1")?.status).toBe(
       "succeeded",
     );
-    expect(attempts2.find((a) => a.stepName === "sleep-2")?.status).toBe(
+    expect(attempts2.data.find((a) => a.stepName === "sleep-2")?.status).toBe(
       "running",
     );
 
@@ -747,8 +747,10 @@ describe("Worker", () => {
     const finalAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(finalAttempts.length).toBe(5); // 3 regular steps + 2 sleeps
-    expect(finalAttempts.every((a) => a.status === "succeeded")).toBe(true);
+    expect(finalAttempts.data.length).toBe(5); // 3 regular steps + 2 sleeps
+    expect(finalAttempts.data.every((a) => a.status === "succeeded")).toBe(
+      true,
+    );
   });
 
   test("sleeping workflows can be claimed after availableAt", async () => {
@@ -838,7 +840,7 @@ describe("Worker", () => {
     const attemptsAfterFirst = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    const sleepStep = attemptsAfterFirst.find(
+    const sleepStep = attemptsAfterFirst.data.find(
       (a) => a.stepName === "critical-pause",
     );
     expect(sleepStep).toBeDefined();

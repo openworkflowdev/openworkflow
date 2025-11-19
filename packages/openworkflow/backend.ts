@@ -21,9 +21,11 @@ export interface Backend {
   cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
 
   // Step Attempts
-  listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
   createStepAttempt(params: CreateStepAttemptParams): Promise<StepAttempt>;
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
+  listStepAttempts(
+    params: ListStepAttemptsParams,
+  ): Promise<PaginatedResponse<StepAttempt>>;
   markStepAttemptSucceeded(
     params: MarkStepAttemptSucceededParams,
   ): Promise<StepAttempt>;
@@ -80,10 +82,6 @@ export interface CancelWorkflowRunParams {
   workflowRunId: string;
 }
 
-export interface ListStepAttemptsParams {
-  workflowRunId: string;
-}
-
 export interface CreateStepAttemptParams {
   workflowRunId: string;
   workerId: string;
@@ -95,6 +93,10 @@ export interface CreateStepAttemptParams {
 
 export interface GetStepAttemptParams {
   stepAttemptId: string;
+}
+
+export interface ListStepAttemptsParams extends PaginationOptions {
+  workflowRunId: string;
 }
 
 export interface MarkStepAttemptSucceededParams {
@@ -109,6 +111,20 @@ export interface MarkStepAttemptFailedParams {
   stepAttemptId: string;
   workerId: string;
   error: JsonValue;
+}
+
+export interface PaginationOptions {
+  limit?: number;
+  after?: string;
+  before?: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    next: string | null;
+    prev: string | null;
+  };
 }
 
 // -----------------------------------------------------------------------------
