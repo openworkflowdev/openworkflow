@@ -316,7 +316,7 @@ describe("BackendPostgres", () => {
         namespaceId: randomUUID(),
       });
 
-      // succeeded run
+      // completed run
       let claimed = await createClaimedWorkflowRun(backend);
       await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
@@ -364,7 +364,7 @@ describe("BackendPostgres", () => {
   });
 
   describe("completeWorkflowRun()", () => {
-    test("marks running workflow runs as succeeded", async () => {
+    test("marks running workflow runs as completed", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
 
@@ -381,7 +381,7 @@ describe("BackendPostgres", () => {
         output,
       });
 
-      expect(completed.status).toBe("succeeded");
+      expect(completed.status).toBe("completed");
       expect(completed.output).toEqual(output);
       expect(completed.error).toBeNull();
       expect(completed.finishedAt).not.toBeNull();
@@ -694,7 +694,7 @@ describe("BackendPostgres", () => {
   });
 
   describe("completeStepAttempt()", () => {
-    test("marks running step attempts as succeeded", async () => {
+    test("marks running step attempts as completed", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const created = await backend.createStepAttempt({
@@ -714,7 +714,7 @@ describe("BackendPostgres", () => {
         output,
       });
 
-      expect(completed.status).toBe("succeeded");
+      expect(completed.status).toBe("completed");
       expect(completed.output).toEqual(output);
       expect(completed.error).toBeNull();
       expect(completed.finishedAt).not.toBeNull();
@@ -722,7 +722,7 @@ describe("BackendPostgres", () => {
       const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(fetched?.status).toBe("succeeded");
+      expect(fetched?.status).toBe("completed");
       expect(fetched?.output).toEqual(output);
       expect(fetched?.error).toBeNull();
       expect(fetched?.finishedAt).not.toBeNull();
@@ -996,14 +996,14 @@ describe("BackendPostgres", () => {
       await backend.stop();
     });
 
-    test("throws error when canceling a succeeded workflow run", async () => {
+    test("throws error when canceling a completed workflow run", async () => {
       const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
         namespaceId: randomUUID(),
       });
 
       const claimed = await createClaimedWorkflowRun(backend);
 
-      // mark as succeeded
+      // mark as completed
       await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
@@ -1014,7 +1014,7 @@ describe("BackendPostgres", () => {
         backend.cancelWorkflowRun({
           workflowRunId: claimed.id,
         }),
-      ).rejects.toThrow(/Cannot cancel workflow run .* with status succeeded/);
+      ).rejects.toThrow(/Cannot cancel workflow run .* with status completed/);
 
       await backend.stop();
     });

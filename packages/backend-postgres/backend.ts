@@ -264,6 +264,7 @@ export class BackendPostgres implements Backend {
   }
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
+    // 'succeeded' status is deprecated
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
@@ -274,6 +275,7 @@ export class BackendPostgres implements Backend {
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       AND "status" != 'succeeded'
+      AND "status" != 'completed'
       AND "status" != 'failed'
       AND "status" != 'canceled'
       AND "worker_id" = ${params.workerId}
@@ -291,7 +293,7 @@ export class BackendPostgres implements Backend {
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
         "error" = NULL,
         "worker_id" = ${params.workerId},
@@ -305,7 +307,7 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to mark workflow run succeeded");
+    if (!updated) throw new Error("Failed to mark workflow run completed");
 
     return updated;
   }
@@ -405,8 +407,9 @@ export class BackendPostgres implements Backend {
         return existing;
       }
 
-      // throw error for succeeded/failed workflows
-      if (["succeeded", "failed"].includes(existing.status)) {
+      // throw error for completed/failed workflows
+      // 'succeeded' status is deprecated
+      if (["succeeded", "completed", "failed"].includes(existing.status)) {
         throw new Error(
           `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
         );
@@ -574,7 +577,7 @@ export class BackendPostgres implements Backend {
     const [updated] = await this.pg<StepAttempt[]>`
       UPDATE "openworkflow"."step_attempts" sa
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
         "error" = NULL,
         "finished_at" = NOW(),
@@ -591,7 +594,7 @@ export class BackendPostgres implements Backend {
       RETURNING sa.*
     `;
 
-    if (!updated) throw new Error("Failed to mark step attempt succeeded");
+    if (!updated) throw new Error("Failed to mark step attempt completed");
 
     return updated;
   }

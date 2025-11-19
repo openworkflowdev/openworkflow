@@ -269,7 +269,7 @@ describe("Worker", () => {
       const run = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
       });
-      if (run?.status === "succeeded") completed++;
+      if (run?.status === "completed") completed++;
     }
 
     expect(completed).toBe(2);
@@ -589,14 +589,14 @@ describe("Worker", () => {
     await sleep(50); // wait for processing
     expect(stepCount).toBe(2);
 
-    // verify sleep step is now "succeeded"
+    // verify sleep step is now "completed"
     const refreshedAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
     const completedSleepStep = refreshedAttempts.data.find(
       (a) => a.stepName === "pause",
     );
-    expect(completedSleepStep?.status).toBe("succeeded");
+    expect(completedSleepStep?.status).toBe("completed");
 
     const result = await handle.result();
     expect(result).toEqual({ before: "before", after: "after" });
@@ -716,7 +716,7 @@ describe("Worker", () => {
     // wait for first sleep
     await sleep(100);
 
-    // second execution: sleep-1 succeeded, step-2, then sleep-2
+    // second execution: sleep-1 completed, step-2, then sleep-2
     await worker.tick();
     await sleep(50);
     expect(executionCount).toBe(2);
@@ -726,7 +726,7 @@ describe("Worker", () => {
       workflowRunId: handle.workflowRun.id,
     });
     expect(attempts2.data.find((a) => a.stepName === "sleep-1")?.status).toBe(
-      "succeeded",
+      "completed",
     );
     expect(attempts2.data.find((a) => a.stepName === "sleep-2")?.status).toBe(
       "running",
@@ -735,7 +735,7 @@ describe("Worker", () => {
     // wait for second sleep
     await sleep(100);
 
-    // third execution: sleep-2 succeeded, step-3, complete
+    // third execution: sleep-2 completed, step-3, complete
     await worker.tick();
     await sleep(50);
     expect(executionCount).toBe(3);
@@ -743,12 +743,12 @@ describe("Worker", () => {
     const result = await handle.result();
     expect(result).toBe("done");
 
-    // verify all steps succeeded
+    // verify all steps completed
     const finalAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
     expect(finalAttempts.data.length).toBe(5); // 3 regular steps + 2 sleeps
-    expect(finalAttempts.data.every((a) => a.status === "succeeded")).toBe(
+    expect(finalAttempts.data.every((a) => a.status === "completed")).toBe(
       true,
     );
   });
@@ -964,12 +964,12 @@ describe("Worker", () => {
     expect(canceled?.workerId).toBeNull();
   });
 
-  test("cannot cancel a succeeded workflow", async () => {
+  test("cannot cancel a completed workflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
-      { name: "cancel-succeeded" },
+      { name: "cancel-completed" },
       () => ({ completed: true }),
     );
     const worker = client.newWorker();
@@ -982,7 +982,7 @@ describe("Worker", () => {
 
     // try to cancel after success
     await expect(handle.cancel()).rejects.toThrow(
-      /Cannot cancel workflow run .* with status succeeded/,
+      /Cannot cancel workflow run .* with status completed/,
     );
   });
 

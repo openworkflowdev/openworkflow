@@ -149,7 +149,7 @@ Your database is the source of truth.
 3. **The worker executes steps**: Each step is recorded in the `step_attempts`
    table. If a step succeeds, its result is cached.
 4. **The workflow completes**: The worker updates the `workflow_run` status to
-   `succeeded` or `failed`.
+   `completed` or `failed`.
 5. **If the worker crashes**: The workflow becomes visible to other workers via
    a heartbeat timeout. Another worker picks it up, loads the cached step
    results, and resumes from the next step.
