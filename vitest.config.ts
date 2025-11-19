@@ -6,6 +6,7 @@ export default defineConfig({
     exclude: ["**/dist", "benchmarks", "coverage", "examples", "node_modules"],
     coverage: {
       include: ["packages/**/*.ts"],
+      exclude: ["**/scripts/*.ts", "vitest.global-setup.ts"],
       thresholds: {
         statements: 80,
         branches: 80,
