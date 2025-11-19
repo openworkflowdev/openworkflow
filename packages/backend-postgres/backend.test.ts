@@ -375,17 +375,17 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const output = { ok: true };
-      const succeeded = await backend.completeWorkflowRun({
+      const completed = await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         output,
       });
 
-      expect(succeeded.status).toBe("succeeded");
-      expect(succeeded.output).toEqual(output);
-      expect(succeeded.error).toBeNull();
-      expect(succeeded.finishedAt).not.toBeNull();
-      expect(succeeded.availableAt).toBeNull();
+      expect(completed.status).toBe("succeeded");
+      expect(completed.output).toEqual(output);
+      expect(completed.error).toBeNull();
+      expect(completed.finishedAt).not.toBeNull();
+      expect(completed.availableAt).toBeNull();
     });
   });
 
@@ -554,7 +554,7 @@ describe("BackendPostgres", () => {
         config: {},
         context: null,
       });
-      await backend.markStepAttemptSucceeded({
+      await backend.completeStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: first.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
@@ -693,7 +693,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markStepAttemptSucceeded()", () => {
+  describe("completeStepAttempt()", () => {
     test("marks running step attempts as succeeded", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
@@ -707,17 +707,17 @@ describe("BackendPostgres", () => {
       });
       const output = { foo: "bar" };
 
-      const succeeded = await backend.markStepAttemptSucceeded({
+      const completed = await backend.completeStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         output,
       });
 
-      expect(succeeded.status).toBe("succeeded");
-      expect(succeeded.output).toEqual(output);
-      expect(succeeded.error).toBeNull();
-      expect(succeeded.finishedAt).not.toBeNull();
+      expect(completed.status).toBe("succeeded");
+      expect(completed.output).toEqual(output);
+      expect(completed.error).toBeNull();
+      expect(completed.finishedAt).not.toBeNull();
 
       const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
