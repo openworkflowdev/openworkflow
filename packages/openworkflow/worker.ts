@@ -161,7 +161,7 @@ export class Worker {
     // find workflow definition
     const workflow = this.registeredWorkflows.get(workflowRun.workflowName);
     if (!workflow) {
-      await this.backend.markWorkflowRunFailed({
+      await this.backend.failWorkflowRun({
         workflowRunId: workflowRun.id,
         workerId,
         error: {
@@ -284,7 +284,7 @@ export class Worker {
       }
 
       // mark failure
-      await this.backend.markWorkflowRunFailed({
+      await this.backend.failWorkflowRun({
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         error: serializeError(error),

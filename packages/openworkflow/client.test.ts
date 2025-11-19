@@ -74,7 +74,7 @@ describe("OpenWorkflow", () => {
     if (!claimed) throw new Error("workflow run was not claimed");
 
     // mark as failed (should reschedule))
-    await backend.markWorkflowRunFailed({
+    await backend.failWorkflowRun({
       workflowRunId: claimed.id,
       workerId,
       error: { message: "boom" },

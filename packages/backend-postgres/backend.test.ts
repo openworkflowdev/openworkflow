@@ -333,7 +333,7 @@ describe("BackendPostgres", () => {
 
       // failed run
       claimed = await createClaimedWorkflowRun(backend);
-      await backend.markWorkflowRunFailed({
+      await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         error: null,
@@ -389,7 +389,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markWorkflowRunFailed()", () => {
+  describe("failWorkflowRun()", () => {
     test("reschedules workflow runs with exponential backoff on first failure", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
@@ -403,7 +403,7 @@ describe("BackendPostgres", () => {
       const beforeFailTime = Date.now();
 
       const error = { message: "boom" };
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error,
@@ -440,7 +440,7 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed");
       expect(claimed.attempts).toBe(1);
 
-      const firstFailed = await backend.markWorkflowRunFailed({
+      const firstFailed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "first failure" },
@@ -460,7 +460,7 @@ describe("BackendPostgres", () => {
       expect(claimed.attempts).toBe(2);
 
       const beforeSecondFail = Date.now();
-      const secondFailed = await backend.markWorkflowRunFailed({
+      const secondFailed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "second failure" },
@@ -873,7 +873,7 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should mark as permanently failed since retry backoff (1s) would exceed deadline (500ms)
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
@@ -911,7 +911,7 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should reschedule since retry backoff (1s) is before deadline (5s
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
@@ -1044,7 +1044,7 @@ describe("BackendPostgres", () => {
 
       // if claim succeeds, manually fail it
       if (claimed?.workerId) {
-        await backend.markWorkflowRunFailed({
+        await backend.failWorkflowRun({
           workflowRunId: claimed.id,
           workerId: claimed.workerId,
           error: { message: "test error" },

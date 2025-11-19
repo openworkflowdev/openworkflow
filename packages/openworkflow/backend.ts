@@ -16,9 +16,7 @@ export interface Backend {
   ): Promise<WorkflowRun>;
   sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
   completeWorkflowRun(params: CompleteWorkflowRunParams): Promise<WorkflowRun>;
-  markWorkflowRunFailed(
-    params: MarkWorkflowRunFailedParams,
-  ): Promise<WorkflowRun>;
+  failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun>;
   cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
 
   // Step Attempts
@@ -75,7 +73,7 @@ export interface CompleteWorkflowRunParams {
   output: JsonValue | null;
 }
 
-export interface MarkWorkflowRunFailedParams {
+export interface FailWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   error: JsonValue;

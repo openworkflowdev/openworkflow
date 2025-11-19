@@ -20,7 +20,7 @@ import {
   PaginatedResponse,
   MarkStepAttemptFailedParams,
   MarkStepAttemptSucceededParams,
-  MarkWorkflowRunFailedParams,
+  FailWorkflowRunParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
   StepAttempt,
@@ -310,9 +310,7 @@ export class BackendPostgres implements Backend {
     return updated;
   }
 
-  async markWorkflowRunFailed(
-    params: MarkWorkflowRunFailedParams,
-  ): Promise<WorkflowRun> {
+  async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
       DEFAULT_RETRY_POLICY;
