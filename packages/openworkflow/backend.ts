@@ -136,7 +136,8 @@ export type WorkflowRunStatus =
   | "pending"
   | "running"
   | "sleeping"
-  | "succeeded"
+  | "succeeded" // deprecated in favor of 'completed'
+  | "completed"
   | "failed"
   | "canceled";
 
@@ -169,7 +170,11 @@ export interface WorkflowRun {
 
 export type StepKind = "function" | "sleep";
 
-export type StepAttemptStatus = "running" | "succeeded" | "failed";
+export type StepAttemptStatus =
+  | "running"
+  | "succeeded" // deprecated in favor of 'completed'
+  | "completed"
+  | "failed";
 
 export interface StepAttemptContext {
   kind: "sleep";

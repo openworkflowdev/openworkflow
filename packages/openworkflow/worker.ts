@@ -216,7 +216,7 @@ export class Worker {
         cursor = response.pagination.next ?? undefined;
       } while (cursor);
 
-      // mark any sleep steps as succeeded if their sleep duration has elapsed,
+      // mark any sleep steps as completed if their sleep duration has elapsed,
       // or rethrow SleepSignal if still sleeping
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
@@ -237,7 +237,7 @@ export class Worker {
             throw new SleepSignal(resumeAt);
           }
 
-          // sleep duration HAS elapsed, mark the step as succeeded and continue
+          // sleep duration HAS elapsed, mark the step as completed and continue
           const completed = await this.backend.completeStepAttempt({
             workflowRunId: execution.workflowRun.id,
             stepAttemptId: attempt.id,
@@ -377,7 +377,8 @@ class StepExecutor implements StepApi {
 
     // load successful attempts into history
     for (const attempt of options.attempts) {
-      if (attempt.status === "succeeded") {
+      // 'succeeded' status is deprecated
+      if (attempt.status === "succeeded" || attempt.status === "completed") {
         this.successfulAttemptsByName.set(attempt.stepName, attempt);
       }
     }
@@ -457,7 +458,7 @@ class StepExecutor implements StepApi {
     });
 
     // throw sleep signal to trigger postponement
-    // we do not mark the step as succeeded here; it will be updated
+    // we do not mark the step as completed here; it will be updated
     // when the workflow resumes
     throw new SleepSignal(resumeAt);
   }

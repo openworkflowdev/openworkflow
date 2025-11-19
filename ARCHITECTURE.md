@@ -49,7 +49,7 @@ A workflow run can be in one of the following states:
 - **`sleeping`**: The workflow run is waiting for a duration to elapse
   (`step.sleep`). The `availableAt` timestamp controls when it becomes available
   again.
-- **`succeeded`**: The workflow run has completed successfully.
+- **`completed`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed and all retries have been exhausted.
 - **`canceled`**: The workflow run has been explicitly canceled and will not be
   processed further.
@@ -59,7 +59,7 @@ A workflow run can be in one of the following states:
 A step attempt can be in one of the following states:
 
 - **`running`**: The step attempt is currently being executed.
-- **`succeeded`**: The step attempt completed successfully and its result is
+- **`completed`**: The step attempt completed successfully and its result is
   stored.
 - **`failed`**: The step attempt failed. The workflow may create a new attempt
   if it retries.
@@ -133,12 +133,12 @@ of coordination. There is no separate orchestrator server.
     already-completed steps.
 5.  **Step Processing**: When the Worker encounters a new step, it creates a
     `step_attempt` record with status `running`, executes the step function, and
-    then updates the `step_attempt` to `succeeded` upon completion. The Worker
+    then updates the `step_attempt` to `completed` upon completion. The Worker
     continues executing inline until the workflow code completes or encounters a
     sleep.
 6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
     it is created and completed, and updates the status of the `workflow_run`
-    (e.g., `succeeded`, `sleeping`).
+    (e.g., `completed`, `sleeping`).
 
 ## 3. The Execution Model: State Machine Replication
 
@@ -167,7 +167,7 @@ const welcomeEmail = await step.run({ name: "welcome-email" }, async () => {
   // 5. It is NOT in the history.
   // 6. It creates a step_attempt with status "running".
   // 7. It executes the function and saves the result.
-  // 8. It updates the step_attempt to status "succeeded" and continues.
+  // 8. It updates the step_attempt to status "completed" and continues.
   return await email.send(user);
 });
 ```
@@ -179,7 +179,7 @@ new step:
 
 1.  It creates a `step_attempt` record with status `running`.
 2.  It executes the step function inline.
-3.  Upon completion, it updates the `step_attempt` to status `succeeded` with
+3.  Upon completion, it updates the `step_attempt` to status `completed` with
     the result.
 
 Workers can be configured with a high concurrency limit (e.g., 100 or more) to

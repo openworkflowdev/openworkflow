@@ -109,7 +109,7 @@ async function main() {
       .result()
       .then((output) => {
         console.log(
-          `✅ Workflow run ${String(idx + 1)} succeeded: ${JSON.stringify(output)}`,
+          `✅ Workflow run ${String(idx + 1)} completed: ${JSON.stringify(output)}`,
         );
         return { status: "fulfilled" as const, value: output };
       })
