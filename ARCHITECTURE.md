@@ -17,52 +17,40 @@ execution with minimal operational complexity.
 
 ### 1.2. Taxonomy
 
-- **Workflow**: A durable function that orchestrates multiple steps. Workflows
-  are deterministic, resumable, and versioned.
-- **Workflow Run**: A single, complete execution instance of a workflow, from
-  start to finish. Each run is a state machine managed by the workers.
-- **Step**: A durable, memoized checkpoint within a workflow. A step represents
-  a unit of work, like a database query or an API call.
-- **Step Attempt**: A record in the Backend representing the state and result of
-  a single step attempt within a specific workflow run.
-- **Worker**: A long-running process in the user's application that polls the
-  Backend for pending workflows, executes their code, and persists the results.
-- **Client**: The part of the OpenWorkflow SDK used by application code to start
-  and query workflow runs.
-- **Backend**: A pluggable persistence layer (e.g., a Postgres database) that
-  stores all state for workflow runs and step attempts. It serves as the queue
-  and the durable state log.
-- **`availableAt`**: A critical timestamp on a workflow run that controls its
-  visibility to workers. It is used for scheduling, heartbeating, crash
-  recovery, and durable timers.
-- **`deadlineAt`**: An optional timestamp on a workflow run that specifies the
-  deadline by which the workflow must complete. If the deadline is reached, the
-  workflow run is marked as failed.
+| Term | Description |
+| --- | --- |
+| **Workflow** | A durable function that orchestrates multiple steps. Workflows are deterministic, resumable, and versioned. |
+| **Workflow Run** | A single, complete execution instance of a workflow, from start to finish. Each run is a state machine managed by the workers. |
+| **Step** | A durable, memoized checkpoint within a workflow. A step represents a unit of work, like a database query or an API call. |
+| **Step Attempt** | A record in the Backend representing the state and result of a single step attempt within a specific workflow run. |
+| **Worker** | A long-running process in the user's application that polls the Backend for pending workflows, executes their code, and persists the results. |
+| **Client** | The part of the OpenWorkflow SDK used by application code to start and query workflow runs. |
+| **Backend** | A pluggable persistence layer (e.g., a Postgres database) that stores all state for workflow runs and step attempts. It serves as the queue and the durable state log. |
+| **`availableAt`** | A critical timestamp on a workflow run that controls its visibility to workers. It is used for scheduling, heartbeating, crash recovery, and durable timers. |
+| **`deadlineAt`** | An optional timestamp on a workflow run that specifies the deadline by which the workflow must complete. If the deadline is reached, the workflow run is marked as failed. |
 
 ### 1.3. Workflow Run Statuses
 
 A workflow run can be in one of the following states:
 
-- **`pending`**: The workflow run has been created and is waiting for a worker
-  to claim it.
-- **`running`**: The workflow run is actively being executed by a worker.
-- **`sleeping`**: The workflow run is waiting for a duration to elapse
-  (`step.sleep`). The `availableAt` timestamp controls when it becomes available
-  again.
-- **`succeeded`**: The workflow run has completed successfully.
-- **`failed`**: The workflow run has failed and all retries have been exhausted.
-- **`canceled`**: The workflow run has been explicitly canceled and will not be
-  processed further.
+| Status | Meaning |
+| --- | --- |
+| **`pending`** | The workflow run has been created and is waiting for a worker to claim it. |
+| **`running`** | The workflow run is actively being executed by a worker. |
+| **`sleeping`** | The workflow run is waiting for a duration to elapse (`step.sleep`). The `availableAt` timestamp controls when it becomes available again. |
+| **`succeeded`** | The workflow run has completed successfully. |
+| **`failed`** | The workflow run has failed and all retries have been exhausted. |
+| **`canceled`** | The workflow run has been explicitly canceled and will not be processed further. |
 
 ### 1.4. Step Attempt Statuses
 
 A step attempt can be in one of the following states:
 
-- **`running`**: The step attempt is currently being executed.
-- **`succeeded`**: The step attempt completed successfully and its result is
-  stored.
-- **`failed`**: The step attempt failed. The workflow may create a new attempt
-  if it retries.
+| Status | Meaning |
+| --- | --- |
+| **`running`** | The step attempt is currently being executed. |
+| **`succeeded`** | The step attempt completed successfully and its result is stored. |
+| **`failed`** | The step attempt failed. The workflow may create a new attempt if it retries. |
 
 ## 2. System Architecture Overview
 
@@ -71,49 +59,55 @@ A step attempt can be in one of the following states:
 OpenWorkflow uses a worker-driven model where the database is the central point
 of coordination. There is no separate orchestrator server.
 
-```
-+---------------------------------+      +--------------------------------+
-|                                 |      |                                |
-|      Your Application Code      |      |      OpenWorkflow Worker       |
-|      (e.g., a web server)       |      |      (Separate Process)        |
-|                                 |      |                                |
-|  +---------------------------+  |      |  +---------------------------+ |
-|  |   OpenWorkflow Client     |  |      |  |   Workflow Definitions    | |
-|  | (Creates Workflow Runs)   |  |      |  |                           | |
-|  +---------------------------+  |      |  +---------------------------+ |
-|               |                 |      |               |                |
-+---------------+-----------------+      +---------------+----------------+
-                |                              |
-                |  +------------------------+  |
-                +--|  Backend Interface     |--+
-                   |  (e.g., Postgres)      |
-                   +------------------------+
-                              |
-                              |
-               +------------------------------+
-               |                              |
-               |       Backend Storage        |
-               |                              |
-               | - workflow_runs              |
-               | - step_attempts              |
-               +------------------------------+
+```mermaid
+flowchart TB
+  subgraph App[Your Application]
+    C[OpenWorkflow Client]
+  end
+
+  subgraph Worker[OpenWorkflow Worker]
+    W[Workflow Definitions]
+  end
+
+  C --> BI[Backend Interface - e.g. Postgres]
+  W --> BI
+  BI --> BS[Backend Storage]
+  BS --> WR[workflow_runs]
+  BS --> SA[step_attempts]
 ```
 
 ### 2.2. Core Components
 
-- **Client**: The entry point for an application to interact with OpenWorkflow.
-  It is responsible for creating new workflow runs by writing to the
-  `workflow_runs` table in the Backend.
-- **Worker**: The execution engine. It contains an in-memory registry of all
-  defined workflow code. It continuously polls the `workflow_runs` table for
-  available work, executes the workflow logic, and updates the Backend with the
-  results.
-- **Backend**: The source of truth. It stores workflow runs and step attempts.
-  The `workflow_runs` table serves as the job queue for the workers, while the
-  `step_attempts` table serves as a record of started and completed work,
-  enabling memoization.
+| Component | Role |
+| --- | --- |
+| **Client** | The entry point for an application to interact with OpenWorkflow. It is responsible for creating new workflow runs by writing to the `workflow_runs` table in the Backend. |
+| **Worker** | The execution engine. It contains an in-memory registry of all defined workflow code. It continuously polls the `workflow_runs` table for available work, executes the workflow logic, and updates the Backend with the results. |
+| **Backend** | The source of truth. It stores workflow runs and step attempts. The `workflow_runs` table serves as the job queue for the workers, while the `step_attempts` table serves as a record of started and completed work, enabling memoization. |
 
 ### 2.3. Basic Execution Flow
+
+```mermaid
+stateDiagram-v2
+  state "Client Start - create workflow_run" as CS
+  state "Pending - queued unclaimed" as P
+  state "Running - worker executing" as R
+  state "Sleeping - durable timer" as S
+  state "Succeeded" as OK
+  state "Failed - retries exhausted" as ERR
+  state "Canceled" as CAN
+
+  [*] --> CS
+  CS --> P: Client writes to workflow_runs
+  P --> R: Worker claims
+  R --> S: step.sleep
+  S --> R: availableAt reached
+  R --> OK: complete
+  R --> ERR: error after retries
+  R --> CAN: cancel request
+  OK --> [*]
+  ERR --> [*]
+  CAN --> [*]
+```
 
 1.  **Workflow Registration**: A developer defines workflows in their code. When
     a Worker process starts, it automatically discovers and registers this code
