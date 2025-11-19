@@ -87,6 +87,84 @@ describe("BackendPostgres", () => {
     });
   });
 
+  describe("listWorkflowRuns()", () => {
+    test("lists workflow runs ordered by creation time", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const first = await createPendingWorkflowRun(backend);
+      await sleep(10); // ensure timestamp difference
+      const second = await createPendingWorkflowRun(backend);
+
+      const listed = await backend.listWorkflowRuns({});
+      expect(listed.data.map((run) => run.id)).toEqual([first.id, second.id]);
+      await backend.stop();
+    });
+
+    test("paginates workflow runs", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const runs: WorkflowRun[] = [];
+      for (let i = 0; i < 5; i++) {
+        runs.push(await createPendingWorkflowRun(backend));
+        await sleep(10);
+      }
+
+      // p1
+      const page1 = await backend.listWorkflowRuns({ limit: 2 });
+      expect(page1.data).toHaveLength(2);
+      expect(page1.data[0]?.id).toBe(runs[0]?.id);
+      expect(page1.data[1]?.id).toBe(runs[1]?.id);
+      expect(page1.pagination.next).not.toBeNull();
+      expect(page1.pagination.prev).toBeNull();
+
+      // p2
+      const page2 = await backend.listWorkflowRuns({
+        limit: 2,
+        after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2.data).toHaveLength(2);
+      expect(page2.data[0]?.id).toBe(runs[2]?.id);
+      expect(page2.data[1]?.id).toBe(runs[3]?.id);
+      expect(page2.pagination.next).not.toBeNull();
+      expect(page2.pagination.prev).not.toBeNull();
+
+      // p3
+      const page3 = await backend.listWorkflowRuns({
+        limit: 2,
+        after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page3.data).toHaveLength(1);
+      expect(page3.data[0]?.id).toBe(runs[4]?.id);
+      expect(page3.pagination.next).toBeNull();
+      expect(page3.pagination.prev).not.toBeNull();
+
+      // p2 again
+      const page2Back = await backend.listWorkflowRuns({
+        limit: 2,
+        before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2Back.data).toHaveLength(2);
+      expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
+      expect(page2Back.data[1]?.id).toBe(runs[3]?.id);
+      expect(page2Back.pagination.next).toEqual(page2.pagination.next);
+      expect(page2Back.pagination.prev).toEqual(page2.pagination.prev);
+      await backend.stop();
+    });
+
+    test("handles empty results", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const listed = await backend.listWorkflowRuns({});
+      expect(listed.data).toHaveLength(0);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
+      await backend.stop();
+    });
+  });
+
   describe("claimWorkflowRun()", () => {
     // because claims involve timing and leases, we create and teardown a new
     // namespaced backend instance for each test

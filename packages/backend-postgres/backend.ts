@@ -16,6 +16,7 @@ import {
   GetWorkflowRunParams,
   HeartbeatWorkflowRunParams,
   ListStepAttemptsParams,
+  ListWorkflowRunsParams,
   PaginatedResponse,
   MarkStepAttemptFailedParams,
   MarkStepAttemptSucceededParams,
@@ -27,6 +28,8 @@ import {
   DEFAULT_RETRY_POLICY,
   JsonValue,
 } from "openworkflow";
+
+export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
 interface BackendPostgresOptions {
   namespaceId?: string;
@@ -130,6 +133,61 @@ export class BackendPostgres implements Backend {
     `;
 
     return workflowRun ?? null;
+  }
+
+  async listWorkflowRuns(
+    params: ListWorkflowRunsParams,
+  ): Promise<PaginatedResponse<WorkflowRun>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+
+    let cursor: Cursor | null = null;
+    if (after) {
+      cursor = decodeCursor(after);
+    } else if (before) {
+      cursor = decodeCursor(before);
+    }
+
+    const whereClause = this.buildListWorkflowRunsWhere(params, cursor);
+    const order = before
+      ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
+      : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+
+    const rows = await this.pg<WorkflowRun[]>`
+      SELECT *
+      FROM "openworkflow"."workflow_runs"
+      WHERE ${whereClause}
+      ${order}
+      LIMIT ${limit + 1}
+    `;
+
+    return this.processPaginationResults(rows, limit, !!after, !!before);
+  }
+
+  private buildListWorkflowRunsWhere(
+    params: ListWorkflowRunsParams,
+    cursor: Cursor | null,
+  ) {
+    const { after } = params;
+    const conditions = [this.pg`"namespace_id" = ${this.namespaceId}`];
+
+    if (cursor) {
+      const op = after ? this.pg`>` : this.pg`<`;
+      conditions.push(
+        this.pg`("created_at", "id") ${op} (${cursor.createdAt}, ${cursor.id})`,
+      );
+    }
+
+    let whereClause = conditions[0];
+    if (!whereClause) throw new Error("No conditions");
+
+    for (let i = 1; i < conditions.length; i++) {
+      const condition = conditions[i];
+      if (condition) {
+        whereClause = this.pg`${whereClause} AND ${condition}`;
+      }
+    }
+    return whereClause;
   }
 
   async claimWorkflowRun(
@@ -416,7 +474,7 @@ export class BackendPostgres implements Backend {
   async listStepAttempts(
     params: ListStepAttemptsParams,
   ): Promise<PaginatedResponse<StepAttempt>> {
-    const limit = params.limit ?? 100;
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
     const { after, before } = params;
 
     let cursor: Cursor | null = null;
