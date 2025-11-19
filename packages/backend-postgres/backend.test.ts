@@ -318,7 +318,7 @@ describe("BackendPostgres", () => {
 
       // succeeded run
       let claimed = await createClaimedWorkflowRun(backend);
-      await backend.markWorkflowRunSucceeded({
+      await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         output: null,
@@ -363,7 +363,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markWorkflowRunSucceeded()", () => {
+  describe("completeWorkflowRun()", () => {
     test("marks running workflow runs as succeeded", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
@@ -375,7 +375,7 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const output = { ok: true };
-      const succeeded = await backend.markWorkflowRunSucceeded({
+      const succeeded = await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         output,
@@ -1004,7 +1004,7 @@ describe("BackendPostgres", () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       // mark as succeeded
-      await backend.markWorkflowRunSucceeded({
+      await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         output: { result: "success" },

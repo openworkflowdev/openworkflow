@@ -21,7 +21,7 @@ import {
   MarkStepAttemptFailedParams,
   MarkStepAttemptSucceededParams,
   MarkWorkflowRunFailedParams,
-  MarkWorkflowRunSucceededParams,
+  CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
   StepAttempt,
   WorkflowRun,
@@ -285,8 +285,8 @@ export class BackendPostgres implements Backend {
     return updated;
   }
 
-  async markWorkflowRunSucceeded(
-    params: MarkWorkflowRunSucceededParams,
+  async completeWorkflowRun(
+    params: CompleteWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
