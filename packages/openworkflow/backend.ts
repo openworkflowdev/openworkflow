@@ -7,6 +7,9 @@ export interface Backend {
   // Workflow Runs
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>;
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>;
+  listWorkflowRuns(
+    params: ListWorkflowRunsParams,
+  ): Promise<PaginatedResponse<WorkflowRun>>;
   claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
   heartbeatWorkflowRun(
     params: HeartbeatWorkflowRunParams,
@@ -48,6 +51,8 @@ export interface CreateWorkflowRunParams {
 export interface GetWorkflowRunParams {
   workflowRunId: string;
 }
+
+export type ListWorkflowRunsParams = PaginationOptions;
 
 export interface ClaimWorkflowRunParams {
   workerId: string;
