@@ -26,9 +26,7 @@ export interface Backend {
     params: ListStepAttemptsParams,
   ): Promise<PaginatedResponse<StepAttempt>>;
   completeStepAttempt(params: CompleteStepAttemptParams): Promise<StepAttempt>;
-  markStepAttemptFailed(
-    params: MarkStepAttemptFailedParams,
-  ): Promise<StepAttempt>;
+  failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt>;
 }
 
 export interface CreateWorkflowRunParams {
@@ -105,7 +103,7 @@ export interface CompleteStepAttemptParams {
   output: JsonValue | null;
 }
 
-export interface MarkStepAttemptFailedParams {
+export interface FailStepAttemptParams {
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;

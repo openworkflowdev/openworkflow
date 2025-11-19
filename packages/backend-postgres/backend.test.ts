@@ -729,7 +729,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markStepAttemptFailed()", () => {
+  describe("failStepAttempt()", () => {
     test("marks running step attempts as failed", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
@@ -743,7 +743,7 @@ describe("BackendPostgres", () => {
       });
       const error = { message: "nope" };
 
-      const failed = await backend.markStepAttemptFailed({
+      const failed = await backend.failStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion

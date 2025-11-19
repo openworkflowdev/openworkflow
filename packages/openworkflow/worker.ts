@@ -426,7 +426,7 @@ class StepExecutor implements StepApi {
       return savedAttempt.output as Output;
     } catch (error) {
       // mark failure
-      await this.backend.markStepAttemptFailed({
+      await this.backend.failStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
