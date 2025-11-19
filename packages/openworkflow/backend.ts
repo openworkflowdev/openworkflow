@@ -11,8 +11,8 @@ export interface Backend {
     params: ListWorkflowRunsParams,
   ): Promise<PaginatedResponse<WorkflowRun>>;
   claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
-  heartbeatWorkflowRun(
-    params: HeartbeatWorkflowRunParams,
+  extendWorkflowRunLease(
+    params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun>;
   sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
   markWorkflowRunSucceeded(
@@ -59,7 +59,7 @@ export interface ClaimWorkflowRunParams {
   leaseDurationMs: number;
 }
 
-export interface HeartbeatWorkflowRunParams {
+export interface ExtendWorkflowRunLeaseParams {
   workflowRunId: string;
   workerId: string;
   leaseDurationMs: number;

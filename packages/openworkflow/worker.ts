@@ -43,7 +43,7 @@ export interface WorkerOptions {
 
 /**
  * Runs workflows by polling the backend, dispatching runs across a concurrency
- * pool, and heartbeating leases.
+ * pool, and heartbeating/extending leases.
  */
 export class Worker {
   private readonly backend: Backend;
@@ -328,7 +328,7 @@ class WorkflowExecution {
 
     this.heartbeatTimer = setInterval(() => {
       this.backend
-        .heartbeatWorkflowRun({
+        .extendWorkflowRunLease({
           workflowRunId: this.workflowRun.id,
           workerId: this.workerId,
           leaseDurationMs,

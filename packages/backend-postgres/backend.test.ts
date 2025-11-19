@@ -258,7 +258,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("heartbeatWorkflowRun()", () => {
+  describe("extendWorkflowRunLease()", () => {
     test("extends the lease for running workflow runs", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
@@ -270,13 +270,13 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const previousExpiry = claimed.availableAt;
-      const heartbeated = await backend.heartbeatWorkflowRun({
+      const extended = await backend.extendWorkflowRunLease({
         workflowRunId: claimed.id,
         workerId,
         leaseDurationMs: 200,
       });
 
-      expect(heartbeated.availableAt?.getTime()).toBeGreaterThan(
+      expect(extended.availableAt?.getTime()).toBeGreaterThan(
         previousExpiry?.getTime() ?? Infinity,
       );
     });
