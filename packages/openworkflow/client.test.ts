@@ -6,8 +6,8 @@ import { randomUUID } from "node:crypto";
 import * as v from "valibot";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import {
-  object as yupObject,
   number as yupNumber,
+  object as yupObject,
   string as yupString,
 } from "yup";
 import { z } from "zod";
@@ -43,63 +43,6 @@ describe("OpenWorkflow", () => {
   });
 
   describe("schema validation", () => {
-    describe("custom schema", () => {
-      test("accepts valid input", async () => {
-        const client = new OpenWorkflow({ backend });
-        const schema = {
-          // eslint-disable-next-line sonarjs/no-nested-functions
-          parse(value: unknown) {
-            if (
-              typeof value !== "object" ||
-              value === null ||
-              typeof (value as { docUrl?: unknown }).docUrl !== "string"
-            ) {
-              throw new Error("Invalid schema input");
-            }
-
-            return {
-              docUrl: (value as { docUrl: string }).docUrl.toUpperCase(),
-            };
-          },
-        };
-
-        const workflow = client.defineWorkflow(
-          { name: "schema-custom-valid", schema },
-          noopFn,
-        );
-        const handle = await workflow.run({ docUrl: "https://example.com" });
-
-        const stored = await backend.getWorkflowRun({
-          workflowRunId: handle.workflowRun.id,
-        });
-        expect(stored?.input).toEqual({ docUrl: "HTTPS://EXAMPLE.COM" });
-
-        await handle.cancel();
-      });
-
-      test("rejects invalid input", async () => {
-        const client = new OpenWorkflow({ backend });
-        const schema = {
-          // eslint-disable-next-line sonarjs/no-nested-functions
-          parse(value: unknown) {
-            if (typeof value !== "string") {
-              throw new TypeError("Expected string");
-            }
-            return value;
-          },
-        };
-
-        const workflow = client.defineWorkflow(
-          { name: "schema-custom-invalid", schema },
-          noopFn,
-        );
-
-        await expect(workflow.run(123 as never)).rejects.toThrow(
-          "Expected string",
-        );
-      });
-    });
-
     describe("Zod schema", () => {
       const schema = z.object({
         userId: z.uuid(),
@@ -169,12 +112,10 @@ describe("OpenWorkflow", () => {
     });
 
     describe("Valibot schema", () => {
-      const schema = v.parser(
-        v.object({
-          key1: v.string(),
-          key2: v.number(),
-        }),
-      );
+      const schema = v.object({
+        key1: v.string(),
+        key2: v.number(),
+      });
 
       test("accepts valid input", async () => {
         const client = new OpenWorkflow({ backend });

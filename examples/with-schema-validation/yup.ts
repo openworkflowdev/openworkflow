@@ -9,7 +9,7 @@ const backend = await BackendPostgres.connect(databaseUrl, {
 });
 const ow = new OpenWorkflow({ backend });
 
-const summarizeYupSchema = yupObject({
+const schema = yupObject({
   docUrl: yupString().url().required(),
   num: yupString().required(),
 });
@@ -19,7 +19,7 @@ const summarizeYupSchema = yupObject({
  * from a URL. It uses a Yup schema to validate the input.
  */
 const summarizeDoc = ow.defineWorkflow(
-  { name: "summarize-doc-yup", schema: summarizeYupSchema },
+  { name: "summarize-doc-yup", schema },
   async ({ input, step }) => {
     const extracted = await step.run({ name: "extract-text" }, () => {
       console.log(`[${input.num}] Extracting text from ${input.docUrl}`);

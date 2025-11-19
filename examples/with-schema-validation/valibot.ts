@@ -9,7 +9,7 @@ const backend = await BackendPostgres.connect(databaseUrl, {
 });
 const ow = new OpenWorkflow({ backend });
 
-const summarizeValibotSchema = v.object({
+const schema = v.object({
   docUrl: v.string(),
   num: v.string(),
 });
@@ -21,7 +21,7 @@ const summarizeValibotSchema = v.object({
 const summarizeDoc = ow.defineWorkflow(
   {
     name: "summarize-doc-valibot",
-    schema: v.parser(summarizeValibotSchema),
+    schema,
   },
   async ({ input, step }) => {
     const extracted = await step.run({ name: "extract-text" }, () => {

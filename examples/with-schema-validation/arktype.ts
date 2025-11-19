@@ -9,7 +9,7 @@ const backend = await BackendPostgres.connect(databaseUrl, {
 });
 const ow = new OpenWorkflow({ backend });
 
-const summarizeArkTypeSchema = arkType({
+const schema = arkType({
   docUrl: "string",
   num: "string",
 });
@@ -19,7 +19,7 @@ const summarizeArkTypeSchema = arkType({
  * from a URL. It uses an ArkType schema to validate the input.
  */
 const summarizeDoc = ow.defineWorkflow(
-  { name: "summarize-doc-ark", schema: summarizeArkTypeSchema },
+  { name: "summarize-doc-ark", schema },
   async ({ input, step }) => {
     const extracted = await step.run({ name: "extract-text" }, () => {
       console.log(`[${input.num}] Extracting text from ${input.docUrl}`);

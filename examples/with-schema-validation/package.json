@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "arktype": "tsx arktype.ts",
-    "custom": "tsx custom.ts",
     "valibot": "tsx valibot.ts",
     "yup": "tsx yup.ts",
     "zod": "tsx zod.ts"
