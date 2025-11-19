@@ -25,9 +25,7 @@ export interface Backend {
   listStepAttempts(
     params: ListStepAttemptsParams,
   ): Promise<PaginatedResponse<StepAttempt>>;
-  markStepAttemptSucceeded(
-    params: MarkStepAttemptSucceededParams,
-  ): Promise<StepAttempt>;
+  completeStepAttempt(params: CompleteStepAttemptParams): Promise<StepAttempt>;
   markStepAttemptFailed(
     params: MarkStepAttemptFailedParams,
   ): Promise<StepAttempt>;
@@ -100,7 +98,7 @@ export interface ListStepAttemptsParams extends PaginationOptions {
   workflowRunId: string;
 }
 
-export interface MarkStepAttemptSucceededParams {
+export interface CompleteStepAttemptParams {
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;

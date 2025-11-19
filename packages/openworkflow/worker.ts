@@ -238,15 +238,15 @@ export class Worker {
           }
 
           // sleep duration HAS elapsed, mark the step as succeeded and continue
-          const succeeded = await this.backend.markStepAttemptSucceeded({
+          const completed = await this.backend.completeStepAttempt({
             workflowRunId: execution.workflowRun.id,
             stepAttemptId: attempt.id,
             workerId: execution.workerId,
             output: null,
           });
 
-          // update cache w/ succeeded attempt
-          attempts[i] = succeeded;
+          // update cache w/ completed attempt
+          attempts[i] = completed;
         }
       }
 
@@ -413,7 +413,7 @@ class StepExecutor implements StepApi {
       const output = (result ?? null) as JsonValue | null;
 
       // mark success
-      const savedAttempt = await this.backend.markStepAttemptSucceeded({
+      const savedAttempt = await this.backend.completeStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
