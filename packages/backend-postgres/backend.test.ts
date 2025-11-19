@@ -495,10 +495,103 @@ describe("BackendPostgres", () => {
       const listed = await backend.listStepAttempts({
         workflowRunId: claimed.id,
       });
-      expect(listed.map((step) => step.stepName)).toEqual([
+      expect(listed.data.map((step) => step.stepName)).toEqual([
         first.stepName,
         second.stepName,
       ]);
+    });
+
+    test("paginates step attempts", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      for (let i = 0; i < 5; i++) {
+        await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: `step-${String(i)}`,
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        await sleep(10); // ensure createdAt differs
+      }
+
+      // p1
+      const page1 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+      });
+      expect(page1.data).toHaveLength(2);
+      expect(page1.data[0]?.stepName).toBe("step-0");
+      expect(page1.data[1]?.stepName).toBe("step-1");
+      expect(page1.pagination.next).not.toBeNull();
+      expect(page1.pagination.prev).toBeNull();
+
+      // p2
+      const page2 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2.data).toHaveLength(2);
+      expect(page2.data[0]?.stepName).toBe("step-2");
+      expect(page2.data[1]?.stepName).toBe("step-3");
+      expect(page2.pagination.next).not.toBeNull();
+      expect(page2.pagination.prev).not.toBeNull();
+
+      // p3
+      const page3 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page3.data).toHaveLength(1);
+      expect(page3.data[0]?.stepName).toBe("step-4");
+      expect(page3.pagination.next).toBeNull();
+      expect(page3.pagination.prev).not.toBeNull();
+
+      // p2 again
+      const page2Back = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2Back.data).toHaveLength(2);
+      expect(page2Back.data[0]?.stepName).toBe("step-2");
+      expect(page2Back.data[1]?.stepName).toBe("step-3");
+      expect(page2Back.pagination.next).toEqual(page2.pagination.next);
+      expect(page2Back.pagination.prev).toEqual(page2.pagination.prev);
+    });
+
+    test("handles empty results", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+      const listed = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+      });
+      expect(listed.data).toHaveLength(0);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
+    });
+
+    test("handles exact limit match", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+      await backend.createStepAttempt({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        stepName: "step-1",
+        kind: "function",
+        config: {},
+        context: null,
+      });
+
+      const listed = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 1,
+      });
+      expect(listed.data).toHaveLength(1);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
     });
   });
 

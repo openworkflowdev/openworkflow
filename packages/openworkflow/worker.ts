@@ -203,10 +203,18 @@ export class Worker {
     execution.startHeartbeat();
 
     try {
-      // load step history
-      const attempts = await this.backend.listStepAttempts({
-        workflowRunId: execution.workflowRun.id,
-      });
+      // load all pages of step history
+      const attempts: StepAttempt[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await this.backend.listStepAttempts({
+          workflowRunId: execution.workflowRun.id,
+          ...(cursor ? { after: cursor } : {}),
+          limit: 1000,
+        });
+        attempts.push(...response.data);
+        cursor = response.pagination.next ?? undefined;
+      } while (cursor);
 
       // mark any sleep steps as succeeded if their sleep duration has elapsed,
       // or rethrow SleepSignal if still sleeping
