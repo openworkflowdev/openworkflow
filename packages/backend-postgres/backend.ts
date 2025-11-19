@@ -14,7 +14,7 @@ import {
   CreateWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
-  HeartbeatWorkflowRunParams,
+  ExtendWorkflowRunLeaseParams,
   ListStepAttemptsParams,
   ListWorkflowRunsParams,
   PaginatedResponse,
@@ -243,8 +243,8 @@ export class BackendPostgres implements Backend {
     return claimed ?? null;
   }
 
-  async heartbeatWorkflowRun(
-    params: HeartbeatWorkflowRunParams,
+  async extendWorkflowRunLease(
+    params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun> {
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
@@ -258,7 +258,7 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to heartbeat workflow run");
+    if (!updated) throw new Error("Failed to extend lease for workflow run");
 
     return updated;
   }
