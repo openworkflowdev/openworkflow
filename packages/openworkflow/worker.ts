@@ -266,7 +266,7 @@ export class Worker {
       });
 
       // mark success
-      await this.backend.markWorkflowRunSucceeded({
+      await this.backend.completeWorkflowRun({
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         output: (output ?? null) as JsonValue,

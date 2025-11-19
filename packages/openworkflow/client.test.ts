@@ -48,7 +48,7 @@ describe("OpenWorkflow", () => {
     expect(claimed).not.toBeNull();
     if (!claimed) throw new Error("workflow run was not claimed");
 
-    await backend.markWorkflowRunSucceeded({
+    await backend.completeWorkflowRun({
       workflowRunId: claimed.id,
       workerId,
       output: { ok: true },

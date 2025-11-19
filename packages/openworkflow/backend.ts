@@ -15,9 +15,7 @@ export interface Backend {
     params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun>;
   sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
-  markWorkflowRunSucceeded(
-    params: MarkWorkflowRunSucceededParams,
-  ): Promise<WorkflowRun>;
+  completeWorkflowRun(params: CompleteWorkflowRunParams): Promise<WorkflowRun>;
   markWorkflowRunFailed(
     params: MarkWorkflowRunFailedParams,
   ): Promise<WorkflowRun>;
@@ -71,7 +69,7 @@ export interface SleepWorkflowRunParams {
   availableAt: Date;
 }
 
-export interface MarkWorkflowRunSucceededParams {
+export interface CompleteWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   output: JsonValue | null;
