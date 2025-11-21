@@ -1,8 +1,8 @@
 # OpenWorkflow
 
-[![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
-[![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
-[![codecov](https://codecov.io/github/openworkflowdev/openworkflow/graph/badge.svg?token=T618G8O4XS)](https://codecov.io/github/openworkflowdev/openworkflow)
+[![npm](https://img.shields.io/npm/v/openworkflow)](https://www.npmjs.com/package/openworkflow)
+[![build](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
+[![coverage](https://img.shields.io/codecov/c/github/openworkflowdev/openworkflow)](https://codecov.io/github/openworkflowdev/openworkflow)
 
 OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
@@ -178,7 +178,7 @@ Your database is the source of truth.
 3. **The worker executes steps**: Each step is recorded in the `step_attempts`
    table. If a step succeeds, its result is cached.
 4. **The workflow completes**: The worker updates the `workflow_run` status to
-   `succeeded` or `failed`.
+   `completed` or `failed`.
 5. **If the worker crashes**: The workflow becomes visible to other workers via
    a heartbeat timeout. Another worker picks it up, loads the cached step
    results, and resumes from the next step.
@@ -383,6 +383,7 @@ const workflow = ow.defineWorkflow(
 - Rollback / compensation functions
 - Configurable retry policies
 - Signals for external events
+- Native OpenTelemetry integration
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 

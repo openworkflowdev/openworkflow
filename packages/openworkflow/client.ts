@@ -283,7 +283,8 @@ export class WorkflowRunHandle<Output> {
         throw new Error(`Workflow run ${this.workflowRun.id} no longer exists`);
       }
 
-      if (latest.status === "succeeded") {
+      // 'succeeded' status is deprecated
+      if (latest.status === "succeeded" || latest.status === "completed") {
         return latest.output as Output;
       }
 

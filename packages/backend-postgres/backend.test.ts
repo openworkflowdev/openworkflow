@@ -87,6 +87,84 @@ describe("BackendPostgres", () => {
     });
   });
 
+  describe("listWorkflowRuns()", () => {
+    test("lists workflow runs ordered by creation time", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const first = await createPendingWorkflowRun(backend);
+      await sleep(10); // ensure timestamp difference
+      const second = await createPendingWorkflowRun(backend);
+
+      const listed = await backend.listWorkflowRuns({});
+      expect(listed.data.map((run) => run.id)).toEqual([first.id, second.id]);
+      await backend.stop();
+    });
+
+    test("paginates workflow runs", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const runs: WorkflowRun[] = [];
+      for (let i = 0; i < 5; i++) {
+        runs.push(await createPendingWorkflowRun(backend));
+        await sleep(10);
+      }
+
+      // p1
+      const page1 = await backend.listWorkflowRuns({ limit: 2 });
+      expect(page1.data).toHaveLength(2);
+      expect(page1.data[0]?.id).toBe(runs[0]?.id);
+      expect(page1.data[1]?.id).toBe(runs[1]?.id);
+      expect(page1.pagination.next).not.toBeNull();
+      expect(page1.pagination.prev).toBeNull();
+
+      // p2
+      const page2 = await backend.listWorkflowRuns({
+        limit: 2,
+        after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2.data).toHaveLength(2);
+      expect(page2.data[0]?.id).toBe(runs[2]?.id);
+      expect(page2.data[1]?.id).toBe(runs[3]?.id);
+      expect(page2.pagination.next).not.toBeNull();
+      expect(page2.pagination.prev).not.toBeNull();
+
+      // p3
+      const page3 = await backend.listWorkflowRuns({
+        limit: 2,
+        after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page3.data).toHaveLength(1);
+      expect(page3.data[0]?.id).toBe(runs[4]?.id);
+      expect(page3.pagination.next).toBeNull();
+      expect(page3.pagination.prev).not.toBeNull();
+
+      // p2 again
+      const page2Back = await backend.listWorkflowRuns({
+        limit: 2,
+        before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2Back.data).toHaveLength(2);
+      expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
+      expect(page2Back.data[1]?.id).toBe(runs[3]?.id);
+      expect(page2Back.pagination.next).toEqual(page2.pagination.next);
+      expect(page2Back.pagination.prev).toEqual(page2.pagination.prev);
+      await backend.stop();
+    });
+
+    test("handles empty results", async () => {
+      const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+        namespaceId: randomUUID(),
+      });
+      const listed = await backend.listWorkflowRuns({});
+      expect(listed.data).toHaveLength(0);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
+      await backend.stop();
+    });
+  });
+
   describe("claimWorkflowRun()", () => {
     // because claims involve timing and leases, we create and teardown a new
     // namespaced backend instance for each test
@@ -180,7 +258,7 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("heartbeatWorkflowRun()", () => {
+  describe("extendWorkflowRunLease()", () => {
     test("extends the lease for running workflow runs", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
@@ -192,13 +270,13 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const previousExpiry = claimed.availableAt;
-      const heartbeated = await backend.heartbeatWorkflowRun({
+      const extended = await backend.extendWorkflowRunLease({
         workflowRunId: claimed.id,
         workerId,
         leaseDurationMs: 200,
       });
 
-      expect(heartbeated.availableAt?.getTime()).toBeGreaterThan(
+      expect(extended.availableAt?.getTime()).toBeGreaterThan(
         previousExpiry?.getTime() ?? Infinity,
       );
     });
@@ -238,9 +316,9 @@ describe("BackendPostgres", () => {
         namespaceId: randomUUID(),
       });
 
-      // succeeded run
+      // completed run
       let claimed = await createClaimedWorkflowRun(backend);
-      await backend.markWorkflowRunSucceeded({
+      await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         output: null,
@@ -255,7 +333,7 @@ describe("BackendPostgres", () => {
 
       // failed run
       claimed = await createClaimedWorkflowRun(backend);
-      await backend.markWorkflowRunFailed({
+      await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         error: null,
@@ -285,8 +363,8 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markWorkflowRunSucceeded()", () => {
-    test("marks running workflow runs as succeeded", async () => {
+  describe("completeWorkflowRun()", () => {
+    test("marks running workflow runs as completed", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
 
@@ -297,21 +375,21 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed"); // for type narrowing
 
       const output = { ok: true };
-      const succeeded = await backend.markWorkflowRunSucceeded({
+      const completed = await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         output,
       });
 
-      expect(succeeded.status).toBe("succeeded");
-      expect(succeeded.output).toEqual(output);
-      expect(succeeded.error).toBeNull();
-      expect(succeeded.finishedAt).not.toBeNull();
-      expect(succeeded.availableAt).toBeNull();
+      expect(completed.status).toBe("completed");
+      expect(completed.output).toEqual(output);
+      expect(completed.error).toBeNull();
+      expect(completed.finishedAt).not.toBeNull();
+      expect(completed.availableAt).toBeNull();
     });
   });
 
-  describe("markWorkflowRunFailed()", () => {
+  describe("failWorkflowRun()", () => {
     test("reschedules workflow runs with exponential backoff on first failure", async () => {
       const workerId = randomUUID();
       await createPendingWorkflowRun(backend);
@@ -325,7 +403,7 @@ describe("BackendPostgres", () => {
       const beforeFailTime = Date.now();
 
       const error = { message: "boom" };
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error,
@@ -362,7 +440,7 @@ describe("BackendPostgres", () => {
       if (!claimed) throw new Error("Expected workflow run to be claimed");
       expect(claimed.attempts).toBe(1);
 
-      const firstFailed = await backend.markWorkflowRunFailed({
+      const firstFailed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "first failure" },
@@ -382,7 +460,7 @@ describe("BackendPostgres", () => {
       expect(claimed.attempts).toBe(2);
 
       const beforeSecondFail = Date.now();
-      const secondFailed = await backend.markWorkflowRunFailed({
+      const secondFailed = await backend.failWorkflowRun({
         workflowRunId: claimed.id,
         workerId,
         error: { message: "second failure" },
@@ -444,6 +522,26 @@ describe("BackendPostgres", () => {
     });
   });
 
+  describe("getStepAttempt()", () => {
+    test("returns a persisted step attempt", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      const created = await backend.createStepAttempt({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        stepName: randomUUID(),
+        kind: "function",
+        config: {},
+        context: null,
+      });
+
+      const got = await backend.getStepAttempt({
+        stepAttemptId: created.id,
+      });
+      expect(got).toEqual(created);
+    });
+  });
+
   describe("listStepAttempts()", () => {
     test("lists step attempts ordered by creation time", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
@@ -456,7 +554,7 @@ describe("BackendPostgres", () => {
         config: {},
         context: null,
       });
-      await backend.markStepAttemptSucceeded({
+      await backend.completeStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: first.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
@@ -475,10 +573,103 @@ describe("BackendPostgres", () => {
       const listed = await backend.listStepAttempts({
         workflowRunId: claimed.id,
       });
-      expect(listed.map((step) => step.stepName)).toEqual([
+      expect(listed.data.map((step) => step.stepName)).toEqual([
         first.stepName,
         second.stepName,
       ]);
+    });
+
+    test("paginates step attempts", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+
+      for (let i = 0; i < 5; i++) {
+        await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: `step-${String(i)}`,
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        await sleep(10); // ensure createdAt differs
+      }
+
+      // p1
+      const page1 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+      });
+      expect(page1.data).toHaveLength(2);
+      expect(page1.data[0]?.stepName).toBe("step-0");
+      expect(page1.data[1]?.stepName).toBe("step-1");
+      expect(page1.pagination.next).not.toBeNull();
+      expect(page1.pagination.prev).toBeNull();
+
+      // p2
+      const page2 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2.data).toHaveLength(2);
+      expect(page2.data[0]?.stepName).toBe("step-2");
+      expect(page2.data[1]?.stepName).toBe("step-3");
+      expect(page2.pagination.next).not.toBeNull();
+      expect(page2.pagination.prev).not.toBeNull();
+
+      // p3
+      const page3 = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page3.data).toHaveLength(1);
+      expect(page3.data[0]?.stepName).toBe("step-4");
+      expect(page3.pagination.next).toBeNull();
+      expect(page3.pagination.prev).not.toBeNull();
+
+      // p2 again
+      const page2Back = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 2,
+        before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      });
+      expect(page2Back.data).toHaveLength(2);
+      expect(page2Back.data[0]?.stepName).toBe("step-2");
+      expect(page2Back.data[1]?.stepName).toBe("step-3");
+      expect(page2Back.pagination.next).toEqual(page2.pagination.next);
+      expect(page2Back.pagination.prev).toEqual(page2.pagination.prev);
+    });
+
+    test("handles empty results", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+      const listed = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+      });
+      expect(listed.data).toHaveLength(0);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
+    });
+
+    test("handles exact limit match", async () => {
+      const claimed = await createClaimedWorkflowRun(backend);
+      await backend.createStepAttempt({
+        workflowRunId: claimed.id,
+        workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        stepName: "step-1",
+        kind: "function",
+        config: {},
+        context: null,
+      });
+
+      const listed = await backend.listStepAttempts({
+        workflowRunId: claimed.id,
+        limit: 1,
+      });
+      expect(listed.data).toHaveLength(1);
+      expect(listed.pagination.next).toBeNull();
+      expect(listed.pagination.prev).toBeNull();
     });
   });
 
@@ -502,8 +693,8 @@ describe("BackendPostgres", () => {
     });
   });
 
-  describe("markStepAttemptSucceeded()", () => {
-    test("marks running step attempts as succeeded", async () => {
+  describe("completeStepAttempt()", () => {
+    test("marks running step attempts as completed", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
       const created = await backend.createStepAttempt({
@@ -516,29 +707,29 @@ describe("BackendPostgres", () => {
       });
       const output = { foo: "bar" };
 
-      const succeeded = await backend.markStepAttemptSucceeded({
+      const completed = await backend.completeStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         output,
       });
 
-      expect(succeeded.status).toBe("succeeded");
-      expect(succeeded.output).toEqual(output);
-      expect(succeeded.error).toBeNull();
-      expect(succeeded.finishedAt).not.toBeNull();
+      expect(completed.status).toBe("completed");
+      expect(completed.output).toEqual(output);
+      expect(completed.error).toBeNull();
+      expect(completed.finishedAt).not.toBeNull();
 
       const fetched = await backend.getStepAttempt({
         stepAttemptId: created.id,
       });
-      expect(fetched?.status).toBe("succeeded");
+      expect(fetched?.status).toBe("completed");
       expect(fetched?.output).toEqual(output);
       expect(fetched?.error).toBeNull();
       expect(fetched?.finishedAt).not.toBeNull();
     });
   });
 
-  describe("markStepAttemptFailed()", () => {
+  describe("failStepAttempt()", () => {
     test("marks running step attempts as failed", async () => {
       const claimed = await createClaimedWorkflowRun(backend);
 
@@ -552,7 +743,7 @@ describe("BackendPostgres", () => {
       });
       const error = { message: "nope" };
 
-      const failed = await backend.markStepAttemptFailed({
+      const failed = await backend.failStepAttempt({
         workflowRunId: claimed.id,
         stepAttemptId: created.id,
         workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
@@ -682,7 +873,7 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should mark as permanently failed since retry backoff (1s) would exceed deadline (500ms)
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
@@ -720,7 +911,7 @@ describe("BackendPostgres", () => {
       expect(claimed).not.toBeNull();
 
       // should reschedule since retry backoff (1s) is before deadline (5s
-      const failed = await backend.markWorkflowRunFailed({
+      const failed = await backend.failWorkflowRun({
         workflowRunId: created.id,
         workerId,
         error: { message: "test error" },
@@ -805,15 +996,15 @@ describe("BackendPostgres", () => {
       await backend.stop();
     });
 
-    test("throws error when canceling a succeeded workflow run", async () => {
+    test("throws error when canceling a completed workflow run", async () => {
       const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
         namespaceId: randomUUID(),
       });
 
       const claimed = await createClaimedWorkflowRun(backend);
 
-      // mark as succeeded
-      await backend.markWorkflowRunSucceeded({
+      // mark as completed
+      await backend.completeWorkflowRun({
         workflowRunId: claimed.id,
         workerId: claimed.workerId ?? "",
         output: { result: "success" },
@@ -823,7 +1014,7 @@ describe("BackendPostgres", () => {
         backend.cancelWorkflowRun({
           workflowRunId: claimed.id,
         }),
-      ).rejects.toThrow(/Cannot cancel workflow run .* with status succeeded/);
+      ).rejects.toThrow(/Cannot cancel workflow run .* with status completed/);
 
       await backend.stop();
     });
@@ -853,7 +1044,7 @@ describe("BackendPostgres", () => {
 
       // if claim succeeds, manually fail it
       if (claimed?.workerId) {
-        await backend.markWorkflowRunFailed({
+        await backend.failWorkflowRun({
           workflowRunId: claimed.id,
           workerId: claimed.workerId,
           error: { message: "test error" },

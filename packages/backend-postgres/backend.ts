@@ -14,18 +14,22 @@ import {
   CreateWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
-  HeartbeatWorkflowRunParams,
+  ExtendWorkflowRunLeaseParams,
   ListStepAttemptsParams,
-  MarkStepAttemptFailedParams,
-  MarkStepAttemptSucceededParams,
-  MarkWorkflowRunFailedParams,
-  MarkWorkflowRunSucceededParams,
+  ListWorkflowRunsParams,
+  PaginatedResponse,
+  FailStepAttemptParams,
+  CompleteStepAttemptParams,
+  FailWorkflowRunParams,
+  CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
   JsonValue,
 } from "openworkflow";
+
+export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
 interface BackendPostgresOptions {
   namespaceId?: string;
@@ -106,7 +110,7 @@ export class BackendPostgres implements Backend {
         0,
         ${sqlDateDefaultNow(this.pg, params.availableAt)},
         ${params.deadlineAt},
-        NOW(),
+        date_trunc('milliseconds', NOW()),
         NOW()
       )
       RETURNING *
@@ -129,6 +133,61 @@ export class BackendPostgres implements Backend {
     `;
 
     return workflowRun ?? null;
+  }
+
+  async listWorkflowRuns(
+    params: ListWorkflowRunsParams,
+  ): Promise<PaginatedResponse<WorkflowRun>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+
+    let cursor: Cursor | null = null;
+    if (after) {
+      cursor = decodeCursor(after);
+    } else if (before) {
+      cursor = decodeCursor(before);
+    }
+
+    const whereClause = this.buildListWorkflowRunsWhere(params, cursor);
+    const order = before
+      ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
+      : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+
+    const rows = await this.pg<WorkflowRun[]>`
+      SELECT *
+      FROM "openworkflow"."workflow_runs"
+      WHERE ${whereClause}
+      ${order}
+      LIMIT ${limit + 1}
+    `;
+
+    return this.processPaginationResults(rows, limit, !!after, !!before);
+  }
+
+  private buildListWorkflowRunsWhere(
+    params: ListWorkflowRunsParams,
+    cursor: Cursor | null,
+  ) {
+    const { after } = params;
+    const conditions = [this.pg`"namespace_id" = ${this.namespaceId}`];
+
+    if (cursor) {
+      const op = after ? this.pg`>` : this.pg`<`;
+      conditions.push(
+        this.pg`("created_at", "id") ${op} (${cursor.createdAt}, ${cursor.id})`,
+      );
+    }
+
+    let whereClause = conditions[0];
+    if (!whereClause) throw new Error("No conditions");
+
+    for (let i = 1; i < conditions.length; i++) {
+      const condition = conditions[i];
+      if (condition) {
+        whereClause = this.pg`${whereClause} AND ${condition}`;
+      }
+    }
+    return whereClause;
   }
 
   async claimWorkflowRun(
@@ -184,8 +243,8 @@ export class BackendPostgres implements Backend {
     return claimed ?? null;
   }
 
-  async heartbeatWorkflowRun(
-    params: HeartbeatWorkflowRunParams,
+  async extendWorkflowRunLease(
+    params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun> {
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
@@ -199,12 +258,13 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to heartbeat workflow run");
+    if (!updated) throw new Error("Failed to extend lease for workflow run");
 
     return updated;
   }
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
+    // 'succeeded' status is deprecated
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
@@ -215,6 +275,7 @@ export class BackendPostgres implements Backend {
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       AND "status" != 'succeeded'
+      AND "status" != 'completed'
       AND "status" != 'failed'
       AND "status" != 'canceled'
       AND "worker_id" = ${params.workerId}
@@ -226,13 +287,13 @@ export class BackendPostgres implements Backend {
     return updated;
   }
 
-  async markWorkflowRunSucceeded(
-    params: MarkWorkflowRunSucceededParams,
+  async completeWorkflowRun(
+    params: CompleteWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
         "error" = NULL,
         "worker_id" = ${params.workerId},
@@ -246,14 +307,12 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to mark workflow run succeeded");
+    if (!updated) throw new Error("Failed to mark workflow run completed");
 
     return updated;
   }
 
-  async markWorkflowRunFailed(
-    params: MarkWorkflowRunFailedParams,
-  ): Promise<WorkflowRun> {
+  async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
       DEFAULT_RETRY_POLICY;
@@ -348,8 +407,9 @@ export class BackendPostgres implements Backend {
         return existing;
       }
 
-      // throw error for succeeded/failed workflows
-      if (["succeeded", "failed"].includes(existing.status)) {
+      // throw error for completed/failed workflows
+      // 'succeeded' status is deprecated
+      if (["succeeded", "completed", "failed"].includes(existing.status)) {
         throw new Error(
           `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
         );
@@ -359,18 +419,6 @@ export class BackendPostgres implements Backend {
     }
 
     return updated;
-  }
-
-  async listStepAttempts(
-    params: ListStepAttemptsParams,
-  ): Promise<StepAttempt[]> {
-    return this.pg<StepAttempt[]>`
-      SELECT *
-      FROM "openworkflow"."step_attempts"
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "workflow_run_id" = ${params.workflowRunId}
-      ORDER BY "created_at"
-    `;
   }
 
   async createStepAttempt(
@@ -400,7 +448,7 @@ export class BackendPostgres implements Backend {
         ${this.pg.json(params.config)},
         ${this.pg.json(params.context as JsonValue)},
         NOW(),
-        NOW(),
+        date_trunc('milliseconds', NOW()),
         NOW()
       )
       RETURNING *
@@ -424,13 +472,112 @@ export class BackendPostgres implements Backend {
     return stepAttempt ?? null;
   }
 
-  async markStepAttemptSucceeded(
-    params: MarkStepAttemptSucceededParams,
+  async listStepAttempts(
+    params: ListStepAttemptsParams,
+  ): Promise<PaginatedResponse<StepAttempt>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+
+    let cursor: Cursor | null = null;
+    if (after) {
+      cursor = decodeCursor(after);
+    } else if (before) {
+      cursor = decodeCursor(before);
+    }
+
+    const whereClause = this.buildListStepAttemptsWhere(params, cursor);
+    const order = before
+      ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
+      : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+
+    const rows = await this.pg<StepAttempt[]>`
+      SELECT *
+      FROM "openworkflow"."step_attempts"
+      WHERE ${whereClause}
+      ${order}
+      LIMIT ${limit + 1}
+    `;
+
+    return this.processPaginationResults(rows, limit, !!after, !!before);
+  }
+
+  private buildListStepAttemptsWhere(
+    params: ListStepAttemptsParams,
+    cursor: Cursor | null,
+  ) {
+    const { after } = params;
+    const conditions = [
+      this.pg`"namespace_id" = ${this.namespaceId}`,
+      this.pg`"workflow_run_id" = ${params.workflowRunId}`,
+    ];
+
+    if (cursor) {
+      const op = after ? this.pg`>` : this.pg`<`;
+      conditions.push(
+        this.pg`("created_at", "id") ${op} (${cursor.createdAt}, ${cursor.id})`,
+      );
+    }
+
+    let whereClause = conditions[0];
+    if (!whereClause) throw new Error("No conditions");
+
+    for (let i = 1; i < conditions.length; i++) {
+      const condition = conditions[i];
+      if (condition) {
+        whereClause = this.pg`${whereClause} AND ${condition}`;
+      }
+    }
+    return whereClause;
+  }
+
+  private processPaginationResults<T extends Cursor>(
+    rows: T[],
+    limit: number,
+    hasAfter: boolean,
+    hasBefore: boolean,
+  ): PaginatedResponse<T> {
+    const data = rows;
+    let hasNext = false;
+    let hasPrev = false;
+
+    if (hasBefore) {
+      data.reverse();
+      if (data.length > limit) {
+        hasPrev = true;
+        data.shift();
+      }
+      hasNext = true;
+    } else {
+      if (data.length > limit) {
+        hasNext = true;
+        data.pop();
+      }
+      if (hasAfter) {
+        hasPrev = true;
+      }
+    }
+
+    const lastItem = data.at(-1);
+    const nextCursor = hasNext && lastItem ? encodeCursor(lastItem) : null;
+    const firstItem = data[0];
+    const prevCursor = hasPrev && firstItem ? encodeCursor(firstItem) : null;
+
+    return {
+      data,
+      pagination: {
+        next: nextCursor,
+        prev: prevCursor,
+      },
+    };
+  }
+
+  async completeStepAttempt(
+    params: CompleteStepAttemptParams,
   ): Promise<StepAttempt> {
     const [updated] = await this.pg<StepAttempt[]>`
       UPDATE "openworkflow"."step_attempts" sa
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
         "error" = NULL,
         "finished_at" = NOW(),
@@ -447,14 +594,12 @@ export class BackendPostgres implements Backend {
       RETURNING sa.*
     `;
 
-    if (!updated) throw new Error("Failed to mark step attempt succeeded");
+    if (!updated) throw new Error("Failed to mark step attempt completed");
 
     return updated;
   }
 
-  async markStepAttemptFailed(
-    params: MarkStepAttemptFailedParams,
-  ): Promise<StepAttempt> {
+  async failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt> {
     const [updated] = await this.pg<StepAttempt[]>`
       UPDATE "openworkflow"."step_attempts" sa
       SET
@@ -487,4 +632,30 @@ export class BackendPostgres implements Backend {
  */
 function sqlDateDefaultNow(pg: Postgres, date: Date | null) {
   return date ?? pg`NOW()`;
+}
+
+/**
+ * Cursor used for pagination. Requires created_at and id fields. Because JS
+ * Date does not natively support microsecond precision dates, created_at should
+ * be stored with millisecond precision in paginated tables to avoid issues with
+ * cursor comparisons.
+ */
+interface Cursor {
+  createdAt: Date;
+  id: string;
+}
+
+function encodeCursor(item: Cursor): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: item.createdAt, id: item.id }),
+  ).toString("base64");
+}
+
+function decodeCursor(cursor: string): Cursor {
+  const decoded = Buffer.from(cursor, "base64").toString("utf8");
+  const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
+  return {
+    createdAt: new Date(parsed.createdAt),
+    id: parsed.id,
+  };
 }

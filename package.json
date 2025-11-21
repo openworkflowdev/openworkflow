@@ -14,15 +14,16 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@trivago/prettier-plugin-sort-imports": "^6.0.0",
     "@tsconfig/node22": "^22",
-    "@tsconfig/strictest": "^2.0.7",
-    "@types/node": "^24.10.0",
-    "@vitest/coverage-v8": "^4.0.8",
+    "@tsconfig/strictest": "^2.0.8",
+    "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.10",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-sonarjs": "^3.0.5",
@@ -32,7 +33,7 @@
     "tsx": "^4.20.6",
     "turbo": "^2.6.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.2",
+    "typescript-eslint": "^8.47.0",
     "vitest": "^4.0.7"
   },
   "packageManager": "npm@11.6.2"

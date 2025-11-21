@@ -43,7 +43,7 @@ export interface WorkerOptions {
 
 /**
  * Runs workflows by polling the backend, dispatching runs across a concurrency
- * pool, and heartbeating leases.
+ * pool, and heartbeating/extending leases.
  */
 export class Worker {
   private readonly backend: Backend;
@@ -161,7 +161,7 @@ export class Worker {
     // find workflow definition
     const workflow = this.registeredWorkflows.get(workflowRun.workflowName);
     if (!workflow) {
-      await this.backend.markWorkflowRunFailed({
+      await this.backend.failWorkflowRun({
         workflowRunId: workflowRun.id,
         workerId,
         error: {
@@ -203,12 +203,20 @@ export class Worker {
     execution.startHeartbeat();
 
     try {
-      // load step history
-      const attempts = await this.backend.listStepAttempts({
-        workflowRunId: execution.workflowRun.id,
-      });
+      // load all pages of step history
+      const attempts: StepAttempt[] = [];
+      let cursor: string | undefined;
+      do {
+        const response = await this.backend.listStepAttempts({
+          workflowRunId: execution.workflowRun.id,
+          ...(cursor ? { after: cursor } : {}),
+          limit: 1000,
+        });
+        attempts.push(...response.data);
+        cursor = response.pagination.next ?? undefined;
+      } while (cursor);
 
-      // mark any sleep steps as succeeded if their sleep duration has elapsed,
+      // mark any sleep steps as completed if their sleep duration has elapsed,
       // or rethrow SleepSignal if still sleeping
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
@@ -229,16 +237,16 @@ export class Worker {
             throw new SleepSignal(resumeAt);
           }
 
-          // sleep duration HAS elapsed, mark the step as succeeded and continue
-          const succeeded = await this.backend.markStepAttemptSucceeded({
+          // sleep duration HAS elapsed, mark the step as completed and continue
+          const completed = await this.backend.completeStepAttempt({
             workflowRunId: execution.workflowRun.id,
             stepAttemptId: attempt.id,
             workerId: execution.workerId,
             output: null,
           });
 
-          // update cache w/ succeeded attempt
-          attempts[i] = succeeded;
+          // update cache w/ completed attempt
+          attempts[i] = completed;
         }
       }
 
@@ -258,7 +266,7 @@ export class Worker {
       });
 
       // mark success
-      await this.backend.markWorkflowRunSucceeded({
+      await this.backend.completeWorkflowRun({
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         output: (output ?? null) as JsonValue,
@@ -276,7 +284,7 @@ export class Worker {
       }
 
       // mark failure
-      await this.backend.markWorkflowRunFailed({
+      await this.backend.failWorkflowRun({
         workflowRunId: execution.workflowRun.id,
         workerId: execution.workerId,
         error: serializeError(error),
@@ -320,7 +328,7 @@ class WorkflowExecution {
 
     this.heartbeatTimer = setInterval(() => {
       this.backend
-        .heartbeatWorkflowRun({
+        .extendWorkflowRunLease({
           workflowRunId: this.workflowRun.id,
           workerId: this.workerId,
           leaseDurationMs,
@@ -369,7 +377,8 @@ class StepExecutor implements StepApi {
 
     // load successful attempts into history
     for (const attempt of options.attempts) {
-      if (attempt.status === "succeeded") {
+      // 'succeeded' status is deprecated
+      if (attempt.status === "succeeded" || attempt.status === "completed") {
         this.successfulAttemptsByName.set(attempt.stepName, attempt);
       }
     }
@@ -405,7 +414,7 @@ class StepExecutor implements StepApi {
       const output = (result ?? null) as JsonValue | null;
 
       // mark success
-      const savedAttempt = await this.backend.markStepAttemptSucceeded({
+      const savedAttempt = await this.backend.completeStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
@@ -418,7 +427,7 @@ class StepExecutor implements StepApi {
       return savedAttempt.output as Output;
     } catch (error) {
       // mark failure
-      await this.backend.markStepAttemptFailed({
+      await this.backend.failStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
@@ -449,7 +458,7 @@ class StepExecutor implements StepApi {
     });
 
     // throw sleep signal to trigger postponement
-    // we do not mark the step as succeeded here; it will be updated
+    // we do not mark the step as completed here; it will be updated
     // when the workflow resumes
     throw new SleepSignal(resumeAt);
   }
