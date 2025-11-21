@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
