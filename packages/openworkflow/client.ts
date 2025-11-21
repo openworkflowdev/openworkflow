@@ -94,9 +94,7 @@ export interface WorkflowDefinitionOptions<Input, Output, RunInput> {
  * Config passed to `defineWorkflow()` when defining a workflow.
  */
 export interface WorkflowDefinitionConfig<
-  TSchema extends StandardSchemaV1 | undefined =
-    | StandardSchemaV1
-    | undefined,
+  TSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
 > {
   /**
    * The name of the workflow.
@@ -149,7 +147,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
       if (resolved.issues) {
         const messages =
           Array.isArray(resolved.issues) && resolved.issues.length > 0
-            ? resolved.issues.map(issue => issue.message).join("; ")
+            ? resolved.issues.map((issue) => issue.message).join("; ")
             : "Validation failed";
         throw new Error(messages);
       }
