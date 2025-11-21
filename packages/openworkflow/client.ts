@@ -6,6 +6,17 @@ import { Worker } from "./worker.js";
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
 
+type SchemaInput<TSchema, Fallback> = TSchema extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<TSchema>
+  : Fallback;
+
+type SchemaOutput<TSchema, Fallback> = TSchema extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<TSchema>
+  : Fallback;
+
+type WorkflowHandlerInput<TSchema, Input> = SchemaOutput<TSchema, Input>;
+type WorkflowRunInput<TSchema, Input> = SchemaInput<TSchema, Input>;
+
 /**
  * Options for the OpenWorkflow client.
  */
@@ -20,8 +31,7 @@ export class OpenWorkflow {
   private backend: Backend;
   private registeredWorkflows = new Map<
     string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    WorkflowDefinition<any, any, any>
+    WorkflowDefinition<unknown, unknown, unknown>
   >();
 
   constructor(options: OpenWorkflowOptions) {
@@ -43,33 +53,44 @@ export class OpenWorkflow {
    * Define and register a new workflow.
    */
   defineWorkflow<
+    Input,
+    Output,
     TSchema extends StandardSchemaV1 | undefined = undefined,
-    Input = TSchema extends StandardSchemaV1
-      ? StandardSchemaV1.InferOutput<TSchema>
-      : unknown,
-    RunInput = TSchema extends StandardSchemaV1
-      ? StandardSchemaV1.InferInput<TSchema>
-      : Input,
-    Output = unknown,
   >(
     config: WorkflowDefinitionConfig<TSchema>,
-    fn: WorkflowFunction<Input, Output>,
-  ): WorkflowDefinition<Input, Output, RunInput> {
+    fn: WorkflowFunction<WorkflowHandlerInput<TSchema, Input>, Output>,
+  ): WorkflowDefinition<
+    WorkflowHandlerInput<TSchema, Input>,
+    Output,
+    WorkflowRunInput<TSchema, Input>
+  > {
     const { name, version } = config;
 
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
     }
 
-    const definition = new WorkflowDefinition<Input, Output, RunInput>({
+    const definition = new WorkflowDefinition<
+      WorkflowHandlerInput<TSchema, Input>,
+      Output,
+      WorkflowRunInput<TSchema, Input>
+    >({
       backend: this.backend,
       name,
       ...(version !== undefined && { version }),
       fn,
-      schema: config.schema as StandardSchemaV1<RunInput, Input> | undefined,
+      schema: config.schema as
+        | StandardSchemaV1<
+            WorkflowRunInput<TSchema, Input>,
+            WorkflowHandlerInput<TSchema, Input>
+          >
+        | undefined,
     });
 
-    this.registeredWorkflows.set(name, definition);
+    this.registeredWorkflows.set(
+      name,
+      definition as WorkflowDefinition<unknown, unknown, unknown>,
+    );
 
     return definition;
   }
@@ -82,7 +103,7 @@ export class OpenWorkflow {
 /**
  * Options for WorkflowDefinition.
  */
-export interface WorkflowDefinitionOptions<Input, Output, RunInput> {
+export interface WorkflowDefinitionOptions<Input, Output, RunInput = Input> {
   backend: Backend;
   name: string;
   version?: string;
@@ -94,7 +115,7 @@ export interface WorkflowDefinitionOptions<Input, Output, RunInput> {
  * Config passed to `defineWorkflow()` when defining a workflow.
  */
 export interface WorkflowDefinitionConfig<
-  TSchema extends StandardSchemaV1 | undefined = StandardSchemaV1 | undefined,
+  TSchema extends StandardSchemaV1 | undefined = undefined,
 > {
   /**
    * The name of the workflow.
@@ -142,11 +163,11 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     if (this.schema) {
       // https://standardschema.dev
       const result = this.schema["~standard"].validate(input);
-      const resolved = result instanceof Promise ? await result : result;
+      const resolved = await Promise.resolve(result);
 
       if (resolved.issues) {
         const messages =
-          Array.isArray(resolved.issues) && resolved.issues.length > 0
+          resolved.issues.length > 0
             ? resolved.issues.map((issue) => issue.message).join("; ")
             : "Validation failed";
         throw new Error(messages);
