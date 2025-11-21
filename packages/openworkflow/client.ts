@@ -142,6 +142,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     let parsedInput = input as unknown as Input | undefined;
 
     if (this.schema) {
+      // https://standardschema.dev
       const result = this.schema["~standard"].validate(input);
       const resolved = result instanceof Promise ? await result : result;
 
