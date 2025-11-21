@@ -14,7 +14,10 @@ type SchemaOutput<TSchema, Fallback> = TSchema extends StandardSchemaV1
   ? StandardSchemaV1.InferOutput<TSchema>
   : Fallback;
 
+/* The data the worker function receives (after transformation). */
 type WorkflowHandlerInput<TSchema, Input> = SchemaOutput<TSchema, Input>;
+
+/* The data the client sends (before transformation) */
 type WorkflowRunInput<TSchema, Input> = SchemaInput<TSchema, Input>;
 
 /**
