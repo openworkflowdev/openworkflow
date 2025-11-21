@@ -105,35 +105,6 @@ const workflow = ow.defineWorkflow(
 );
 ```
 
-#### Validating workflow inputs
-
-You can require `.run()` callers to provide specific inputs by supplying a
-`schema` when defining the workflow. The schema is evaluated before the run is
-enqueued, so invalid requests fail immediately.
-
-```ts
-import { z } from "zod";
-
-const summarizeDoc = ow.defineWorkflow(
-  {
-    name: "summarize",
-    schema: z.object({
-      docUrl: z.string().url(),
-    }),
-  },
-  async ({ input, step }) => {
-    // `input` has type { docUrl: string }
-  },
-);
-
-// Throws before enqueueing the workflow because the input isn't a URL
-await summarizeDoc.run({ docUrl: "not-a-url" });
-```
-
-Any validator function works as long as it throws on invalid data (great for
-custom logic or lightweight checks). Libraries such as Zod, ArkType, Valibot,
-Yup.
-
 ### Steps
 
 Steps are the building blocks of workflows. Each step is executed exactly once
@@ -325,6 +296,35 @@ const workflow = ow.defineWorkflow(
   },
 );
 ```
+
+### Validating Workflow Inputs
+
+You can require `.run()` callers to provide specific inputs by supplying a
+`schema` when defining the workflow. The schema is evaluated before the run is
+enqueued, so invalid requests fail immediately.
+
+```ts
+import { z } from "zod";
+
+const summarizeDoc = ow.defineWorkflow(
+  {
+    name: "summarize",
+    schema: z.object({
+      docUrl: z.string().url(),
+    }),
+  },
+  async ({ input, step }) => {
+    // `input` has type { docUrl: string }
+  },
+);
+
+// Throws before enqueueing the workflow because the input isn't a URL
+await summarizeDoc.run({ docUrl: "not-a-url" });
+```
+
+Any validator function works as long as it throws on invalid data (great for
+custom logic or lightweight checks). Libraries such as Zod, ArkType, Valibot,
+and Yup.
 
 ## Production Checklist
 
