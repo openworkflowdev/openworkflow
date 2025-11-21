@@ -37,7 +37,7 @@ class SleepSignal extends Error {
  */
 export interface WorkerOptions {
   backend: Backend;
-  workflows: WorkflowDefinition<unknown, unknown>[];
+  workflows: WorkflowDefinition<unknown, unknown, unknown>[];
   concurrency?: number | undefined;
 }
 
@@ -50,7 +50,7 @@ export class Worker {
   private readonly workerIds: string[];
   private readonly registeredWorkflows = new Map<
     string,
-    WorkflowDefinition<unknown, unknown>
+    WorkflowDefinition<unknown, unknown, unknown>
   >();
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
@@ -197,7 +197,7 @@ export class Worker {
    */
   private async processExecutionInBackground(
     execution: WorkflowExecution,
-    workflow: WorkflowDefinition<unknown, unknown>,
+    workflow: WorkflowDefinition<unknown, unknown, unknown>,
   ): Promise<void> {
     // start heartbeating
     execution.startHeartbeat();
