@@ -1,4 +1,4 @@
-/** The Standard Schema interface. */
+/** The Standard Schema interface. https://standardschema.dev */
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
   /** The Standard Schema properties. */
   readonly "~standard": StandardSchemaV1.Props<Input, Output>;
