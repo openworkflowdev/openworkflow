@@ -656,6 +656,7 @@ describe("Worker", () => {
     const workflow = client.defineWorkflow(
       { name: "invalid-duration" },
       async ({ step }) => {
+        // @ts-expect-error - testing invalid duration
         await step.sleep("bad", "invalid");
         return "should-not-reach";
       },
