@@ -1,8 +1,8 @@
 # OpenWorkflow
 
-[![npm version](https://badge.fury.io/js/openworkflow.svg)](https://www.npmjs.com/package/openworkflow)
-[![CI](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
-[![codecov](https://codecov.io/github/openworkflowdev/openworkflow/graph/badge.svg?token=T618G8O4XS)](https://codecov.io/github/openworkflowdev/openworkflow)
+[![npm](https://img.shields.io/npm/v/openworkflow)](https://www.npmjs.com/package/openworkflow)
+[![build](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
+[![coverage](https://img.shields.io/codecov/c/github/openworkflowdev/openworkflow)](https://codecov.io/github/openworkflowdev/openworkflow)
 
 OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
@@ -149,7 +149,7 @@ Your database is the source of truth.
 3. **The worker executes steps**: Each step is recorded in the `step_attempts`
    table. If a step succeeds, its result is cached.
 4. **The workflow completes**: The worker updates the `workflow_run` status to
-   `succeeded` or `failed`.
+   `completed` or `failed`.
 5. **If the worker crashes**: The workflow becomes visible to other workers via
    a heartbeat timeout. Another worker picks it up, loads the cached step
    results, and resumes from the next step.
@@ -206,18 +206,21 @@ The sleep step is memoized after it completes. If the workflow is replayed again
 
 #### Duration Formats
 
-Durations accept a number followed by a unit (no spaces):
+Durations accept a number followed by a unit:
 
-| Unit | Meaning      | Examples         |
-| ---- | ------------ | ---------------- |
-| ms   | milliseconds | `100ms`, `1.5ms` |
-| s    | seconds      | `5s`, `0.25s`    |
-| m    | minutes      | `2m`, `1.5m`     |
-| h    | hours        | `1h`, `0.25h`    |
-| d    | days         | `1d`, `0.5d`     |
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
 
-Invalid formats (missing unit, negative numbers, multiple units, spaces) throw
-an error and cause the workflow attempt to fail and (if configured) retry.
+See more examples of accepted duration formats and aliases in the
+[tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/duration.test.ts).
 
 ### Type Safety
 
@@ -294,6 +297,35 @@ const workflow = ow.defineWorkflow(
 );
 ```
 
+### Validating Workflow Inputs
+
+You can require `.run()` callers to provide specific inputs by supplying a
+`schema` when defining the workflow. The schema is evaluated before the run is
+enqueued, so invalid requests fail immediately.
+
+```ts
+import { z } from "zod";
+
+const summarizeDoc = ow.defineWorkflow(
+  {
+    name: "summarize",
+    schema: z.object({
+      docUrl: z.string().url(),
+    }),
+  },
+  async ({ input, step }) => {
+    // `input` has type { docUrl: string }
+  },
+);
+
+// Throws before enqueueing the workflow because the input isn't a URL
+await summarizeDoc.run({ docUrl: "not-a-url" });
+```
+
+Any validator function works as long as it throws on invalid data (great for
+custom logic or lightweight checks). Libraries such as Zod, ArkType, Valibot,
+and Yup.
+
 ## Production Checklist
 
 - **Database**: Use a production-ready Postgres instance
@@ -334,24 +366,24 @@ const workflow = ow.defineWorkflow(
 - ✅ Graceful shutdown
 - ✅ Parallel step execution
 - ✅ Sleeping (pausing) workflows
-
-**Coming in v0.3:**
-
 - ✅ Workflow versioning
 - ✅ Workflow cancelation
 
 **Coming Soon:**
 
-> These releeases don't yet include a dashboard UI or CLI. For now, you can
+> These releases don't yet include a dashboard UI or CLI. For now, you can
 > inspect workflow and step state directly in PostgreSQL (workflow_runs and
 > step_runs tables). A CLI and dashboard are planned for an upcoming release to
 > make debugging and monitoring much easier.
 
+- Improved local dev experience
 - CLI
 - Dashboard UI
+- Idempotency keys
+- Rollback / compensation functions
 - Configurable retry policies
 - Signals for external events
-- Workflow cancelation
+- Native OpenTelemetry integration
 - Additional backends (Redis, SQLite)
 - Additional languages (Go, Python)
 

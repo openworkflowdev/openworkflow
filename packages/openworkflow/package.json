@@ -1,6 +1,6 @@
 {
   "name": "openworkflow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Open-source TypeScript framework for building durable, resumable workflows",
   "keywords": [
     "durable execution",
@@ -38,6 +38,12 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "arktype": "^2.1.27",
+    "valibot": "^1.1.0",
+    "yup": "^1.7.1",
+    "zod": "^4.1.12"
   },
   "engines": {
     "node": ">=20"

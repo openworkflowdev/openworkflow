@@ -1,6 +1,7 @@
 import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { randomUUID } from "node:crypto";
 import { OpenWorkflow } from "openworkflow";
+import { object as yupObject, string as yupString } from "yup";
 
 const databaseUrl = "postgresql://postgres:postgres@localhost:5432/postgres";
 const backend = await BackendPostgres.connect(databaseUrl, {
@@ -8,23 +9,17 @@ const backend = await BackendPostgres.connect(databaseUrl, {
 });
 const ow = new OpenWorkflow({ backend });
 
-interface SummarizeDocInput {
-  docUrl: string;
-  num: string; // just for logging
-}
-
-interface SummarizeDocOutput {
-  summaryId: string;
-  summarized: string;
-}
+const schema = yupObject({
+  docUrl: yupString().url().required(),
+  num: yupString().required(),
+});
 
 /**
  * An example workflow that extracts, cleans, summarizes, and saves a document
- * from a URL. It explicitally specifies <Input, Output> types for better type
- * safety, but that's optional.
+ * from a URL. It uses a Yup schema to validate the input.
  */
-const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(
-  { name: "summarize-doc" },
+const summarizeDoc = ow.defineWorkflow(
+  { name: "summarize-doc-yup", schema },
   async ({ input, step }) => {
     const extracted = await step.run({ name: "extract-text" }, () => {
       console.log(`[${input.num}] Extracting text from ${input.docUrl}`);
@@ -95,12 +90,12 @@ async function main() {
         num: String(i + 1),
       }),
     );
-    console.log(`Workflow run ${String(i + 1)} enqueued"`);
+    console.log(`Workflow run ${String(i + 1)} enqueued`);
   }
 
   // wait for all run handles to be created
   const runHandles = (await Promise.all(runCreatePromises)) as {
-    result: () => Promise<SummarizeDocOutput>;
+    result: () => ReturnType<typeof summarizeDoc.run>;
   }[];
 
   // collect result promises, attach logging to each
@@ -109,7 +104,7 @@ async function main() {
       .result()
       .then((output) => {
         console.log(
-          `✅ Workflow run ${String(idx + 1)} completed: ${JSON.stringify(output)}`,
+          `✅ Workflow run ${String(idx + 1)} succeeded: ${JSON.stringify(output)}`,
         );
         return { status: "fulfilled" as const, value: output };
       })

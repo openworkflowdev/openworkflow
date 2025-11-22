@@ -1,8 +1,24 @@
 import type { Backend, WorkflowRun } from "./backend.js";
+import { DurationString } from "./duration.js";
+import { StandardSchemaV1 } from "./schema.js";
 import { Worker } from "./worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
+
+type SchemaInput<TSchema, Fallback> = TSchema extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<TSchema>
+  : Fallback;
+
+type SchemaOutput<TSchema, Fallback> = TSchema extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<TSchema>
+  : Fallback;
+
+/* The data the worker function receives (after transformation). */
+type WorkflowHandlerInput<TSchema, Input> = SchemaOutput<TSchema, Input>;
+
+/* The data the client sends (before transformation) */
+type WorkflowRunInput<TSchema, Input> = SchemaInput<TSchema, Input>;
 
 /**
  * Options for the OpenWorkflow client.
@@ -16,8 +32,10 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private registeredWorkflows = new Map<string, WorkflowDefinition<any, any>>();
+  private registeredWorkflows = new Map<
+    string,
+    WorkflowDefinition<unknown, unknown, unknown>
+  >();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
@@ -37,24 +55,45 @@ export class OpenWorkflow {
   /**
    * Define and register a new workflow.
    */
-  defineWorkflow<Input, Output>(
-    config: WorkflowDefinitionConfig,
-    fn: WorkflowFunction<Input, Output>,
-  ): WorkflowDefinition<Input, Output> {
+  defineWorkflow<
+    Input,
+    Output,
+    TSchema extends StandardSchemaV1 | undefined = undefined,
+  >(
+    config: WorkflowDefinitionConfig<TSchema>,
+    fn: WorkflowFunction<WorkflowHandlerInput<TSchema, Input>, Output>,
+  ): WorkflowDefinition<
+    WorkflowHandlerInput<TSchema, Input>,
+    Output,
+    WorkflowRunInput<TSchema, Input>
+  > {
     const { name, version } = config;
 
     if (this.registeredWorkflows.has(name)) {
       throw new Error(`Workflow "${name}" is already registered`);
     }
 
-    const definition = new WorkflowDefinition<Input, Output>({
+    const definition = new WorkflowDefinition<
+      WorkflowHandlerInput<TSchema, Input>,
+      Output,
+      WorkflowRunInput<TSchema, Input>
+    >({
       backend: this.backend,
       name,
       ...(version !== undefined && { version }),
       fn,
+      schema: config.schema as
+        | StandardSchemaV1<
+            WorkflowRunInput<TSchema, Input>,
+            WorkflowHandlerInput<TSchema, Input>
+          >
+        | undefined,
     });
 
-    this.registeredWorkflows.set(name, definition);
+    this.registeredWorkflows.set(
+      name,
+      definition as WorkflowDefinition<unknown, unknown, unknown>,
+    );
 
     return definition;
   }
@@ -82,17 +121,20 @@ export class OpenWorkflow {
 /**
  * Options for WorkflowDefinition.
  */
-export interface WorkflowDefinitionOptions<Input, Output> {
+export interface WorkflowDefinitionOptions<Input, Output, RunInput = Input> {
   backend: Backend;
   name: string;
   version?: string;
   fn: WorkflowFunction<Input, Output>;
+  schema?: StandardSchemaV1<RunInput, Input> | undefined;
 }
 
 /**
  * Config passed to `defineWorkflow()` when defining a workflow.
  */
-export interface WorkflowDefinitionConfig {
+export interface WorkflowDefinitionConfig<
+  TSchema extends StandardSchemaV1 | undefined = undefined,
+> {
   /**
    * The name of the workflow.
    */
@@ -102,32 +144,56 @@ export interface WorkflowDefinitionConfig {
    * deployments when changing workflow logic.
    */
   version?: string;
+  /**
+   * Optional schema used to validate inputs passed to `.run()`.
+   */
+  schema?: TSchema;
 }
 
 /**
  * Represents a workflow definition that can be used to start runs. Returned
  * from `client.defineWorkflow()`.
  */
-export class WorkflowDefinition<Input, Output> {
+export class WorkflowDefinition<Input, Output, RunInput = Input> {
   private backend: Backend;
   readonly name: string;
   readonly version: string | null;
   readonly fn: WorkflowFunction<Input, Output>;
+  private readonly schema: StandardSchemaV1<RunInput, Input> | null;
 
-  constructor(options: WorkflowDefinitionOptions<Input, Output>) {
+  constructor(options: WorkflowDefinitionOptions<Input, Output, RunInput>) {
     this.backend = options.backend;
     this.name = options.name;
     this.version = options.version ?? null;
     this.fn = options.fn;
+    this.schema = options.schema ?? null;
   }
 
   /**
    * Starts a new workflow run.
    */
   async run(
-    input?: Input,
+    input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
+    let parsedInput = input as unknown as Input | undefined;
+
+    if (this.schema) {
+      // https://standardschema.dev
+      const result = this.schema["~standard"].validate(input);
+      const resolved = await Promise.resolve(result);
+
+      if (resolved.issues) {
+        const messages =
+          resolved.issues.length > 0
+            ? resolved.issues.map((issue) => issue.message).join("; ")
+            : "Validation failed";
+        throw new Error(messages);
+      }
+
+      parsedInput = resolved.value;
+    }
+
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: this.name,
@@ -135,7 +201,7 @@ export class WorkflowDefinition<Input, Output> {
       idempotencyKey: null,
       config: {},
       context: null,
-      input: input ?? null,
+      input: parsedInput ?? null,
       availableAt: null,
       deadlineAt: options?.deadlineAt ?? null,
     });
@@ -185,7 +251,7 @@ export interface StepApi {
     config: StepFunctionConfig,
     fn: StepFunction<Output>,
   ): Promise<Output>;
-  sleep(name: string, duration: string): Promise<void>;
+  sleep(name: string, duration: DurationString): Promise<void>;
 }
 
 /**
@@ -256,7 +322,8 @@ export class WorkflowRunHandle<Output> {
         throw new Error(`Workflow run ${this.workflowRun.id} no longer exists`);
       }
 
-      if (latest.status === "succeeded") {
+      // 'succeeded' status is deprecated
+      if (latest.status === "succeeded" || latest.status === "completed") {
         return latest.output as Output;
       }
 

@@ -7,29 +7,26 @@ export interface Backend {
   // Workflow Runs
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>;
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>;
+  listWorkflowRuns(
+    params: ListWorkflowRunsParams,
+  ): Promise<PaginatedResponse<WorkflowRun>>;
   claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
-  heartbeatWorkflowRun(
-    params: HeartbeatWorkflowRunParams,
+  extendWorkflowRunLease(
+    params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun>;
   sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
-  markWorkflowRunSucceeded(
-    params: MarkWorkflowRunSucceededParams,
-  ): Promise<WorkflowRun>;
-  markWorkflowRunFailed(
-    params: MarkWorkflowRunFailedParams,
-  ): Promise<WorkflowRun>;
+  completeWorkflowRun(params: CompleteWorkflowRunParams): Promise<WorkflowRun>;
+  failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun>;
   cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
 
   // Step Attempts
-  listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]>;
   createStepAttempt(params: CreateStepAttemptParams): Promise<StepAttempt>;
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
-  markStepAttemptSucceeded(
-    params: MarkStepAttemptSucceededParams,
-  ): Promise<StepAttempt>;
-  markStepAttemptFailed(
-    params: MarkStepAttemptFailedParams,
-  ): Promise<StepAttempt>;
+  listStepAttempts(
+    params: ListStepAttemptsParams,
+  ): Promise<PaginatedResponse<StepAttempt>>;
+  completeStepAttempt(params: CompleteStepAttemptParams): Promise<StepAttempt>;
+  failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt>;
 }
 
 export interface CreateWorkflowRunParams {
@@ -47,12 +44,14 @@ export interface GetWorkflowRunParams {
   workflowRunId: string;
 }
 
+export type ListWorkflowRunsParams = PaginationOptions;
+
 export interface ClaimWorkflowRunParams {
   workerId: string;
   leaseDurationMs: number;
 }
 
-export interface HeartbeatWorkflowRunParams {
+export interface ExtendWorkflowRunLeaseParams {
   workflowRunId: string;
   workerId: string;
   leaseDurationMs: number;
@@ -64,23 +63,19 @@ export interface SleepWorkflowRunParams {
   availableAt: Date;
 }
 
-export interface MarkWorkflowRunSucceededParams {
+export interface CompleteWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   output: JsonValue | null;
 }
 
-export interface MarkWorkflowRunFailedParams {
+export interface FailWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   error: JsonValue;
 }
 
 export interface CancelWorkflowRunParams {
-  workflowRunId: string;
-}
-
-export interface ListStepAttemptsParams {
   workflowRunId: string;
 }
 
@@ -97,18 +92,36 @@ export interface GetStepAttemptParams {
   stepAttemptId: string;
 }
 
-export interface MarkStepAttemptSucceededParams {
+export interface ListStepAttemptsParams extends PaginationOptions {
+  workflowRunId: string;
+}
+
+export interface CompleteStepAttemptParams {
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;
   output: JsonValue | null;
 }
 
-export interface MarkStepAttemptFailedParams {
+export interface FailStepAttemptParams {
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;
   error: JsonValue;
+}
+
+export interface PaginationOptions {
+  limit?: number;
+  after?: string;
+  before?: string;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    next: string | null;
+    prev: string | null;
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -123,7 +136,8 @@ export type WorkflowRunStatus =
   | "pending"
   | "running"
   | "sleeping"
-  | "succeeded"
+  | "succeeded" // deprecated in favor of 'completed'
+  | "completed"
   | "failed"
   | "canceled";
 
@@ -156,7 +170,11 @@ export interface WorkflowRun {
 
 export type StepKind = "function" | "sleep";
 
-export type StepAttemptStatus = "running" | "succeeded" | "failed";
+export type StepAttemptStatus =
+  | "running"
+  | "succeeded" // deprecated in favor of 'completed'
+  | "completed"
+  | "failed";
 
 export interface StepAttemptContext {
   kind: "sleep";
