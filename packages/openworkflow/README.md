@@ -376,8 +376,8 @@ and Yup.
 > step_runs tables). A CLI and dashboard are planned for an upcoming release to
 > make debugging and monitoring much easier.
 
-- Improved local dev experience
-- CLI
+- Improved local dev experience (coming in v0.5)
+- CLI (coming in v0.5)
 - Dashboard UI
 - Idempotency keys
 - Rollback / compensation functions
