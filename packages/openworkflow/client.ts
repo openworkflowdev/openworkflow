@@ -44,7 +44,7 @@ export class OpenWorkflow {
   /**
    * Create a new Worker with this client's backend and workflows.
    */
-  newWorker(options?: { concurrency?: number }): Worker {
+  newWorker(options?: { concurrency?: number | undefined }): Worker {
     return new Worker({
       backend: this.backend,
       workflows: [...this.registeredWorkflows.values()],
