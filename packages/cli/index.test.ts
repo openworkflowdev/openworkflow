@@ -38,7 +38,9 @@ describe("config", () => {
       path.join(testDir, "openworkflow.config.ts"),
       "export const x = 1;",
     );
-    await expect(loadConfig(testDir)).rejects.toThrow(/default export|missing 'ow' property/);
+    await expect(loadConfig(testDir)).rejects.toThrow(
+      /default export|missing 'ow' property/,
+    );
   });
 
   test("loadConfig throws when missing ow property", async () => {
