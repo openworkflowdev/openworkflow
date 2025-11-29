@@ -31,7 +31,7 @@ workerCmd
 program.parse();
 
 /**
- * gets the version from package.json, looking in both the current and parent
+ * Gets the version from package.json, looking in both the current and parent
  * directory to handle dist/ subfolder
  */
 function getPackageJsonVersion(): string {
