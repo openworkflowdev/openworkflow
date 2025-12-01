@@ -10,6 +10,6 @@
     "openworkflow": "file:../../packages/openworkflow"
   },
   "devDependencies": {
-    "tsx": "^4.20.6"
+    "tsx": "^4.21.0"
   }
 }
