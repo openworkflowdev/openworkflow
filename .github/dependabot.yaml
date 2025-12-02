@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: daily
   - package-ecosystem: npm
-    directories: ["**/*"]
+    directories:
+      # find . -name 'package.json' -type f -exec dirname {} \; | sort -u
+      - /
+      - /benchmarks/basic
+      - /examples/basic
+      - /examples/with-schema-validation
+      - /packages/backend-postgres
+      - /packages/cli
+      - /packages/openworkflow
     schedule:
       interval: daily
