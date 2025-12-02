@@ -4,15 +4,35 @@ updates:
     directory: /
     schedule:
       interval: daily
+
+  # single entry for every directory with a package.json file (sorted) since
+  # `directories: ["**/*"]` does not work as intended.
+  # find . -type f -name package.json -not -path "*/node_modules/*" -exec dirname {} \; | sort -u
   - package-ecosystem: npm
-    directories:
-      # find . -name 'package.json' -type f -exec dirname {} \; | sort -u
-      - /
-      - /benchmarks/basic
-      - /examples/basic
-      - /examples/with-schema-validation
-      - /packages/backend-postgres
-      - /packages/cli
-      - /packages/openworkflow
+    directory: /
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /benchmarks/basic
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /examples/basic
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /examples/with-schema-validation
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /packages/backend-postgres
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /packages/cli
+    schedule:
+      interval: daily
+  - package-ecosystem: npm
+    directory: /packages/openworkflow
     schedule:
       interval: daily
