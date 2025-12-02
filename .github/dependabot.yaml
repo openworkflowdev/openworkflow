@@ -5,6 +5,7 @@ updates:
     schedule:
       interval: daily
   - package-ecosystem: npm
+    versioning-strategy: increase
     directories: ["**/*"]
     schedule:
       interval: daily
