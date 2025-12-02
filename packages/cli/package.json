@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "chalk": "^5.6.2",
-    "commander": "^12.1.0",
+    "commander": "^14.0.2",
     "jiti": "^2.6.1"
   },
   "devDependencies": {
