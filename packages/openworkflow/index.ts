@@ -1,8 +1,8 @@
-export type { OpenWorkflowOptions } from "./client.js";
-export { OpenWorkflow } from "./client.js";
+export type { OpenWorkflowOptions } from "./sdk/sdk.js";
+export { OpenWorkflow } from "./sdk/sdk.js";
 
-export type { WorkerOptions } from "./worker.js";
-export { Worker } from "./worker.js";
+export type { WorkerOptions } from "./worker/worker.js";
+export { Worker } from "./worker/worker.js";
 
 export * from "./core/backend.js";
 export type { JsonValue } from "./core/json.js";
