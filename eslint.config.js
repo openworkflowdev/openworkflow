@@ -1,6 +1,7 @@
 // @ts-check
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import functional from "eslint-plugin-functional";
 import sonarjs from "eslint-plugin-sonarjs";
 import unicorn from "eslint-plugin-unicorn";
 import { defineConfig } from "eslint/config";
@@ -30,6 +31,20 @@ export default defineConfig(
       "func-style": ["error", "declaration"],
       "unicorn/no-null": "off",
       "unicorn/prevent-abbreviations": "off",
+    },
+  },
+  {
+    files: ["packages/openworkflow/core/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    plugins: {
+      // @ts-expect-error - eslint-plugin-functional types don't align with eslint's Plugin type
+      functional,
+    },
+    rules: {
+      ...functional.configs.externalTypeScriptRecommended.rules,
+      ...functional.configs.recommended.rules,
+      ...functional.configs.stylistic.rules,
+      "functional/prefer-property-signatures": "off",
     },
   },
 );

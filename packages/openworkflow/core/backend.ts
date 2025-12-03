@@ -5,28 +5,50 @@ export const DEFAULT_NAMESPACE_ID = "default";
  */
 export interface Backend {
   // Workflow Runs
-  createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun>;
-  getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null>;
-  listWorkflowRuns(
-    params: ListWorkflowRunsParams,
-  ): Promise<PaginatedResponse<WorkflowRun>>;
-  claimWorkflowRun(params: ClaimWorkflowRunParams): Promise<WorkflowRun | null>;
-  extendWorkflowRunLease(
-    params: ExtendWorkflowRunLeaseParams,
+  createWorkflowRun(
+    params: Readonly<CreateWorkflowRunParams>,
   ): Promise<WorkflowRun>;
-  sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun>;
-  completeWorkflowRun(params: CompleteWorkflowRunParams): Promise<WorkflowRun>;
-  failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun>;
-  cancelWorkflowRun(params: CancelWorkflowRunParams): Promise<WorkflowRun>;
+  getWorkflowRun(
+    params: Readonly<GetWorkflowRunParams>,
+  ): Promise<WorkflowRun | null>;
+  listWorkflowRuns(
+    params: Readonly<ListWorkflowRunsParams>,
+  ): Promise<PaginatedResponse<WorkflowRun>>;
+  claimWorkflowRun(
+    params: Readonly<ClaimWorkflowRunParams>,
+  ): Promise<WorkflowRun | null>;
+  extendWorkflowRunLease(
+    params: Readonly<ExtendWorkflowRunLeaseParams>,
+  ): Promise<WorkflowRun>;
+  sleepWorkflowRun(
+    params: Readonly<SleepWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
+  completeWorkflowRun(
+    params: Readonly<CompleteWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
+  failWorkflowRun(
+    params: Readonly<FailWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
+  cancelWorkflowRun(
+    params: Readonly<CancelWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
 
   // Step Attempts
-  createStepAttempt(params: CreateStepAttemptParams): Promise<StepAttempt>;
-  getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null>;
+  createStepAttempt(
+    params: Readonly<CreateStepAttemptParams>,
+  ): Promise<StepAttempt>;
+  getStepAttempt(
+    params: Readonly<GetStepAttemptParams>,
+  ): Promise<StepAttempt | null>;
   listStepAttempts(
-    params: ListStepAttemptsParams,
+    params: Readonly<ListStepAttemptsParams>,
   ): Promise<PaginatedResponse<StepAttempt>>;
-  completeStepAttempt(params: CompleteStepAttemptParams): Promise<StepAttempt>;
-  failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt>;
+  completeStepAttempt(
+    params: Readonly<CompleteStepAttemptParams>,
+  ): Promise<StepAttempt>;
+  failStepAttempt(
+    params: Readonly<FailStepAttemptParams>,
+  ): Promise<StepAttempt>;
 }
 
 export interface CreateWorkflowRunParams {
