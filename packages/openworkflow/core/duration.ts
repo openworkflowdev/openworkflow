@@ -1,3 +1,6 @@
+import type { Result } from "./result.js";
+import { ok, err } from "./result.js";
+
 type Years = "years" | "year" | "yrs" | "yr" | "y";
 type Months = "months" | "month" | "mo";
 type Weeks = "weeks" | "week" | "w";
@@ -26,21 +29,23 @@ export type DurationString =
  * - short units: "1ms", "5s", "30m", "2h", "7d", "3w", "1y"
  * - long units: "1 millisecond", "5 seconds", "30 minutes", "2 hours", "7 days", "3 weeks", "1 year"
  */
-export function parseDuration(str: DurationString): number {
+export function parseDuration(str: DurationString): Result<number, Error> {
   if (typeof str !== "string") {
-    throw new TypeError(
-      "Invalid duration format: expected a string but received " + typeof str,
+    return err(
+      new TypeError(
+        "Invalid duration format: expected a string but received " + typeof str,
+      ),
     );
   }
 
   if (str.length === 0) {
-    throw new Error('Invalid duration format: ""');
+    return err(new Error('Invalid duration format: ""'));
   }
 
   const match = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i.exec(str);
 
   if (!match?.[1]) {
-    throw new Error(`Invalid duration format: "${str}"`);
+    return err(new Error(`Invalid duration format: "${str}"`));
   }
 
   const numValue = Number.parseFloat(match[1]);
@@ -85,8 +90,8 @@ export function parseDuration(str: DurationString): number {
 
   const multiplier = multipliers[unit];
   if (multiplier === undefined) {
-    throw new Error(`Invalid duration format: "${str}"`);
+    return err(new Error(`Invalid duration format: "${str}"`));
   }
 
-  return numValue * multiplier;
+  return ok(numValue * multiplier);
 }
