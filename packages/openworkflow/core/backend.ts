@@ -1,3 +1,7 @@
+import { JsonValue } from "./json.js";
+import type { StepAttempt, StepAttemptContext, StepKind } from "./step.js";
+import type { WorkflowRun } from "./workflow.js";
+
 export const DEFAULT_NAMESPACE_ID = "default";
 
 /**
@@ -144,83 +148,4 @@ export interface PaginatedResponse<T> {
     next: string | null;
     prev: string | null;
   };
-}
-
-// -----------------------------------------------------------------------------
-
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue =
-  | JsonPrimitive
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-export type WorkflowRunStatus =
-  | "pending"
-  | "running"
-  | "sleeping"
-  | "succeeded" // deprecated in favor of 'completed'
-  | "completed"
-  | "failed"
-  | "canceled";
-
-/**
- * WorkflowRun represents a single execution instance of a workflow.
- */
-export interface WorkflowRun {
-  namespaceId: string;
-  id: string;
-  workflowName: string;
-  version: string | null;
-  status: WorkflowRunStatus;
-  idempotencyKey: string | null;
-  config: JsonValue; // user-defined config
-  context: JsonValue | null; // runtime execution metadata
-  input: JsonValue | null;
-  output: JsonValue | null;
-  error: JsonValue | null;
-  attempts: number;
-  parentStepAttemptNamespaceId: string | null;
-  parentStepAttemptId: string | null;
-  workerId: string | null;
-  availableAt: Date | null;
-  deadlineAt: Date | null;
-  startedAt: Date | null;
-  finishedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export type StepKind = "function" | "sleep";
-
-export type StepAttemptStatus =
-  | "running"
-  | "succeeded" // deprecated in favor of 'completed'
-  | "completed"
-  | "failed";
-
-export interface StepAttemptContext {
-  kind: "sleep";
-  resumeAt: string;
-}
-
-/**
- * StepAttempt represents a single attempt of a step within a workflow.
- */
-export interface StepAttempt {
-  namespaceId: string;
-  id: string;
-  workflowRunId: string;
-  stepName: string;
-  kind: StepKind;
-  status: StepAttemptStatus;
-  config: JsonValue; // user-defined config
-  context: StepAttemptContext | null; // runtime execution metadata
-  output: JsonValue | null;
-  error: JsonValue | null;
-  childWorkflowRunNamespaceId: string | null;
-  childWorkflowRunId: string | null;
-  startedAt: Date | null;
-  finishedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
 }
