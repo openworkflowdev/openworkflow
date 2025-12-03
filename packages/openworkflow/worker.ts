@@ -443,8 +443,12 @@ class StepExecutor implements StepApi {
     if (existingAttempt) return;
 
     // create new step attempt for the sleep
-    const durationMs = parseDuration(duration);
-    const resumeAt = new Date(Date.now() + durationMs);
+    const result = parseDuration(duration);
+    if (!result.ok) {
+      throw result.error;
+    }
+    const resumeAt = new Date(Date.now() + result.value);
+
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
