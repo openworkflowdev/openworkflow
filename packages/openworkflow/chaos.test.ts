@@ -1,7 +1,7 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
-import { OpenWorkflow } from "./client.js";
-import { Worker } from "./worker.js";
+import { OpenWorkflow } from "./sdk/sdk.js";
+import { Worker } from "./worker/worker.js";
 import { randomInt, randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
