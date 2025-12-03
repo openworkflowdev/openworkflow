@@ -4,6 +4,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "core/*.ts"],
   "exclude": ["*.test.ts", "dist"]
 }

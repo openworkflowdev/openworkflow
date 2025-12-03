@@ -1,6 +1,6 @@
-import type { Backend, WorkflowRun } from "./backend.js";
-import { DurationString } from "./duration.js";
-import { StandardSchemaV1 } from "./schema.js";
+import type { Backend, WorkflowRun } from "./core/backend.js";
+import { DurationString } from "./core/duration.js";
+import { StandardSchemaV1 } from "./core/schema.js";
 import { Worker } from "./worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
