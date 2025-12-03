@@ -34,6 +34,12 @@ export default defineConfig(
     },
   },
   {
+    files: ["**/*.test.ts"],
+    rules: {
+      "sonarjs/no-nested-functions": "off",
+    },
+  },
+  {
     files: ["packages/openworkflow/core/**/*.ts"],
     ignores: ["**/*.test.ts"],
     plugins: {
