@@ -1,42 +1,12 @@
-import {
-  StepApi,
-  StepFunction,
-  StepFunctionConfig,
-  WorkflowDefinition,
-} from "./client.js";
+import { WorkflowDefinition } from "./client.js";
 import type { Backend } from "./core/backend.js";
-import type { DurationString } from "./core/duration.js";
-import type { JsonValue } from "./core/json.js";
-import type { StepAttempt, StepAttemptCache } from "./core/step.js";
-import {
-  serializeError,
-  createStepAttemptCacheFromAttempts,
-  getCachedStepAttempt,
-  addToStepAttemptCache,
-  normalizeStepOutput,
-  calculateSleepResumeAt,
-  createSleepContext,
-} from "./core/step.js";
+import { executeWorkflow } from "./core/execution.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
 const DEFAULT_POLL_INTERVAL_MS = 100; // 100ms
 const DEFAULT_CONCURRENCY = 1;
-
-/**
- * Signal thrown when a workflow needs to sleep. Contains the time when the
- * workflow should resume.
- */
-class SleepSignal extends Error {
-  readonly resumeAt: Date;
-
-  constructor(resumeAt: Date) {
-    super("SleepSignal");
-    this.name = "SleepSignal";
-    this.resumeAt = resumeAt;
-  }
-}
 
 /**
  * Configures how a Worker polls the backend, leases workflow runs, and
@@ -210,92 +180,20 @@ export class Worker {
     execution.startHeartbeat();
 
     try {
-      // load all pages of step history
-      const attempts: StepAttempt[] = [];
-      let cursor: string | undefined;
-      do {
-        const response = await this.backend.listStepAttempts({
-          workflowRunId: execution.workflowRun.id,
-          ...(cursor ? { after: cursor } : {}),
-          limit: 1000,
-        });
-        attempts.push(...response.data);
-        cursor = response.pagination.next ?? undefined;
-      } while (cursor);
-
-      // mark any sleep steps as completed if their sleep duration has elapsed,
-      // or rethrow SleepSignal if still sleeping
-      for (let i = 0; i < attempts.length; i++) {
-        const attempt = attempts[i];
-        if (!attempt) continue;
-
-        if (
-          attempt.status === "running" &&
-          attempt.kind === "sleep" &&
-          attempt.context?.kind === "sleep"
-        ) {
-          const now = Date.now();
-          const resumeAt = new Date(attempt.context.resumeAt);
-          const resumeAtMs = resumeAt.getTime();
-
-          if (now < resumeAtMs) {
-            // sleep duration HAS NOT elapsed yet, throw signal to put workflow
-            // back to sleep
-            throw new SleepSignal(resumeAt);
-          }
-
-          // sleep duration HAS elapsed, mark the step as completed and continue
-          const completed = await this.backend.completeStepAttempt({
-            workflowRunId: execution.workflowRun.id,
-            stepAttemptId: attempt.id,
-            workerId: execution.workerId,
-            output: null,
-          });
-
-          // update cache w/ completed attempt
-          attempts[i] = completed;
-        }
-      }
-
-      // create step executor
-      const executor = new StepExecutor({
+      await executeWorkflow({
         backend: this.backend,
-        workflowRunId: execution.workflowRun.id,
+        workflowRun: execution.workflowRun,
+        workflowFn: workflow.fn,
+        workflowVersion: workflow.version,
         workerId: execution.workerId,
-        attempts,
-      });
-
-      // execute workflow
-      const output = await workflow.fn({
-        input: execution.workflowRun.input as unknown,
-        step: executor,
-        version: execution.workflowRun.version,
-      });
-
-      // mark success
-      await this.backend.completeWorkflowRun({
-        workflowRunId: execution.workflowRun.id,
-        workerId: execution.workerId,
-        output: (output ?? null) as JsonValue,
       });
     } catch (error) {
-      // handle sleep signal by setting workflow to sleeping status
-      if (error instanceof SleepSignal) {
-        await this.backend.sleepWorkflowRun({
-          workflowRunId: execution.workflowRun.id,
-          workerId: execution.workerId,
-          availableAt: error.resumeAt,
-        });
-
-        return;
-      }
-
-      // mark failure
-      await this.backend.failWorkflowRun({
-        workflowRunId: execution.workflowRun.id,
-        workerId: execution.workerId,
-        error: serializeError(error),
-      });
+      // specifically for unexpected errors in the execution wrapper itself, not
+      // for business logic errors (those are handled inside executeWorkflow)
+      console.error(
+        `Critical error during workflow execution for run ${execution.workflowRun.id}:`,
+        error,
+      );
     }
   }
 }
@@ -354,114 +252,6 @@ class WorkflowExecution {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-  }
-}
-
-/**
- * Configures the options for a StepExecutor.
- */
-interface StepExecutorOptions {
-  backend: Backend;
-  workflowRunId: string;
-  workerId: string;
-  attempts: StepAttempt[];
-}
-
-/**
- * Replays prior step attempts and persists new ones while memoizing
- * deterministic step outputs.
- */
-class StepExecutor implements StepApi {
-  private backend: Backend;
-  private workflowRunId: string;
-  private workerId: string;
-  private cache: StepAttemptCache;
-
-  constructor(options: StepExecutorOptions) {
-    this.backend = options.backend;
-    this.workflowRunId = options.workflowRunId;
-    this.workerId = options.workerId;
-
-    this.cache = createStepAttemptCacheFromAttempts(options.attempts);
-  }
-
-  async run<Output>(
-    config: StepFunctionConfig,
-    fn: StepFunction<Output>,
-  ): Promise<Output> {
-    const { name } = config;
-
-    // return cached result if available
-    const existingAttempt = getCachedStepAttempt(this.cache, name);
-    if (existingAttempt) {
-      return existingAttempt.output as Output;
-    }
-
-    // not in cache, create new step attempt
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
-      stepName: name,
-      kind: "function",
-      config: {},
-      context: null,
-    });
-
-    try {
-      // execute step function
-      const result = await fn();
-      const output = normalizeStepOutput(result);
-
-      // mark success
-      const savedAttempt = await this.backend.completeStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: attempt.id,
-        workerId: this.workerId,
-        output,
-      });
-
-      // cache result
-      this.cache = addToStepAttemptCache(this.cache, savedAttempt);
-
-      return savedAttempt.output as Output;
-    } catch (error) {
-      // mark failure
-      await this.backend.failStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: attempt.id,
-        workerId: this.workerId,
-        error: serializeError(error),
-      });
-      throw error;
-    }
-  }
-
-  async sleep(name: string, duration: DurationString): Promise<void> {
-    // return cached result if this sleep already completed
-    const existingAttempt = getCachedStepAttempt(this.cache, name);
-    if (existingAttempt) return;
-
-    // create new step attempt for the sleep
-    const result = calculateSleepResumeAt(duration);
-    if (!result.ok) {
-      throw result.error;
-    }
-    const resumeAt = result.value;
-    const context = createSleepContext(resumeAt);
-
-    await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
-      stepName: name,
-      kind: "sleep",
-      config: {},
-      context,
-    });
-
-    // throw sleep signal to trigger postponement
-    // we do not mark the step as completed here; it will be updated
-    // when the workflow resumes
-    throw new SleepSignal(resumeAt);
   }
 }
 
