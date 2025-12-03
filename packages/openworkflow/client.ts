@@ -1,18 +1,13 @@
-import type { Backend, WorkflowRun } from "./core/backend.js";
-import { DurationString } from "./core/duration.js";
-import { StandardSchemaV1 } from "./core/schema.js";
+import type { Backend } from "./core/backend.js";
+import type { DurationString } from "./core/duration.js";
+import type { StandardSchemaV1 } from "./core/schema.js";
+import type { WorkflowRun } from "./core/workflow.js";
+import type { SchemaInput, SchemaOutput } from "./core/workflow.js";
+import { validateInput } from "./core/workflow.js";
 import { Worker } from "./worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
-
-type SchemaInput<TSchema, Fallback> = TSchema extends StandardSchemaV1
-  ? StandardSchemaV1.InferInput<TSchema>
-  : Fallback;
-
-type SchemaOutput<TSchema, Fallback> = TSchema extends StandardSchemaV1
-  ? StandardSchemaV1.InferOutput<TSchema>
-  : Fallback;
 
 /* The data the worker function receives (after transformation). */
 type WorkflowHandlerInput<TSchema, Input> = SchemaOutput<TSchema, Input>;
@@ -161,23 +156,11 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
-    let parsedInput = input as unknown as Input | undefined;
-
-    if (this.schema) {
-      // https://standardschema.dev
-      const result = this.schema["~standard"].validate(input);
-      const resolved = await Promise.resolve(result);
-
-      if (resolved.issues) {
-        const messages =
-          resolved.issues.length > 0
-            ? resolved.issues.map((issue) => issue.message).join("; ")
-            : "Validation failed";
-        throw new Error(messages);
-      }
-
-      parsedInput = resolved.value;
+    const validationResult = await validateInput(this.schema, input);
+    if (!validationResult.success) {
+      throw new Error(validationResult.error);
     }
+    const parsedInput = validationResult.value;
 
     // need to come back and support idempotency keys, scheduling, etc.
     const workflowRun = await this.backend.createWorkflowRun({

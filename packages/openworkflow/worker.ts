@@ -4,13 +4,20 @@ import {
   StepFunctionConfig,
   WorkflowDefinition,
 } from "./client.js";
-import type {
-  Backend,
-  JsonValue,
-  StepAttempt,
-  WorkflowRun,
-} from "./core/backend.js";
-import { DurationString, parseDuration } from "./core/duration.js";
+import type { Backend } from "./core/backend.js";
+import type { DurationString } from "./core/duration.js";
+import type { JsonValue } from "./core/json.js";
+import type { StepAttempt, StepAttemptCache } from "./core/step.js";
+import {
+  serializeError,
+  createStepAttemptCacheFromAttempts,
+  getCachedStepAttempt,
+  addToStepAttemptCache,
+  normalizeStepOutput,
+  calculateSleepResumeAt,
+  createSleepContext,
+} from "./core/step.js";
+import type { WorkflowRun } from "./core/workflow.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
@@ -368,20 +375,14 @@ class StepExecutor implements StepApi {
   private backend: Backend;
   private workflowRunId: string;
   private workerId: string;
-  private readonly successfulAttemptsByName = new Map<string, StepAttempt>();
+  private cache: StepAttemptCache;
 
   constructor(options: StepExecutorOptions) {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
 
-    // load successful attempts into history
-    for (const attempt of options.attempts) {
-      // 'succeeded' status is deprecated
-      if (attempt.status === "succeeded" || attempt.status === "completed") {
-        this.successfulAttemptsByName.set(attempt.stepName, attempt);
-      }
-    }
+    this.cache = createStepAttemptCacheFromAttempts(options.attempts);
   }
 
   async run<Output>(
@@ -391,7 +392,7 @@ class StepExecutor implements StepApi {
     const { name } = config;
 
     // return cached result if available
-    const existingAttempt = this.successfulAttemptsByName.get(name);
+    const existingAttempt = getCachedStepAttempt(this.cache, name);
     if (existingAttempt) {
       return existingAttempt.output as Output;
     }
@@ -409,9 +410,7 @@ class StepExecutor implements StepApi {
     try {
       // execute step function
       const result = await fn();
-
-      // convert undefined to null for JSON compatibility
-      const output = (result ?? null) as JsonValue | null;
+      const output = normalizeStepOutput(result);
 
       // mark success
       const savedAttempt = await this.backend.completeStepAttempt({
@@ -422,7 +421,7 @@ class StepExecutor implements StepApi {
       });
 
       // cache result
-      this.successfulAttemptsByName.set(name, savedAttempt);
+      this.cache = addToStepAttemptCache(this.cache, savedAttempt);
 
       return savedAttempt.output as Output;
     } catch (error) {
@@ -439,15 +438,16 @@ class StepExecutor implements StepApi {
 
   async sleep(name: string, duration: DurationString): Promise<void> {
     // return cached result if this sleep already completed
-    const existingAttempt = this.successfulAttemptsByName.get(name);
+    const existingAttempt = getCachedStepAttempt(this.cache, name);
     if (existingAttempt) return;
 
     // create new step attempt for the sleep
-    const result = parseDuration(duration);
+    const result = calculateSleepResumeAt(duration);
     if (!result.ok) {
       throw result.error;
     }
-    const resumeAt = new Date(Date.now() + result.value);
+    const resumeAt = result.value;
+    const context = createSleepContext(resumeAt);
 
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
@@ -455,10 +455,7 @@ class StepExecutor implements StepApi {
       stepName: name,
       kind: "sleep",
       config: {},
-      context: {
-        kind: "sleep",
-        resumeAt: resumeAt.toISOString(),
-      },
+      context,
     });
 
     // throw sleep signal to trigger postponement
@@ -466,26 +463,6 @@ class StepExecutor implements StepApi {
     // when the workflow resumes
     throw new SleepSignal(resumeAt);
   }
-}
-
-/**
- * Serialize an error to a JSON-compatible format.
- */
-function serializeError(error: unknown): {
-  message: string;
-  [key: string]: JsonValue;
-} {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack ?? null,
-    };
-  }
-
-  return {
-    message: String(error),
-  };
 }
 
 function sleep(ms: number): Promise<void> {
