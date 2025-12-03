@@ -1,6 +1,6 @@
 import type { Backend } from "../core/backend.js";
-import { executeWorkflow } from "../core/execution.js";
 import type { WorkflowRun } from "../core/workflow.js";
+import { executeWorkflow } from "../execution/execution.js";
 import type { WorkflowDefinition } from "../sdk/sdk.js";
 import { randomUUID } from "node:crypto";
 

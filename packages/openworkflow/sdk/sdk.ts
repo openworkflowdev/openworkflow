@@ -1,13 +1,10 @@
-import type { WorkflowFunction } from "../core/application.js";
 import type { Backend } from "../core/backend.js";
 import type { StandardSchemaV1 } from "../core/schema.js";
 import type { WorkflowRun } from "../core/workflow.js";
 import type { SchemaInput, SchemaOutput } from "../core/workflow.js";
 import { validateInput } from "../core/workflow.js";
+import type { WorkflowFunction } from "../execution/execution.js";
 import { Worker } from "../worker/worker.js";
-
-// re-export types from core/application for backward compatibility
-export type * from "../core/application.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
