@@ -29,7 +29,7 @@
     "eslint-plugin-functional": "^9.0.2",
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^62.0.0",
-    "prettier": "^3.7.3",
+    "prettier": "^3.7.4",
     "prettier-plugin-packagejson": "^2.5.20",
     "tsx": "^4.21.0",
     "turbo": "^2.6.1",
