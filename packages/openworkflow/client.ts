@@ -1,10 +1,13 @@
+import type { WorkflowFunction } from "./core/application.js";
 import type { Backend } from "./core/backend.js";
-import type { DurationString } from "./core/duration.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import type { SchemaInput, SchemaOutput } from "./core/workflow.js";
 import { validateInput } from "./core/workflow.js";
 import { Worker } from "./worker.js";
+
+// re-export port types from core/application for backward compatibility
+export type * from "./core/application.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -182,54 +185,6 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     });
   }
 }
-
-/**
- * Params passed to a workflow function for the user to use when defining steps.
- */
-export interface WorkflowFunctionParams<Input> {
-  input: Input;
-  step: StepApi;
-  version: string | null;
-}
-
-/**
- * The workflow definition's function (defined by the user) that the user uses
- * to define the workflow's steps.
- */
-export type WorkflowFunction<Input, Output> = (
-  params: WorkflowFunctionParams<Input>,
-) => Promise<Output> | Output;
-
-/**
- * Config for an individual step defined with `step.run()`.
- */
-export interface StepFunctionConfig {
-  /**
-   * The name of the step.
-   */
-  name: string;
-}
-
-/**
- * Represents the API for defining steps within a workflow. Used within a
- * workflow handler to define steps by calling `step.run()`.
- */
-export interface StepApi {
-  run<Output>(
-    config: StepFunctionConfig,
-    fn: StepFunction<Output>,
-  ): Promise<Output>;
-  sleep(name: string, duration: DurationString): Promise<void>;
-}
-
-/**
- * The step definition (defined by the user) that executes user code. Can return
- * undefined (e.g., when using `return;`) which will be converted to null.
- */
-export type StepFunction<Output> = () =>
-  | Promise<Output | undefined>
-  | Output
-  | undefined;
 
 //
 // --- Workflow Run
