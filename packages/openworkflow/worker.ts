@@ -1,16 +1,16 @@
-import type {
-  Backend,
-  JsonValue,
-  StepAttempt,
-  WorkflowRun,
-} from "./backend.js";
 import {
   StepApi,
   StepFunction,
   StepFunctionConfig,
   WorkflowDefinition,
 } from "./client.js";
-import { DurationString, parseDuration } from "./duration.js";
+import type {
+  Backend,
+  JsonValue,
+  StepAttempt,
+  WorkflowRun,
+} from "./core/backend.js";
+import { DurationString, parseDuration } from "./core/duration.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
