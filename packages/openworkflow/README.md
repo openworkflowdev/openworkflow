@@ -220,7 +220,7 @@ Durations accept a number followed by a unit:
 | years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
 
 See more examples of accepted duration formats and aliases in the
-[tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/duration.test.ts).
+[tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/core/duration.test.ts).
 
 ### Type Safety
 
