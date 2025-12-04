@@ -14,7 +14,7 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export interface WorkerOptions {
   backend: Backend;
-  workflows: WorkflowDefinition<unknown, unknown, unknown>[];
+  workflows: Map<string, WorkflowDefinition<unknown, unknown, unknown>>;
   concurrency?: number | undefined;
 }
 
@@ -45,8 +45,8 @@ export class Worker {
     this.workerIds = Array.from({ length: concurrency }, () => randomUUID());
 
     // register workflows
-    for (const workflow of options.workflows) {
-      this.registeredWorkflows.set(workflow.name, workflow);
+    for (const [name, workflow] of options.workflows) {
+      this.registeredWorkflows.set(name, workflow);
     }
   }
 
@@ -184,7 +184,7 @@ export class Worker {
         backend: this.backend,
         workflowRun: execution.workflowRun,
         workflowFn: workflow.fn,
-        workflowVersion: workflow.version,
+        workflowVersion: workflow.spec.version,
         workerId: execution.workerId,
       });
     } catch (error) {
