@@ -155,7 +155,7 @@ export function migrations(): string[] {
     ON "step_attempts" ("child_workflow_run_namespace_id", "child_workflow_run_id")
     WHERE child_workflow_run_namespace_id IS NOT NULL AND child_workflow_run_id IS NOT NULL;
 
-    INSERT OR IGNORE INTO "openworkflow_migrations"("version")
+    INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
     VALUES (4);
 
     COMMIT;`,
