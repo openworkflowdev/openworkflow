@@ -463,6 +463,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(failed.output).toBeNull();
         expect(failed.finishedAt).toBeNull();
         expect(failed.workerId).toBeNull();
+        expect(failed.startedAt).toBeNull(); // cleared on failure for retry
 
         expect(failed.availableAt).not.toBeNull();
         if (!failed.availableAt) throw new Error("Expected availableAt");
@@ -1014,6 +1015,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(failed.status).toBe("failed");
         expect(failed.availableAt).toBeNull();
         expect(failed.finishedAt).not.toBeNull();
+        expect(failed.startedAt).toBeNull(); // cleared on permanent failure
 
         await teardown(backend);
       });
