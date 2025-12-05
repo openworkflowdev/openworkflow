@@ -42,13 +42,130 @@ export class OpenWorkflow {
   newWorker(options?: { concurrency?: number | undefined }): Worker {
     return new Worker({
       backend: this.backend,
-      workflows: [...this.registeredWorkflows.values()],
+      workflows: this.registeredWorkflows,
       concurrency: options?.concurrency,
     });
   }
 
   /**
+   * Declare a workflow without providing its implementation (which is provided
+   * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
+   * that can be used to schedule workflow runs.
+   *
+   * @example
+   * ```ts
+   * export const emailWorkflow = ow.declareWorkflow({
+   *   name: 'send-email',
+   *   schema: z.object({ to: z.string().email() }),
+   * });
+   * ```
+   */
+  declareWorkflow<
+    Input,
+    Output,
+    TSchema extends StandardSchemaV1 | undefined = undefined,
+  >(
+    config: WorkflowDefinitionConfig<TSchema>,
+  ): WorkflowSpec<
+    WorkflowHandlerInput<TSchema, Input>,
+    Output,
+    WorkflowRunInput<TSchema, Input>
+  > {
+    return {
+      name: config.name,
+      version: config.version ?? null,
+      schema:
+        (config.schema as
+          | StandardSchemaV1<
+              WorkflowRunInput<TSchema, Input>,
+              WorkflowHandlerInput<TSchema, Input>
+            >
+          | undefined) ?? null,
+    };
+  }
+
+  /**
+   * Provide the implementation for a declared workflow. This links the workflow
+   * specification to its execution logic and registers it with this
+   * OpenWorkflow instance for worker execution.
+   */
+  implementWorkflow<Input, Output, RunInput = Input>(
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    fn: WorkflowFunction<Input, Output>,
+  ): void {
+    if (this.registeredWorkflows.has(spec.name)) {
+      throw new Error(`Workflow "${spec.name}" is already registered`);
+    }
+
+    const definition = new WorkflowDefinition<Input, Output, RunInput>(
+      this,
+      spec,
+      fn,
+    );
+
+    this.registeredWorkflows.set(
+      spec.name,
+      definition as WorkflowDefinition<unknown, unknown, unknown>,
+    );
+  }
+
+  /**
+   * Run a workflow from its specification. This is the primary way to schedule
+   * a workflow using only its WorkflowSpec.
+   *
+   * @example
+   * ```ts
+   * const handle = await ow.runWorkflow(emailWorkflow, { to: 'user@example.com' });
+   * const result = await handle.result();
+   * ```
+   */
+  async runWorkflow<Input, Output, RunInput = Input>(
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    input?: RunInput,
+    options?: WorkflowRunOptions,
+  ): Promise<WorkflowRunHandle<Output>> {
+    const validationResult = await validateInput(spec.schema, input);
+    if (!validationResult.success) {
+      throw new Error(validationResult.error);
+    }
+    const parsedInput = validationResult.value;
+
+    const workflowRun = await this.backend.createWorkflowRun({
+      workflowName: spec.name,
+      version: spec.version,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: parsedInput ?? null,
+      availableAt: null,
+      deadlineAt: options?.deadlineAt ?? null,
+    });
+
+    return new WorkflowRunHandle<Output>({
+      backend: this.backend,
+      workflowRun: workflowRun,
+      resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
+      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
+    });
+  }
+
+  /**
    * Define and register a new workflow.
+   *
+   * This is a convenience method that combines `declareWorkflow` and
+   * `implementWorkflow` into a single call. For better code splitting and to
+   * separate declaration from implementation, consider using those methods
+   * separately.
+   *
+   * @example
+   * ```ts
+   * const workflow = ow.defineWorkflow(
+   *   { name: 'my-workflow' },
+   *   async ({ input, step }) => {
+   *     // workflow implementation
+   *   },
+   * );
+   * ```
    */
   defineWorkflow<
     Input,
@@ -62,34 +179,16 @@ export class OpenWorkflow {
     Output,
     WorkflowRunInput<TSchema, Input>
   > {
-    const { name, version } = config;
-
-    if (this.registeredWorkflows.has(name)) {
-      throw new Error(`Workflow "${name}" is already registered`);
-    }
-
+    const spec = this.declareWorkflow<Input, Output, TSchema>(config);
     const definition = new WorkflowDefinition<
       WorkflowHandlerInput<TSchema, Input>,
       Output,
       WorkflowRunInput<TSchema, Input>
-    >({
-      backend: this.backend,
-      name,
-      ...(version !== undefined && { version }),
-      fn,
-      schema: config.schema as
-        | StandardSchemaV1<
-            WorkflowRunInput<TSchema, Input>,
-            WorkflowHandlerInput<TSchema, Input>
-          >
-        | undefined,
-    });
-
+    >(this, spec, fn);
     this.registeredWorkflows.set(
-      name,
+      spec.name,
       definition as WorkflowDefinition<unknown, unknown, unknown>,
     );
-
     return definition;
   }
 }
@@ -99,18 +198,8 @@ export class OpenWorkflow {
 //
 
 /**
- * Options for WorkflowDefinition.
- */
-export interface WorkflowDefinitionOptions<Input, Output, RunInput = Input> {
-  backend: Backend;
-  name: string;
-  version?: string;
-  fn: WorkflowFunction<Input, Output>;
-  schema?: StandardSchemaV1<RunInput, Input> | undefined;
-}
-
-/**
- * Config passed to `defineWorkflow()` when defining a workflow.
+ * Config for declaring a workflow via `declareWorkflow()` or
+ * `defineWorkflow()`.
  */
 export interface WorkflowDefinitionConfig<
   TSchema extends StandardSchemaV1 | undefined = undefined,
@@ -131,22 +220,49 @@ export interface WorkflowDefinitionConfig<
 }
 
 /**
- * Represents a workflow definition that can be used to start runs. Returned
- * from `client.defineWorkflow()`.
+ * A lightweight, serializable specification for a workflow. This object can be
+ * shared between different parts of an application (e.g., API servers and
+ * workers) without bringing in implementation dependencies.
+ *
+ * Use `ow.declareWorkflow()` to create a WorkflowSpec, and `ow.runWorkflow()`
+ * to schedule runs using only the spec.
+ */
+export interface WorkflowSpec<Input, Output, RunInput = Input> {
+  /** The name of the workflow. */
+  name: string;
+  /** The version of the workflow, or null if unversioned. */
+  version: string | null;
+  /** The schema used to validate inputs, or null if none. */
+  schema: StandardSchemaV1<RunInput, Input> | null;
+
+  // phantom types for generics, not used at runtime
+  _input?: Input;
+  _output?: Output;
+  _runInput?: RunInput;
+}
+
+//
+// --- Workflow Definition
+//
+
+/**
+ * A fully defined workflow with its implementation. This class is returned by
+ * `defineWorkflow` and provides the `.run()` method for scheduling workflow
+ * runs.
  */
 export class WorkflowDefinition<Input, Output, RunInput = Input> {
-  private backend: Backend;
-  readonly name: string;
-  readonly version: string | null;
+  private readonly ow: OpenWorkflow;
+  readonly spec: WorkflowSpec<Input, Output, RunInput>;
   readonly fn: WorkflowFunction<Input, Output>;
-  private readonly schema: StandardSchemaV1<RunInput, Input> | null;
 
-  constructor(options: WorkflowDefinitionOptions<Input, Output, RunInput>) {
-    this.backend = options.backend;
-    this.name = options.name;
-    this.version = options.version ?? null;
-    this.fn = options.fn;
-    this.schema = options.schema ?? null;
+  constructor(
+    ow: OpenWorkflow,
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    fn: WorkflowFunction<Input, Output>,
+  ) {
+    this.ow = ow;
+    this.spec = spec;
+    this.fn = fn;
   }
 
   /**
@@ -156,30 +272,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
-    const validationResult = await validateInput(this.schema, input);
-    if (!validationResult.success) {
-      throw new Error(validationResult.error);
-    }
-    const parsedInput = validationResult.value;
-
-    // need to come back and support idempotency keys, scheduling, etc.
-    const workflowRun = await this.backend.createWorkflowRun({
-      workflowName: this.name,
-      version: this.version,
-      idempotencyKey: null,
-      config: {},
-      context: null,
-      input: parsedInput ?? null,
-      availableAt: null,
-      deadlineAt: options?.deadlineAt ?? null,
-    });
-
-    return new WorkflowRunHandle<Output>({
-      backend: this.backend,
-      workflowRun: workflowRun,
-      resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
-      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
-    });
+    return this.ow.runWorkflow(this.spec, input, options);
   }
 }
 
