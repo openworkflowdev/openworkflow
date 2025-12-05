@@ -171,6 +171,54 @@ export function testBackend(options: TestBackendOptions): void {
         expect(listed.pagination.prev).toBeNull();
         await teardown(backend);
       });
+
+      test("paginates correctly with id as tiebreaker when multiple items have the same created_at timestamp", async () => {
+        const backend = await setup();
+
+        const runs: WorkflowRun[] = [];
+        for (let i = 0; i < 5; i++) {
+          runs.push(await createPendingWorkflowRun(backend));
+        }
+
+        runs.sort((a, b) => {
+          const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
+          if (timeDiff !== 0) return timeDiff;
+          return a.id.localeCompare(b.id);
+        });
+
+        const page1 = await backend.listWorkflowRuns({ limit: 2 });
+        expect(page1.data).toHaveLength(2);
+        expect(page1.data[0]?.id).toBe(runs[0]?.id);
+        expect(page1.data[1]?.id).toBe(runs[1]?.id);
+        expect(page1.pagination.next).not.toBeNull();
+
+        const page2 = await backend.listWorkflowRuns({
+          limit: 2,
+          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page2.data).toHaveLength(2);
+        expect(page2.data[0]?.id).toBe(runs[2]?.id);
+        expect(page2.data[1]?.id).toBe(runs[3]?.id);
+        expect(page2.pagination.next).not.toBeNull();
+
+        const page3 = await backend.listWorkflowRuns({
+          limit: 2,
+          after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page3.data).toHaveLength(1);
+        expect(page3.data[0]?.id).toBe(runs[4]?.id);
+        expect(page3.pagination.next).toBeNull();
+
+        const page2Back = await backend.listWorkflowRuns({
+          limit: 2,
+          before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page2Back.data).toHaveLength(2);
+        expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
+        expect(page2Back.data[1]?.id).toBe(runs[3]?.id);
+
+        await teardown(backend);
+      });
     });
 
     describe("claimWorkflowRun()", () => {
@@ -200,7 +248,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(blocked).toBeNull();
 
-        await sleep(firstLeaseMs);
+        await sleep(firstLeaseMs + 5); // small buffer for timing variability
 
         const reclaimed = await backend.claimWorkflowRun({
           workerId: secondWorker,
@@ -415,6 +463,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(failed.output).toBeNull();
         expect(failed.finishedAt).toBeNull();
         expect(failed.workerId).toBeNull();
+        expect(failed.startedAt).toBeNull(); // cleared on failure for retry
 
         expect(failed.availableAt).not.toBeNull();
         if (!failed.availableAt) throw new Error("Expected availableAt");
@@ -558,6 +607,8 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
           output: { ok: true },
         });
+
+        await sleep(10); // ensure timestamp difference
 
         const second = await backend.createStepAttempt({
           workflowRunId: claimed.id,
@@ -703,6 +754,62 @@ export function testBackend(options: TestBackendOptions): void {
         expect(fetched?.error).toBeNull();
         expect(fetched?.finishedAt).not.toBeNull();
       });
+
+      test("throws when workflow is not running", async () => {
+        const backend = await setup();
+        await createPendingWorkflowRun(backend);
+
+        // create a step attempt by first claiming the workflow
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        if (!claimed) throw new Error("Failed to claim workflow run");
+
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        // complete the workflow so it's no longer running
+        await backend.completeWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: null,
+        });
+
+        // try to complete the step attempt
+        await expect(
+          backend.completeStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            output: { foo: "bar" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt completed");
+
+        await teardown(backend);
+      });
+
+      test("throws when step attempt does not exist", async () => {
+        const backend = await setup();
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.completeStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: randomUUID(),
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            output: { foo: "bar" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt completed");
+
+        await teardown(backend);
+      });
     });
 
     describe("failStepAttempt()", () => {
@@ -738,6 +845,62 @@ export function testBackend(options: TestBackendOptions): void {
         expect(fetched?.error).toEqual(error);
         expect(fetched?.output).toBeNull();
         expect(fetched?.finishedAt).not.toBeNull();
+      });
+
+      test("throws when workflow is not running", async () => {
+        const backend = await setup();
+        await createPendingWorkflowRun(backend);
+
+        // create a step attempt by first claiming the workflow
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        if (!claimed) throw new Error("Failed to claim workflow run");
+
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        // complete the workflow so it's no longer running
+        await backend.completeWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: null,
+        });
+
+        // try to fail the step attempt
+        await expect(
+          backend.failStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            error: { message: "nope" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt failed");
+
+        await teardown(backend);
+      });
+
+      test("throws when step attempt does not exist", async () => {
+        const backend = await setup();
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.failStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: randomUUID(),
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            error: { message: "nope" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt failed");
+
+        await teardown(backend);
       });
     });
 
@@ -852,6 +1015,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(failed.status).toBe("failed");
         expect(failed.availableAt).toBeNull();
         expect(failed.finishedAt).not.toBeNull();
+        expect(failed.startedAt).toBeNull(); // cleared on permanent failure
 
         await teardown(backend);
       });
