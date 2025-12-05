@@ -753,6 +753,62 @@ export function testBackend(options: TestBackendOptions): void {
         expect(fetched?.error).toBeNull();
         expect(fetched?.finishedAt).not.toBeNull();
       });
+
+      test("throws when workflow is not running", async () => {
+        const backend = await setup();
+        await createPendingWorkflowRun(backend);
+
+        // create a step attempt by first claiming the workflow
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        if (!claimed) throw new Error("Failed to claim workflow run");
+
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        // complete the workflow so it's no longer running
+        await backend.completeWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: null,
+        });
+
+        // try to complete the step attempt
+        await expect(
+          backend.completeStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            output: { foo: "bar" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt completed");
+
+        await teardown(backend);
+      });
+
+      test("throws when step attempt does not exist", async () => {
+        const backend = await setup();
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.completeStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: randomUUID(),
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            output: { foo: "bar" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt completed");
+
+        await teardown(backend);
+      });
     });
 
     describe("failStepAttempt()", () => {
@@ -788,6 +844,62 @@ export function testBackend(options: TestBackendOptions): void {
         expect(fetched?.error).toEqual(error);
         expect(fetched?.output).toBeNull();
         expect(fetched?.finishedAt).not.toBeNull();
+      });
+
+      test("throws when workflow is not running", async () => {
+        const backend = await setup();
+        await createPendingWorkflowRun(backend);
+
+        // create a step attempt by first claiming the workflow
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        if (!claimed) throw new Error("Failed to claim workflow run");
+
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        // complete the workflow so it's no longer running
+        await backend.completeWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: null,
+        });
+
+        // try to fail the step attempt
+        await expect(
+          backend.failStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            error: { message: "nope" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt failed");
+
+        await teardown(backend);
+      });
+
+      test("throws when step attempt does not exist", async () => {
+        const backend = await setup();
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.failStepAttempt({
+            workflowRunId: claimed.id,
+            stepAttemptId: randomUUID(),
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            error: { message: "nope" },
+          }),
+        ).rejects.toThrow("Failed to mark step attempt failed");
+
+        await teardown(backend);
       });
     });
 
