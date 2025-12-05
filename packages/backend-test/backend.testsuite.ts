@@ -171,6 +171,54 @@ export function testBackend(options: TestBackendOptions): void {
         expect(listed.pagination.prev).toBeNull();
         await teardown(backend);
       });
+
+      test("paginates correctly with id as tiebreaker when multiple items have the same created_at timestamp", async () => {
+        const backend = await setup();
+
+        const runs: WorkflowRun[] = [];
+        for (let i = 0; i < 5; i++) {
+          runs.push(await createPendingWorkflowRun(backend));
+        }
+
+        runs.sort((a, b) => {
+          const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
+          if (timeDiff !== 0) return timeDiff;
+          return a.id.localeCompare(b.id);
+        });
+
+        const page1 = await backend.listWorkflowRuns({ limit: 2 });
+        expect(page1.data).toHaveLength(2);
+        expect(page1.data[0]?.id).toBe(runs[0]?.id);
+        expect(page1.data[1]?.id).toBe(runs[1]?.id);
+        expect(page1.pagination.next).not.toBeNull();
+
+        const page2 = await backend.listWorkflowRuns({
+          limit: 2,
+          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page2.data).toHaveLength(2);
+        expect(page2.data[0]?.id).toBe(runs[2]?.id);
+        expect(page2.data[1]?.id).toBe(runs[3]?.id);
+        expect(page2.pagination.next).not.toBeNull();
+
+        const page3 = await backend.listWorkflowRuns({
+          limit: 2,
+          after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page3.data).toHaveLength(1);
+        expect(page3.data[0]?.id).toBe(runs[4]?.id);
+        expect(page3.pagination.next).toBeNull();
+
+        const page2Back = await backend.listWorkflowRuns({
+          limit: 2,
+          before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page2Back.data).toHaveLength(2);
+        expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
+        expect(page2Back.data[1]?.id).toBe(runs[3]?.id);
+
+        await teardown(backend);
+      });
     });
 
     describe("claimWorkflowRun()", () => {
