@@ -93,8 +93,12 @@ export class OpenWorkflow {
     spec: WorkflowSpec<Input, Output, RunInput>,
     fn: WorkflowFunction<Input, Output>,
   ): void {
-    if (this.registeredWorkflows.has(spec.name)) {
-      throw new Error(`Workflow "${spec.name}" is already registered`);
+    const key = getWorkflowKey(spec.name, spec.version);
+    if (this.registeredWorkflows.has(key)) {
+      const versionStr = spec.version ? ` (version: ${spec.version})` : "";
+      throw new Error(
+        `Workflow "${spec.name}"${versionStr} is already registered`,
+      );
     }
 
     const definition = new WorkflowDefinition<Input, Output, RunInput>(
@@ -104,7 +108,7 @@ export class OpenWorkflow {
     );
 
     this.registeredWorkflows.set(
-      spec.name,
+      key,
       definition as WorkflowDefinition<unknown, unknown, unknown>,
     );
   }
@@ -180,17 +184,30 @@ export class OpenWorkflow {
     WorkflowRunInput<TSchema, Input>
   > {
     const spec = this.declareWorkflow<Input, Output, TSchema>(config);
+    const key = getWorkflowKey(spec.name, spec.version);
     const definition = new WorkflowDefinition<
       WorkflowHandlerInput<TSchema, Input>,
       Output,
       WorkflowRunInput<TSchema, Input>
     >(this, spec, fn);
     this.registeredWorkflows.set(
-      spec.name,
+      key,
       definition as WorkflowDefinition<unknown, unknown, unknown>,
     );
     return definition;
   }
+}
+
+/**
+ * Generate a composite key for workflow registration that includes both name
+ * and version.
+ *
+ * @param name - The workflow name
+ * @param version - The workflow version (null for unversioned)
+ * @returns A composite key string
+ */
+export function getWorkflowKey(name: string, version: string | null): string {
+  return version ? `${name}@${version}` : name;
 }
 
 //

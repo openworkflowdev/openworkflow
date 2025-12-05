@@ -1081,6 +1081,172 @@ describe("Worker", () => {
       /Workflow cancel-result was canceled/,
     );
   });
+
+  describe("version matching", () => {
+    test("worker matches workflow runs by version", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      client.defineWorkflow(
+        { name: "versioned-workflow", version: "v1" },
+        async ({ step }) => {
+          return await step.run({ name: "compute" }, () => "v1-result");
+        },
+      );
+      client.defineWorkflow(
+        { name: "versioned-workflow", version: "v2" },
+        async ({ step }) => {
+          return await step.run({ name: "compute" }, () => "v2-result");
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 2 });
+
+      const v1Spec = client.declareWorkflow({
+        name: "versioned-workflow",
+        version: "v1",
+      });
+      const v2Spec = client.declareWorkflow({
+        name: "versioned-workflow",
+        version: "v2",
+      });
+
+      const handleV1 = await client.runWorkflow(v1Spec);
+      const handleV2 = await client.runWorkflow(v2Spec);
+
+      await worker.tick();
+      await sleep(100); // wait for background execution
+
+      const resultV1 = await handleV1.result();
+      const resultV2 = await handleV2.result();
+
+      expect(resultV1).toBe("v1-result");
+      expect(resultV2).toBe("v2-result");
+    });
+
+    test("worker fails workflow run when version is not registered", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      client.defineWorkflow(
+        { name: "version-check", version: "v1" },
+        () => "v1-result",
+      );
+
+      const worker = client.newWorker();
+
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "version-check",
+        version: "v2",
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      await worker.tick();
+
+      const updated = await backend.getWorkflowRun({
+        workflowRunId: workflowRun.id,
+      });
+
+      expect(updated?.status).toBe("pending");
+      expect(updated?.error).toEqual({
+        message: 'Workflow "version-check" (version: v2) is not registered',
+      });
+    });
+
+    test("unversioned workflow does not match versioned run", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      client.defineWorkflow(
+        { name: "version-mismatch" },
+        () => "unversioned-result",
+      );
+
+      const worker = client.newWorker();
+
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "version-mismatch",
+        version: "v1",
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      await worker.tick();
+
+      const updated = await backend.getWorkflowRun({
+        workflowRunId: workflowRun.id,
+      });
+
+      expect(updated?.status).toBe("pending");
+      expect(updated?.error).toEqual({
+        message: 'Workflow "version-mismatch" (version: v1) is not registered',
+      });
+    });
+
+    test("versioned workflow does not match unversioned run", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      client.defineWorkflow(
+        { name: "version-required", version: "v1" },
+        () => "v1-result",
+      );
+
+      const worker = client.newWorker();
+
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "version-required",
+        version: null,
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      await worker.tick();
+
+      const updated = await backend.getWorkflowRun({
+        workflowRunId: workflowRun.id,
+      });
+
+      expect(updated?.status).toBe("pending");
+      expect(updated?.error).toEqual({
+        message: 'Workflow "version-required" is not registered',
+      });
+    });
+
+    test("workflow receives run's version, not registered version", async () => {
+      // this test verifies that the version passed to the workflow function
+      // is the one from the workflow run, not the registered workflow
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: "version-in-handler", version: "v1" },
+        async ({ version, step }) => {
+          return await step.run({ name: "get-version" }, () => version);
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      await worker.tick();
+
+      const result = await handle.result();
+      expect(result).toBe("v1");
+    });
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {

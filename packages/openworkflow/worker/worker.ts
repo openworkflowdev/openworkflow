@@ -2,6 +2,7 @@ import type { Backend } from "../core/backend.js";
 import type { WorkflowRun } from "../core/workflow.js";
 import { executeWorkflow } from "../execution/execution.js";
 import type { WorkflowDefinition } from "../sdk/sdk.js";
+import { getWorkflowKey } from "../sdk/sdk.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
@@ -135,14 +136,17 @@ export class Worker {
     });
     if (!workflowRun) return null;
 
-    // find workflow definition
-    const workflow = this.registeredWorkflows.get(workflowRun.workflowName);
+    const key = getWorkflowKey(workflowRun.workflowName, workflowRun.version);
+    const workflow = this.registeredWorkflows.get(key);
     if (!workflow) {
+      const versionStr = workflowRun.version
+        ? ` (version: ${workflowRun.version})`
+        : "";
       await this.backend.failWorkflowRun({
         workflowRunId: workflowRun.id,
         workerId,
         error: {
-          message: `Workflow "${workflowRun.workflowName}" is not registered`,
+          message: `Workflow "${workflowRun.workflowName}"${versionStr} is not registered`,
         },
       });
       return null;
@@ -184,7 +188,7 @@ export class Worker {
         backend: this.backend,
         workflowRun: execution.workflowRun,
         workflowFn: workflow.fn,
-        workflowVersion: workflow.spec.version,
+        workflowVersion: execution.workflowRun.version,
         workerId: execution.workerId,
       });
     } catch (error) {

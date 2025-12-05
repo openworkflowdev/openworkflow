@@ -329,6 +329,46 @@ describe("OpenWorkflow", () => {
       }).toThrow('Workflow "duplicate-test" is already registered');
     });
 
+    test("implementWorkflow allows registering different versions of the same workflow", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const specV1 = client.declareWorkflow({
+        name: "multi-version",
+        version: "v1",
+      });
+      const specV2 = client.declareWorkflow({
+        name: "multi-version",
+        version: "v2",
+      });
+
+      // no throwing...
+      client.implementWorkflow(specV1, noopFn);
+      client.implementWorkflow(specV2, noopFn);
+    });
+
+    test("implementWorkflow throws for same name+version combination", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const spec1 = client.declareWorkflow({
+        name: "version-duplicate",
+        version: "v1",
+      });
+      const spec2 = client.declareWorkflow({
+        name: "version-duplicate",
+        version: "v1",
+      });
+
+      client.implementWorkflow(spec1, noopFn);
+
+      expect(() => {
+        client.implementWorkflow(spec2, noopFn);
+      }).toThrow(
+        'Workflow "version-duplicate" (version: v1) is already registered',
+      );
+    });
+
     test("declareWorkflow with schema validates input on runWorkflow", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
