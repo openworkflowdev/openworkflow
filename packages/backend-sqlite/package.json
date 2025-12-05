@@ -21,7 +21,7 @@
     "openworkflow": "file:../openworkflow"
   },
   "peerDependencies": {
-    "openworkflow": "^0.2.0"
+    "openworkflow": "^0.4.0"
   },
   "engines": {
     "node": ">=22.5.0"
