@@ -1,6 +1,6 @@
 import { Database, newDatabase, migrations, migrate } from "./sqlite.js";
 import { randomUUID } from "node:crypto";
-import { unlinkSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -36,11 +36,17 @@ describe("sqlite", () => {
 
   afterEach(() => {
     db.close();
-    // Clean up the test database file
-    try {
+    const walPath = `${dbPath}-wal`;
+    const shmPath = `${dbPath}-shm`;
+    // clean up the test database, WAL, and SHM files if they exist
+    if (existsSync(dbPath)) {
       unlinkSync(dbPath);
-    } catch {
-      // Ignore cleanup errors
+    }
+    if (existsSync(walPath)) {
+      unlinkSync(walPath);
+    }
+    if (existsSync(shmPath)) {
+      unlinkSync(shmPath);
     }
   });
 
