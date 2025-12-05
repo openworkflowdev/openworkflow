@@ -34,14 +34,14 @@ export default defineConfig(
     },
   },
   {
-    files: ["**/*.test.ts"],
+    files: ["**/*.test.ts", "**/*.testsuite.ts"],
     rules: {
       "sonarjs/no-nested-functions": "off",
     },
   },
   {
     files: ["packages/openworkflow/core/**/*.ts"],
-    ignores: ["**/*.test.ts"],
+    ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
     plugins: {
       // @ts-expect-error - eslint-plugin-functional types don't align with eslint's Plugin type
       functional,
