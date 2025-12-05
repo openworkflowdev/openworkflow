@@ -200,7 +200,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(blocked).toBeNull();
 
-        await sleep(firstLeaseMs);
+        await sleep(firstLeaseMs + 5); // small buffer for timing variability
 
         const reclaimed = await backend.claimWorkflowRun({
           workerId: secondWorker,
@@ -558,6 +558,8 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
           output: { ok: true },
         });
+
+        await sleep(10); // ensure timestamp difference
 
         const second = await backend.createStepAttempt({
           workflowRunId: claimed.id,

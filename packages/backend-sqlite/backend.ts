@@ -20,18 +20,22 @@ import {
   CreateWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
-  HeartbeatWorkflowRunParams,
+  ExtendWorkflowRunLeaseParams,
   ListStepAttemptsParams,
-  MarkStepAttemptFailedParams,
-  MarkStepAttemptSucceededParams,
-  MarkWorkflowRunFailedParams,
-  MarkWorkflowRunSucceededParams,
+  ListWorkflowRunsParams,
+  PaginatedResponse,
+  FailStepAttemptParams,
+  CompleteStepAttemptParams,
+  FailWorkflowRunParams,
+  CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
   StepAttempt,
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
   JsonValue,
 } from "openworkflow";
+
+export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
 interface BackendSqliteOptions {
   namespaceId?: string;
@@ -235,8 +239,8 @@ export class BackendSqlite implements Backend {
     }
   }
 
-  async heartbeatWorkflowRun(
-    params: HeartbeatWorkflowRunParams,
+  async extendWorkflowRunLease(
+    params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun> {
     const currentTime = now();
     const newAvailableAt = addMilliseconds(currentTime, params.leaseDurationMs);
@@ -261,13 +265,13 @@ export class BackendSqlite implements Backend {
     );
 
     if (result.changes === 0) {
-      throw new Error("Failed to heartbeat workflow run");
+      throw new Error("Failed to extend lease for workflow run");
     }
 
     const updated = await this.getWorkflowRun({
       workflowRunId: params.workflowRunId,
     });
-    if (!updated) throw new Error("Failed to heartbeat workflow run");
+    if (!updated) throw new Error("Failed to extend lease for workflow run");
 
     return updated;
   }
@@ -284,7 +288,7 @@ export class BackendSqlite implements Backend {
         "updated_at" = ?
       WHERE "namespace_id" = ?
       AND "id" = ?
-      AND "status" NOT IN ('succeeded', 'failed', 'canceled')
+      AND "status" NOT IN ('completed', 'failed', 'canceled')
       AND "worker_id" = ?
     `);
 
@@ -308,15 +312,15 @@ export class BackendSqlite implements Backend {
     return updated;
   }
 
-  async markWorkflowRunSucceeded(
-    params: MarkWorkflowRunSucceededParams,
+  async completeWorkflowRun(
+    params: CompleteWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const currentTime = now();
 
     const stmt = this.db.prepare(`
       UPDATE "workflow_runs"
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ?,
         "error" = NULL,
         "worker_id" = ?,
@@ -340,20 +344,18 @@ export class BackendSqlite implements Backend {
     );
 
     if (result.changes === 0) {
-      throw new Error("Failed to mark workflow run succeeded");
+      throw new Error("Failed to mark workflow run completed");
     }
 
     const updated = await this.getWorkflowRun({
       workflowRunId: params.workflowRunId,
     });
-    if (!updated) throw new Error("Failed to mark workflow run succeeded");
+    if (!updated) throw new Error("Failed to mark workflow run completed");
 
     return updated;
   }
 
-  async markWorkflowRunFailed(
-    params: MarkWorkflowRunFailedParams,
-  ): Promise<WorkflowRun> {
+  async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
       DEFAULT_RETRY_POLICY;
@@ -455,8 +457,8 @@ export class BackendSqlite implements Backend {
         return existing;
       }
 
-      // throw error for succeeded/failed workflows
-      if (["succeeded", "failed"].includes(existing.status)) {
+      // throw error for completed/failed workflows
+      if (["completed", "failed"].includes(existing.status)) {
         throw new Error(
           `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
         );
@@ -473,21 +475,180 @@ export class BackendSqlite implements Backend {
     return updated;
   }
 
-  listStepAttempts(params: ListStepAttemptsParams): Promise<StepAttempt[]> {
-    const stmt = this.db.prepare(`
-      SELECT *
-      FROM "step_attempts"
-      WHERE "namespace_id" = ? AND "workflow_run_id" = ?
-      ORDER BY "created_at"
-    `);
+  listWorkflowRuns(
+    params: ListWorkflowRunsParams,
+  ): Promise<PaginatedResponse<WorkflowRun>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
 
-    const rows = stmt.all(this.namespaceId, params.workflowRunId);
+    let cursor: Cursor | null = null;
+    if (after) {
+      cursor = decodeCursor(after);
+    } else if (before) {
+      cursor = decodeCursor(before);
+    }
 
-    if (!Array.isArray(rows)) return Promise.resolve([]);
+    const order = before
+      ? `ORDER BY "created_at" DESC, "id" DESC`
+      : `ORDER BY "created_at" ASC, "id" ASC`;
+
+    let query: string;
+    let queryParams: (string | number)[];
+
+    if (cursor) {
+      const op = after ? ">" : "<";
+      query = `
+        SELECT *
+        FROM "workflow_runs"
+        WHERE "namespace_id" = ?
+          AND ("created_at", "id") ${op} (?, ?)
+        ${order}
+        LIMIT ?
+      `;
+      queryParams = [
+        this.namespaceId,
+        cursor.createdAt.toISOString(),
+        cursor.id,
+        limit + 1,
+      ];
+    } else {
+      query = `
+        SELECT *
+        FROM "workflow_runs"
+        WHERE "namespace_id" = ?
+        ${order}
+        LIMIT ?
+      `;
+      queryParams = [this.namespaceId, limit + 1];
+    }
+
+    const stmt = this.db.prepare(query);
+    const rawRows = stmt.all(...queryParams);
+
+    if (!Array.isArray(rawRows)) {
+      return Promise.resolve({
+        data: [],
+        pagination: { next: null, prev: null },
+      });
+    }
+
+    const rows = rawRows.map((row) =>
+      rowToWorkflowRun(row as unknown as WorkflowRunRow),
+    );
 
     return Promise.resolve(
-      rows.map((row) => rowToStepAttempt(row as unknown as StepAttemptRow)),
+      this.processPaginationResults(rows, limit, !!after, !!before),
     );
+  }
+
+  listStepAttempts(
+    params: ListStepAttemptsParams,
+  ): Promise<PaginatedResponse<StepAttempt>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+
+    let cursor: Cursor | null = null;
+    if (after) {
+      cursor = decodeCursor(after);
+    } else if (before) {
+      cursor = decodeCursor(before);
+    }
+
+    const order = before
+      ? `ORDER BY "created_at" DESC, "id" DESC`
+      : `ORDER BY "created_at" ASC, "id" ASC`;
+
+    let query: string;
+    let queryParams: (string | number)[];
+
+    if (cursor) {
+      const op = after ? ">" : "<";
+      query = `
+        SELECT *
+        FROM "step_attempts"
+        WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+          AND ("created_at", "id") ${op} (?, ?)
+        ${order}
+        LIMIT ?
+      `;
+      queryParams = [
+        this.namespaceId,
+        params.workflowRunId,
+        cursor.createdAt.toISOString(),
+        cursor.id,
+        limit + 1,
+      ];
+    } else {
+      query = `
+        SELECT *
+        FROM "step_attempts"
+        WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+        ${order}
+        LIMIT ?
+      `;
+      queryParams = [this.namespaceId, params.workflowRunId, limit + 1];
+    }
+
+    const stmt = this.db.prepare(query);
+    const rawRows = stmt.all(...queryParams);
+
+    if (!Array.isArray(rawRows)) {
+      return Promise.resolve({
+        data: [],
+        pagination: { next: null, prev: null },
+      });
+    }
+
+    const rows = rawRows.map((row) =>
+      rowToStepAttempt(row as unknown as StepAttemptRow),
+    );
+
+    return Promise.resolve(
+      this.processPaginationResults(rows, limit, !!after, !!before),
+    );
+  }
+
+  private processPaginationResults<T extends Cursor>(
+    rows: T[],
+    limit: number,
+    hasAfter: boolean,
+    hasBefore: boolean,
+  ): PaginatedResponse<T> {
+    const data = rows;
+    let hasNext = false;
+    let hasPrev = false;
+
+    if (hasBefore) {
+      data.reverse();
+      if (data.length > limit) {
+        hasPrev = true;
+        data.shift();
+      }
+      hasNext = true;
+    } else {
+      if (data.length > limit) {
+        hasNext = true;
+        data.pop();
+      }
+      if (hasAfter) {
+        hasPrev = true;
+      }
+    }
+
+    const lastItem = data.at(-1);
+    const nextCursor = hasNext && lastItem ? encodeCursor(lastItem) : null;
+    const firstItem = data[0];
+    const prevCursor = hasPrev && firstItem ? encodeCursor(firstItem) : null;
+
+    return {
+      data,
+      pagination: {
+        next: nextCursor,
+        prev: prevCursor,
+      },
+    };
   }
 
   async createStepAttempt(
@@ -547,8 +708,8 @@ export class BackendSqlite implements Backend {
     return Promise.resolve(row ? rowToStepAttempt(row) : null);
   }
 
-  async markStepAttemptSucceeded(
-    params: MarkStepAttemptSucceededParams,
+  async completeStepAttempt(
+    params: CompleteStepAttemptParams,
   ): Promise<StepAttempt> {
     const currentTime = now();
 
@@ -569,13 +730,13 @@ export class BackendSqlite implements Backend {
     ) as { id: string } | undefined;
 
     if (!workflowRow) {
-      throw new Error("Failed to mark step attempt succeeded");
+      throw new Error("Failed to mark step attempt completed");
     }
 
     const stmt = this.db.prepare(`
       UPDATE "step_attempts"
       SET
-        "status" = 'succeeded',
+        "status" = 'completed',
         "output" = ?,
         "error" = NULL,
         "finished_at" = ?,
@@ -596,20 +757,18 @@ export class BackendSqlite implements Backend {
     );
 
     if (result.changes === 0) {
-      throw new Error("Failed to mark step attempt succeeded");
+      throw new Error("Failed to mark step attempt completed");
     }
 
     const updated = await this.getStepAttempt({
       stepAttemptId: params.stepAttemptId,
     });
-    if (!updated) throw new Error("Failed to mark step attempt succeeded");
+    if (!updated) throw new Error("Failed to mark step attempt completed");
 
     return updated;
   }
 
-  async markStepAttemptFailed(
-    params: MarkStepAttemptFailedParams,
-  ): Promise<StepAttempt> {
+  async failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt> {
     const currentTime = now();
 
     // Check that the workflow is running and owned by the worker
@@ -773,5 +932,31 @@ function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
     finishedAt: fromISO(row.finished_at),
     createdAt,
     updatedAt,
+  };
+}
+
+/**
+ * Cursor used for pagination. Requires created_at and id fields. Because JS
+ * Date does not natively support microsecond precision dates, created_at should
+ * be stored with millisecond precision in paginated tables to avoid issues with
+ * cursor comparisons.
+ */
+interface Cursor {
+  createdAt: Date;
+  id: string;
+}
+
+function encodeCursor(item: Cursor): string {
+  return Buffer.from(
+    JSON.stringify({ createdAt: item.createdAt, id: item.id }),
+  ).toString("base64");
+}
+
+function decodeCursor(cursor: string): Cursor {
+  const decoded = Buffer.from(cursor, "base64").toString("utf8");
+  const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
+  return {
+    createdAt: new Date(parsed.createdAt),
+    id: parsed.id,
   };
 }
