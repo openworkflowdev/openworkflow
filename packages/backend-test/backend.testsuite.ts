@@ -669,26 +669,6 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
-    describe("getStepAttempt() duplicate", () => {
-      test("returns a persisted step attempt", async () => {
-        const claimed = await createClaimedWorkflowRun(backend);
-
-        const created = await backend.createStepAttempt({
-          workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
-          stepName: randomUUID(),
-          kind: "function",
-          config: {},
-          context: null,
-        });
-
-        const got = await backend.getStepAttempt({
-          stepAttemptId: created.id,
-        });
-        expect(got).toEqual(created);
-      });
-    });
-
     describe("completeStepAttempt()", () => {
       test("marks running step attempts as completed", async () => {
         const claimed = await createClaimedWorkflowRun(backend);
