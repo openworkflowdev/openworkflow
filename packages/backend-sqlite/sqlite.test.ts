@@ -1,6 +1,8 @@
 import { Database, newDatabase, migrations, migrate } from "./sqlite.js";
 import { randomUUID } from "node:crypto";
 import { unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 // Helper to get the current migration version (exported for testing)
@@ -28,7 +30,7 @@ describe("sqlite", () => {
 
   beforeEach(() => {
     // Use a unique file path for each test to ensure isolation
-    dbPath = `/tmp/test_${randomUUID()}.db`;
+    dbPath = path.join(tmpdir(), `test_${randomUUID()}.db`);
     db = newDatabase(dbPath);
   });
 
