@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22 # (Active LTS + previous LTS)
+          node-version: 22 # previous LTS (24 becomes previous on Oct 20, 2026 - https://endoflife.date/nodejs)
       - run: npm ci
       - run: npm run format
       - run: npm run lint
