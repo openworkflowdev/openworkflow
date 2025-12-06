@@ -1,6 +1,6 @@
 import { BackendPostgres } from "../../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../../backend-postgres/postgres.js";
-import { OpenWorkflow } from "./sdk.js";
+import { declareWorkflow, OpenWorkflow } from "./sdk.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
@@ -291,7 +291,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = client.declareWorkflow({ name: "declare-test" });
+      const spec = declareWorkflow({ name: "declare-test" });
 
       const handle = await client.runWorkflow(spec, { message: "hello" });
       expect(handle.workflowRun.workflowName).toBe("declare-test");
@@ -303,7 +303,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = client.declareWorkflow({ name: "implement-test" });
+      const spec = declareWorkflow({ name: "implement-test" });
       client.implementWorkflow(spec, ({ input }) => {
         return { received: input };
       });
@@ -321,7 +321,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = client.declareWorkflow({ name: "duplicate-test" });
+      const spec = declareWorkflow({ name: "duplicate-test" });
       client.implementWorkflow(spec, noopFn);
 
       expect(() => {
@@ -333,11 +333,11 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const specV1 = client.declareWorkflow({
+      const specV1 = declareWorkflow({
         name: "multi-version",
         version: "v1",
       });
-      const specV2 = client.declareWorkflow({
+      const specV2 = declareWorkflow({
         name: "multi-version",
         version: "v2",
       });
@@ -351,11 +351,11 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec1 = client.declareWorkflow({
+      const spec1 = declareWorkflow({
         name: "version-duplicate",
         version: "v1",
       });
-      const spec2 = client.declareWorkflow({
+      const spec2 = declareWorkflow({
         name: "version-duplicate",
         version: "v1",
       });
@@ -376,7 +376,7 @@ describe("OpenWorkflow", () => {
       const schema = z.object({
         email: z.email(),
       });
-      const spec = client.declareWorkflow({
+      const spec = declareWorkflow({
         name: "declare-schema-test",
         schema,
       });
@@ -395,7 +395,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = client.declareWorkflow({
+      const spec = declareWorkflow({
         name: "declare-version-test",
         version: "v1.2.3",
       });

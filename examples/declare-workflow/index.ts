@@ -1,6 +1,7 @@
 import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { randomUUID } from "node:crypto";
 import { OpenWorkflow } from "openworkflow";
+import { declareWorkflow } from "openworkflow";
 
 const databaseUrl = "postgresql://postgres:postgres@localhost:5432/postgres";
 const backend = await BackendPostgres.connect(databaseUrl, {
@@ -22,10 +23,9 @@ interface SummarizeDocOutput {
  * Declare the workflow spec separately from its implementation.
  * This spec can be shared with other services that only need to schedule runs.
  */
-const summarizeDocSpec = ow.declareWorkflow<
-  SummarizeDocInput,
-  SummarizeDocOutput
->({ name: "summarize-doc" });
+const summarizeDocSpec = declareWorkflow<SummarizeDocInput, SummarizeDocOutput>(
+  { name: "summarize-doc" },
+);
 
 /**
  * Implement the workflow. This registers the workflow handler with the

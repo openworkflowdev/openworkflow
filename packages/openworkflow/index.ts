@@ -1,5 +1,5 @@
 export type { OpenWorkflowOptions } from "./sdk/sdk.js";
-export { OpenWorkflow } from "./sdk/sdk.js";
+export { OpenWorkflow, declareWorkflow } from "./sdk/sdk.js";
 
 export type { WorkerOptions } from "./worker/worker.js";
 export { Worker } from "./worker/worker.js";

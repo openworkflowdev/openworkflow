@@ -48,43 +48,6 @@ export class OpenWorkflow {
   }
 
   /**
-   * Declare a workflow without providing its implementation (which is provided
-   * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
-   * that can be used to schedule workflow runs.
-   *
-   * @example
-   * ```ts
-   * export const emailWorkflow = ow.declareWorkflow({
-   *   name: 'send-email',
-   *   schema: z.object({ to: z.string().email() }),
-   * });
-   * ```
-   */
-  declareWorkflow<
-    Input,
-    Output,
-    TSchema extends StandardSchemaV1 | undefined = undefined,
-  >(
-    config: WorkflowDefinitionConfig<TSchema>,
-  ): WorkflowSpec<
-    WorkflowHandlerInput<TSchema, Input>,
-    Output,
-    WorkflowRunInput<TSchema, Input>
-  > {
-    return {
-      name: config.name,
-      version: config.version ?? null,
-      schema:
-        (config.schema as
-          | StandardSchemaV1<
-              WorkflowRunInput<TSchema, Input>,
-              WorkflowHandlerInput<TSchema, Input>
-            >
-          | undefined) ?? null,
-    };
-  }
-
-  /**
    * Provide the implementation for a declared workflow. This links the workflow
    * specification to its execution logic and registers it with this
    * OpenWorkflow instance for worker execution.
@@ -183,7 +146,7 @@ export class OpenWorkflow {
     Output,
     WorkflowRunInput<TSchema, Input>
   > {
-    const spec = this.declareWorkflow<Input, Output, TSchema>(config);
+    const spec = declareWorkflow<Input, Output, TSchema>(config);
     const key = getWorkflowKey(spec.name, spec.version);
     const definition = new WorkflowDefinition<
       WorkflowHandlerInput<TSchema, Input>,
@@ -196,6 +159,43 @@ export class OpenWorkflow {
     );
     return definition;
   }
+}
+
+/**
+ * Declare a workflow without providing its implementation (which is provided
+ * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
+ * that can be used to schedule workflow runs.
+ *
+ * @example
+ * ```ts
+ * export const emailWorkflow = declareWorkflow({
+ *   name: 'send-email',
+ *   schema: z.object({ to: z.string().email() }),
+ * });
+ * ```
+ */
+export function declareWorkflow<
+  Input,
+  Output,
+  TSchema extends StandardSchemaV1 | undefined = undefined,
+>(
+  config: WorkflowDefinitionConfig<TSchema>,
+): WorkflowSpec<
+  WorkflowHandlerInput<TSchema, Input>,
+  Output,
+  WorkflowRunInput<TSchema, Input>
+> {
+  return {
+    name: config.name,
+    version: config.version ?? null,
+    schema:
+      (config.schema as
+        | StandardSchemaV1<
+            WorkflowRunInput<TSchema, Input>,
+            WorkflowHandlerInput<TSchema, Input>
+          >
+        | undefined) ?? null,
+  };
 }
 
 /**
@@ -241,7 +241,7 @@ export interface WorkflowDefinitionConfig<
  * shared between different parts of an application (e.g., API servers and
  * workers) without bringing in implementation dependencies.
  *
- * Use `ow.declareWorkflow()` to create a WorkflowSpec, and `ow.runWorkflow()`
+ * Use `declareWorkflow()` to create a WorkflowSpec, and `ow.runWorkflow()`
  * to schedule runs using only the spec.
  */
 export interface WorkflowSpec<Input, Output, RunInput = Input> {

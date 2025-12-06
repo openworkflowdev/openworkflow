@@ -1,6 +1,6 @@
 import { BackendPostgres } from "../../backend-postgres/backend.js";
 import { DEFAULT_DATABASE_URL } from "../../backend-postgres/postgres.js";
-import { OpenWorkflow } from "../sdk/sdk.js";
+import { declareWorkflow, OpenWorkflow } from "../sdk/sdk.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
@@ -1102,11 +1102,11 @@ describe("Worker", () => {
 
       const worker = client.newWorker({ concurrency: 2 });
 
-      const v1Spec = client.declareWorkflow({
+      const v1Spec = declareWorkflow({
         name: "versioned-workflow",
         version: "v1",
       });
-      const v2Spec = client.declareWorkflow({
+      const v2Spec = declareWorkflow({
         name: "versioned-workflow",
         version: "v2",
       });
