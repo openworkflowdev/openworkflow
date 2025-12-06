@@ -1,5 +1,16 @@
 # openworkflow
 
+#### Upcoming / unreleased
+
+- Add SQLite backend using `node:sqlite` (requires Node.js 22+). This is now the
+  default backend for non-production environments (@nathancahill)
+- Add CLI for easy project initialization (`ow init`) and worker management
+  (`ow worker start`)
+- Add `declareWorkflow` and `implementWorkflow` APIs to separate workflow
+  definitions from their implementation logic for tree-shaking
+- Fix execution logic when running multiple versions of the same workflow on a
+  single worker
+
 ## 0.4.0
 
 - Add schema validation, compatible with over a dozen validators like Zod,
