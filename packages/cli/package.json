@@ -21,9 +21,11 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
+    "@clack/prompts": "^0.11.0",
     "commander": "^14.0.2",
-    "jiti": "^2.6.1"
+    "consola": "^3.4.2",
+    "jiti": "^2.6.1",
+    "nypm": "^0.6.2"
   },
   "devDependencies": {
     "openworkflow": "file:../openworkflow"

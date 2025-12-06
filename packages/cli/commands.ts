@@ -6,11 +6,13 @@ import {
   WorkerConfig,
 } from "./config.js";
 import { CLIError } from "./errors.js";
-import chalk from "chalk";
+import * as p from "@clack/prompts";
+import { consola } from "consola";
 import { writeFileSync } from "node:fs";
+import { addDependency, detectPackageManager } from "nypm";
 
-export function init(): void {
-  console.log("Initializing OpenWorkflow...");
+export async function init(): Promise<void> {
+  p.intro("OpenWorkflow");
 
   const configPath = resolveConfigPath();
 
@@ -21,17 +23,55 @@ export function init(): void {
     );
   }
 
-  writeFileSync(configPath, CONFIG_TEMPLATE, "utf8");
+  const spinner = p.spinner();
 
-  console.log(chalk.green(`Created ${configPath}`));
-  console.log("Next steps:");
-  console.log("  1. npm install openworkflow @openworkflow/backend-postgres");
-  console.log("  2. Update DATABASE_URL in your config or environment");
-  console.log("  3. Start a worker: ow worker start");
+  // detect package manager & install packages
+  spinner.start("Detecting package manager...");
+  const pm = await detectPackageManager(process.cwd());
+  const packageManager = pm?.name ?? "your package manager";
+  spinner.stop(`Using ${packageManager}`);
+
+  const shouldInstall = await p.confirm({
+    message: `Install OpenWorkflow in your ${packageManager} dependencies?`,
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldInstall)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldInstall) {
+    spinner.start(
+      "Installing openworkflow, @openworkflow/backend-sqlite, @openworkflow/backend-postgres...",
+    );
+    await addDependency(
+      [
+        "openworkflow",
+        "@openworkflow/backend-sqlite",
+        "@openworkflow/backend-postgres",
+      ],
+      { silent: true },
+    );
+    spinner.stop(
+      "Installed openworkflow, @openworkflow/backend-sqlite, @openworkflow/backend-postgres",
+    );
+  }
+
+  // write config file (last, so canceling earlier doesn't leave a config file
+  // which would prevent re-running init)
+  spinner.start("Writing config...");
+  writeFileSync(configPath, CONFIG_TEMPLATE, "utf8");
+  spinner.stop(`Config written to ${configPath}`);
+
+  // wrap up
+  p.note(`➡️ Start a worker with:\n$ ow worker start`, "Next steps");
+  p.outro("Done!");
 }
 
 export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
-  console.log("Starting worker...");
+  consola.start("Starting worker...");
 
   const config = await loadConfig();
   const worker = config.ow.newWorker({ ...config.worker, ...cliOptions });
@@ -41,13 +81,13 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
 
-    console.log(chalk.yellow("Shutting down worker..."));
+    consola.warn("Shutting down worker...");
     await worker.stop();
-    console.log(chalk.green("Worker stopped"));
+    consola.success("Worker stopped");
   }
   process.on("SIGINT", () => void gracefulShutdown());
   process.on("SIGTERM", () => void gracefulShutdown());
 
   await worker.start();
-  console.log(chalk.green("Worker started."));
+  consola.success("Worker started.");
 }

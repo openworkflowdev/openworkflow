@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { init, workerStart } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";

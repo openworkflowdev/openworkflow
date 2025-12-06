@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import { consola } from "consola";
 
 /**
  * User-facing CLI error.
@@ -25,8 +25,8 @@ export function withErrorHandling<T extends unknown[]>(
       await fn(...args);
     } catch (error) {
       if (error instanceof CLIError) {
-        console.error(chalk.red(error.message));
-        if (error.detail) console.error(error.detail);
+        consola.error(error.message);
+        if (error.detail) consola.info(error.detail);
         // eslint-disable-next-line unicorn/no-process-exit
         process.exit(1);
       }
