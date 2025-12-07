@@ -16,23 +16,29 @@ exactly where they left off - all without extra servers to manage.
 Prerequisites:
 
 - Node.js
-- PostgreSQL (support for additional backends like Redis and SQLite coming soon.
-  See [Roadmap](#roadmap) for details.)
+- PostgreSQL (and/or SQLite)
 
 ### 1. Install
 
 ```bash
-npm install openworkflow @openworkflow/backend-postgres
+npm install openworkflow @openworkflow/backend-postgres @openworkflow/backend-sqlite
 ```
+
+You only need to install the backend package(s) for the database you plan to
+use.
 
 ### 2. Define a workflow
 
 ```ts
 import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { OpenWorkflow } from "openworkflow";
 
-const postgresUrl = process.env.DATABASE_URL; // connection url to your db
-const backend = await BackendPostgres.connect(postgresUrl);
+// use Postgres if DATABASE_URL is set, otherwise use SQLite
+const backend = process.env["DATABASE_URL"]
+  ? await BackendPostgres.connect(process.env["DATABASE_URL"])
+  : BackendSqlite.connect(); // optionally provide SQLite file path
+
 const ow = new OpenWorkflow({ backend });
 
 const sendWelcomeEmail = ow.defineWorkflow(
@@ -360,7 +366,7 @@ and Yup.
 
 **Live in current `npm` release:**
 
-- ✅ PostgreSQL backend
+- ✅ PostgreSQL and SQLite backends
 - ✅ Worker with concurrency control
 - ✅ Step memoization & retries
 - ✅ Graceful shutdown
@@ -372,9 +378,9 @@ and Yup.
 **Coming Soon:**
 
 > These releases don't yet include a dashboard UI or CLI. For now, you can
-> inspect workflow and step state directly in PostgreSQL (workflow_runs and
-> step_runs tables). A CLI and dashboard are planned for an upcoming release to
-> make debugging and monitoring much easier.
+> inspect workflow and step state directly in PostgreSQL or SQLite
+> (workflow_runs and step_runs tables). A CLI and dashboard are planned for an
+> upcoming release to make debugging and monitoring much easier.
 
 - Improved local dev experience (coming in v0.5)
 - CLI (coming in v0.5)
@@ -384,7 +390,7 @@ and Yup.
 - Configurable retry policies
 - Signals for external events
 - Native OpenTelemetry integration
-- Additional backends (Redis, SQLite)
+- Additional backends (Redis)
 - Additional languages (Go, Python)
 
 ## Bugs & feature requests

@@ -20,6 +20,6 @@
     "openworkflow": "file:../openworkflow"
   },
   "peerDependencies": {
-    "openworkflow": "^0.4.0"
+    "openworkflow": "^0.4.1"
   }
 }

@@ -11,9 +11,9 @@ survive process crashes, server restarts, and code deploys.
 It achieves this through a **worker-driven architecture**. Instead of relying on
 a central orchestrator server, OpenWorkflow uses a pool of stateless **Workers**
 that run within the user's infrastructure. These workers communicate with a
-durable **Backend** (like a Postgres database) which acts as the single source
-of truth for all workflow state. This model provides the power of durable
-execution with minimal operational complexity.
+durable **Backend** (like a Postgres or SQLite database) which acts as the
+single source of truth for all workflow state. This model provides the power of
+durable execution with minimal operational complexity.
 
 ### 1.2. Taxonomy
 
@@ -29,9 +29,9 @@ execution with minimal operational complexity.
   Backend for pending workflows, executes their code, and persists the results.
 - **Client**: The part of the OpenWorkflow SDK used by application code to start
   and query workflow runs.
-- **Backend**: A pluggable persistence layer (e.g., a Postgres database) that
-  stores all state for workflow runs and step attempts. It serves as the queue
-  and the durable state log.
+- **Backend**: A pluggable persistence layer (e.g., a Postgres or SQLite
+  database) that stores all state for workflow runs and step attempts. It serves
+  as the queue and the durable state log.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.
@@ -83,20 +83,20 @@ of coordination. There is no separate orchestrator server.
 |  +---------------------------+  |      |  +---------------------------+ |
 |               |                 |      |               |                |
 +---------------+-----------------+      +---------------+----------------+
-                |                              |
-                |  +------------------------+  |
-                +--|  Backend Interface     |--+
-                   |  (e.g., Postgres)      |
-                   +------------------------+
-                              |
-                              |
-               +------------------------------+
-               |                              |
-               |       Backend Storage        |
-               |                              |
-               | - workflow_runs              |
-               | - step_attempts              |
-               +------------------------------+
+                |                                        |
+                |     +----------------------------+     |
+                +-----|  Backend Interface         |-----+
+                      |  (e.g., Postgres / SQLIte) |
+                      +----------------------------+
+                                     |
+                                     |
+                      +------------------------------+
+                      |                              |
+                      |       Backend Storage        |
+                      |                              |
+                      | - workflow_runs              |
+                      | - step_attempts              |
+                      +------------------------------+
 ```
 
 ### 2.2. Core Components
