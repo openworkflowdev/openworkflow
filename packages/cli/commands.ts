@@ -1,9 +1,4 @@
-import {
-  configExists,
-  loadConfig,
-  resolveConfigPath,
-  WorkerConfig,
-} from "./config.js";
+import { loadConfig, WorkerConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
@@ -14,12 +9,12 @@ import { addDependency, detectPackageManager } from "nypm";
 export async function init(): Promise<void> {
   p.intro("OpenWorkflow");
 
-  const configPath = resolveConfigPath();
+  const { configFile } = await loadConfig();
 
-  if (configExists()) {
+  if (configFile) {
     throw new CLIError(
       "Config already exists.",
-      `Delete ${configPath} first to reinitialize.`,
+      `Delete ${configFile} first to reinitialize.`,
     );
   }
 
@@ -68,9 +63,10 @@ export async function init(): Promise<void> {
     "templates/config.ts",
   );
   const configTemplate = readFileSync(configTemplatePath, "utf8");
+  const configDestPath = path.join(process.cwd(), "openworkflow.config.ts");
 
-  writeFileSync(configPath, configTemplate, "utf8");
-  spinner.stop(`Config written to ${configPath}`);
+  writeFileSync(configDestPath, configTemplate, "utf8");
+  spinner.stop(`Config written to ${configDestPath}`);
 
   // wrap up
   p.note(`➡️ Start a worker with:\n$ ow worker start`, "Next steps");
@@ -80,7 +76,7 @@ export async function init(): Promise<void> {
 export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
   consola.start("Starting worker...");
 
-  const config = await loadConfig();
+  const { config } = await loadConfig();
   const worker = config.ow.newWorker({ ...config.worker, ...cliOptions });
 
   let shuttingDown = false;

@@ -12,15 +12,11 @@ export type WorkerConfig = Pick<WorkerOptions, "concurrency">;
  * Load openworkflow.config.ts (or other extension; see
  * https://github.com/unjs/c12)
  */
-export async function loadConfig(
-  rootDir?: string,
-): Promise<OpenWorkflowConfig> {
+export async function loadConfig(rootDir?: string) {
   const cwd = rootDir ?? process.cwd();
 
-  const { config } = await loadC12Config<OpenWorkflowConfig>({
+  return await loadC12Config<OpenWorkflowConfig>({
     cwd,
     name: "openworkflow",
   });
-
-  return config;
 }
