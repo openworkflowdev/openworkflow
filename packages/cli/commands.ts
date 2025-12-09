@@ -1,6 +1,5 @@
 import {
   configExists,
-  CONFIG_TEMPLATE,
   loadConfig,
   resolveConfigPath,
   WorkerConfig,
@@ -8,7 +7,8 @@ import {
 import { CLIError } from "./errors.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
 
 export async function init(): Promise<void> {
@@ -62,7 +62,14 @@ export async function init(): Promise<void> {
   // write config file (last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init)
   spinner.start("Writing config...");
-  writeFileSync(configPath, CONFIG_TEMPLATE, "utf8");
+
+  const configTemplatePath = path.resolve(
+    path.dirname(import.meta.url.replace("file://", "")),
+    "templates/config.ts",
+  );
+  const configTemplate = readFileSync(configTemplatePath, "utf8");
+
+  writeFileSync(configPath, configTemplate, "utf8");
   spinner.stop(`Config written to ${configPath}`);
 
   // wrap up
