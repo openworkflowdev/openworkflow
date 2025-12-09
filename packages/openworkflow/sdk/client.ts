@@ -5,6 +5,7 @@ import type { SchemaInput, SchemaOutput } from "../core/workflow.js";
 import { validateInput } from "../core/workflow.js";
 import type { WorkflowFunction } from "../execution/execution.js";
 import { Worker } from "../worker/worker.js";
+import { WorkflowRegistry } from "./registry.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -27,8 +28,7 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  private registeredWorkflows = new Map<
-    string,
+  private registry = new WorkflowRegistry<
     WorkflowDefinition<unknown, unknown, unknown>
   >();
 
@@ -42,7 +42,7 @@ export class OpenWorkflow {
   newWorker(options?: { concurrency?: number | undefined }): Worker {
     return new Worker({
       backend: this.backend,
-      workflows: this.registeredWorkflows,
+      registry: this.registry,
       concurrency: options?.concurrency,
     });
   }
@@ -56,22 +56,15 @@ export class OpenWorkflow {
     spec: WorkflowSpec<Input, Output, RunInput>,
     fn: WorkflowFunction<Input, Output>,
   ): void {
-    const key = getWorkflowKey(spec.name, spec.version);
-    if (this.registeredWorkflows.has(key)) {
-      const versionStr = spec.version ? ` (version: ${spec.version})` : "";
-      throw new Error(
-        `Workflow "${spec.name}"${versionStr} is already registered`,
-      );
-    }
-
     const definition = new WorkflowDefinition<Input, Output, RunInput>(
       this,
       spec,
       fn,
     );
 
-    this.registeredWorkflows.set(
-      key,
+    this.registry.register(
+      spec.name,
+      spec.version,
       definition as WorkflowDefinition<unknown, unknown, unknown>,
     );
   }
@@ -147,14 +140,14 @@ export class OpenWorkflow {
     WorkflowRunInput<TSchema, Input>
   > {
     const spec = declareWorkflow<Input, Output, TSchema>(config);
-    const key = getWorkflowKey(spec.name, spec.version);
     const definition = new WorkflowDefinition<
       WorkflowHandlerInput<TSchema, Input>,
       Output,
       WorkflowRunInput<TSchema, Input>
     >(this, spec, fn);
-    this.registeredWorkflows.set(
-      key,
+    this.registry.register(
+      spec.name,
+      spec.version,
       definition as WorkflowDefinition<unknown, unknown, unknown>,
     );
     return definition;
@@ -196,18 +189,6 @@ export function declareWorkflow<
           >
         | undefined) ?? null,
   };
-}
-
-/**
- * Generate a composite key for workflow registration that includes both name
- * and version.
- *
- * @param name - The workflow name
- * @param version - The workflow version (null for unversioned)
- * @returns A composite key string
- */
-export function getWorkflowKey(name: string, version: string | null): string {
-  return version ? `${name}@${version}` : name;
 }
 
 //

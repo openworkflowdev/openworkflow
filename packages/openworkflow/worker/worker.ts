@@ -1,8 +1,8 @@
 import type { Backend } from "../core/backend.js";
 import type { WorkflowRun } from "../core/workflow.js";
 import { executeWorkflow } from "../execution/execution.js";
-import type { WorkflowDefinition } from "../sdk/sdk.js";
-import { getWorkflowKey } from "../sdk/sdk.js";
+import type { WorkflowDefinition } from "../sdk/client.js";
+import type { WorkflowRegistry } from "../sdk/registry.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
@@ -15,7 +15,7 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export interface WorkerOptions {
   backend: Backend;
-  workflows: Map<string, WorkflowDefinition<unknown, unknown, unknown>>;
+  registry: WorkflowRegistry<WorkflowDefinition<unknown, unknown, unknown>>;
   concurrency?: number | undefined;
 }
 
@@ -26,16 +26,16 @@ export interface WorkerOptions {
 export class Worker {
   private readonly backend: Backend;
   private readonly workerIds: string[];
-  private readonly registeredWorkflows = new Map<
-    string,
+  private readonly registry: WorkflowRegistry<
     WorkflowDefinition<unknown, unknown, unknown>
-  >();
+  >;
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
   private loopPromise: Promise<void> | null = null;
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
+    this.registry = options.registry;
 
     const concurrency = Math.max(
       DEFAULT_CONCURRENCY,
@@ -44,11 +44,6 @@ export class Worker {
 
     // generate worker IDs for every concurrency slot
     this.workerIds = Array.from({ length: concurrency }, () => randomUUID());
-
-    // register workflows
-    for (const [name, workflow] of options.workflows) {
-      this.registeredWorkflows.set(name, workflow);
-    }
   }
 
   /**
@@ -136,8 +131,10 @@ export class Worker {
     });
     if (!workflowRun) return null;
 
-    const key = getWorkflowKey(workflowRun.workflowName, workflowRun.version);
-    const workflow = this.registeredWorkflows.get(key);
+    const workflow = this.registry.get(
+      workflowRun.workflowName,
+      workflowRun.version,
+    );
     if (!workflow) {
       const versionStr = workflowRun.version
         ? ` (version: ${workflowRun.version})`
