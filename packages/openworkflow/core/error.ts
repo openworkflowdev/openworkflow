@@ -1,6 +1,6 @@
 import type { JsonValue } from "./json.js";
 
-export interface SerializableError {
+export interface SerializedError {
   name?: string;
   message: string;
   stack?: string;
@@ -8,12 +8,11 @@ export interface SerializableError {
 }
 
 /**
- * Serialize an error to a JSON-compatible format. Pure function that converts
- * any error into a SerializableError object.
+ * Serialize an error to a JSON-compatible format.
  * @param error - The error to serialize (can be Error instance or any value)
  * @returns A JSON-serializable error object
  */
-export function serializeError(error: unknown): SerializableError {
+export function serializeError(error: unknown): SerializedError {
   if (error instanceof Error) {
     const { name, message, stack } = error;
 
