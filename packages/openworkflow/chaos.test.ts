@@ -47,7 +47,7 @@ describe("chaos test", () => {
       let chaosTask: Promise<number> | null = null;
 
       try {
-        chaosTask = runChaosMonkey({
+        chaosTask = runChaosTest({
           client,
           workers,
           durationMs: CHAOS_DURATION_MS,
@@ -73,19 +73,14 @@ describe("chaos test", () => {
   );
 });
 
-async function runChaosMonkey({
-  client,
-  workers,
-  durationMs,
-  intervalMs,
-  shouldStop,
-}: {
+async function runChaosTest(params: {
   client: OpenWorkflow;
   workers: Worker[];
   durationMs: number;
   intervalMs: number;
   shouldStop: () => boolean;
 }): Promise<number> {
+  const { client, workers, durationMs, intervalMs, shouldStop } = params;
   const chaosEndsAt = Date.now() + durationMs;
   let restartCount = 0;
 
