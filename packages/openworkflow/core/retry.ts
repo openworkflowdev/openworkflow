@@ -9,6 +9,8 @@ export type RetryPolicy = typeof DEFAULT_RETRY_POLICY;
 
 /**
  * Calculate the next retry delay using exponential backoff.
+ * @param attemptNumber - Attempt number (1-based)
+ * @returns Delay in milliseconds
  */
 export function calculateRetryDelayMs(attemptNumber: number): number {
   const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
@@ -22,6 +24,9 @@ export function calculateRetryDelayMs(attemptNumber: number): number {
 
 /**
  * Check if an operation should be retried based on the retry policy.
+ * @param retryPolicy - Retry policy
+ * @param attemptNumber - Attempt number (1-based)
+ * @returns True if another attempt should be made
  */
 export function shouldRetry(
   retryPolicy: RetryPolicy,

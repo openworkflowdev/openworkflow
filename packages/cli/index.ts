@@ -32,6 +32,7 @@ program.parse();
 /**
  * Gets the version from package.json, looking in both the current and parent
  * directory to handle dist/ subfolder
+ * @returns Package version
  */
 function getPackageJsonVersion(): string {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

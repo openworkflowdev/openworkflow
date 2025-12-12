@@ -6,16 +6,19 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
  * Options for the Backend test suite.
  */
 export interface TestBackendOptions {
-  /** Creates a new isolated Backend instance. Each call should return a fresh,
-   * isolated backend (e.g., with a unique namespace, like we do with Postgres).
+  /**
+   * Creates a new isolated Backend instance.
    */
   setup: () => Promise<Backend>;
-  /** Cleans up a Backend instance. */
+  /**
+   * Cleans up a Backend instance.
+   */
   teardown: (backend: Backend) => Promise<void>;
 }
 
 /**
  * Runs the Backend test suite.
+ * @param options - Test suite options
  */
 export function testBackend(options: TestBackendOptions): void {
   const { setup, teardown } = options;
@@ -1249,6 +1252,11 @@ export function testBackend(options: TestBackendOptions): void {
   });
 }
 
+/**
+ * Create a pending workflow run for tests.
+ * @param b - Backend
+ * @returns Created workflow run
+ */
 async function createPendingWorkflowRun(b: Backend) {
   return await b.createWorkflowRun({
     workflowName: randomUUID(),
@@ -1262,6 +1270,11 @@ async function createPendingWorkflowRun(b: Backend) {
   });
 }
 
+/**
+ * Create and claim a workflow run for tests.
+ * @param b - Backend
+ * @returns Claimed workflow run
+ */
 async function createClaimedWorkflowRun(b: Backend) {
   await createPendingWorkflowRun(b);
 
@@ -1275,17 +1288,31 @@ async function createClaimedWorkflowRun(b: Backend) {
   return claimed;
 }
 
+/**
+ * Get delta in seconds from now.
+ * @param date - Date to compare
+ * @returns Delta in seconds
+ */
 function deltaSeconds(date: Date | null | undefined): number {
   if (!date) return Infinity;
   return Math.abs((Date.now() - date.getTime()) / 1000);
 }
 
+/**
+ * Create a Date one year in the future.
+ * @returns Future Date
+ */
 function newDateInOneYear() {
   const d = new Date();
   d.setFullYear(d.getFullYear() + 1);
   return d;
 }
 
+/**
+ * Sleep for a given duration.
+ * @param ms - Milliseconds to sleep
+ * @returns Promise resolved after sleeping
+ */
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

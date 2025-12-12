@@ -38,6 +38,9 @@ export class OpenWorkflow {
 
   /**
    * Create a new Worker with this client's backend and workflows.
+   * @param options - Worker options
+   * @param options.concurrency - Max concurrent workflow runs
+   * @returns Worker instance
    */
   newWorker(options?: { concurrency?: number | undefined }): Worker {
     return new Worker({
@@ -51,6 +54,8 @@ export class OpenWorkflow {
    * Provide the implementation for a declared workflow. This links the workflow
    * specification to its execution logic and registers it with this
    * OpenWorkflow instance for worker execution.
+   * @param spec - Workflow spec
+   * @param fn - Workflow implementation
    */
   implementWorkflow<Input, Output, RunInput = Input>(
     spec: WorkflowSpec<Input, Output, RunInput>,
@@ -72,7 +77,10 @@ export class OpenWorkflow {
   /**
    * Run a workflow from its specification. This is the primary way to schedule
    * a workflow using only its WorkflowSpec.
-   *
+   * @param spec - Workflow spec
+   * @param input - Workflow input
+   * @param options - Run options
+   * @returns Handle for awaiting the result
    * @example
    * ```ts
    * const handle = await ow.runWorkflow(emailWorkflow, { to: 'user@example.com' });
@@ -116,7 +124,9 @@ export class OpenWorkflow {
    * `implementWorkflow` into a single call. For better code splitting and to
    * separate declaration from implementation, consider using those methods
    * separately.
-   *
+   * @param config - Workflow config
+   * @param fn - Workflow implementation
+   * @returns Workflow definition
    * @example
    * ```ts
    * const workflow = ow.defineWorkflow(
@@ -158,7 +168,8 @@ export class OpenWorkflow {
  * Declare a workflow without providing its implementation (which is provided
  * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
  * that can be used to schedule workflow runs.
- *
+ * @param config - Workflow config
+ * @returns Workflow spec
  * @example
  * ```ts
  * export const emailWorkflow = declareWorkflow({
@@ -265,6 +276,9 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
 
   /**
    * Starts a new workflow run.
+   * @param input - Workflow input
+   * @param options - Run options
+   * @returns Workflow run handle
    */
   async run(
     input?: RunInput,
@@ -319,6 +333,7 @@ export class WorkflowRunHandle<Output> {
 
   /**
    * Waits for the workflow run to complete and returns the result.
+   * @returns Workflow output
    */
   async result(): Promise<Output> {
     const start = Date.now();

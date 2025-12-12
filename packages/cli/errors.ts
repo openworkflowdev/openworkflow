@@ -16,6 +16,8 @@ export class CLIError extends Error {
 /**
  * Wraps a CLI action / handler function with error handling that catches
  * CLIError, prints it to the console, then exits. Other errors are rethrown.
+ * @param fn - Action handler
+ * @returns Wrapped handler
  */
 export function withErrorHandling<T extends unknown[]>(
   fn: (...args: T) => void | Promise<void>,

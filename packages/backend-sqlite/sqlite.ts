@@ -7,6 +7,8 @@ export const DEFAULT_DATABASE_PATH = ":memory:";
 
 /**
  * newDatabase creates a new SQLite database connection.
+ * @param path - Database file path (or ":memory:")
+ * @returns SQLite database connection
  */
 export function newDatabase(path: string = DEFAULT_DATABASE_PATH): Database {
   const db = new DatabaseSync(path);
@@ -20,6 +22,7 @@ export function newDatabase(path: string = DEFAULT_DATABASE_PATH): Database {
 
 /**
  * migrations returns the list of migration SQL statements.
+ * @returns Migration SQL statements
  */
 export function migrations(): string[] {
   return [
@@ -165,6 +168,7 @@ export function migrations(): string[] {
 /**
  * migrate applies pending migrations to the database. Does nothing if the
  * database is already up to date.
+ * @param db - SQLite database
  */
 export function migrate(db: Database): void {
   const currentMigrationVersion = getCurrentMigrationVersion(db);
@@ -178,6 +182,8 @@ export function migrate(db: Database): void {
 
 /**
  * getCurrentMigrationVersion returns the current migration version of the database.
+ * @param db - SQLite database
+ * @returns Current migration version
  */
 function getCurrentMigrationVersion(db: Database): number {
   // check if migrations table exists
@@ -199,6 +205,7 @@ function getCurrentMigrationVersion(db: Database): number {
 
 /**
  * Helper to generate UUIDs (SQLite doesn't have built-in UUID generation)
+ * @returns A UUID string
  */
 export function generateUUID(): string {
   return randomUUID();
@@ -206,6 +213,7 @@ export function generateUUID(): string {
 
 /**
  * Helper to get current timestamp in ISO8601 format
+ * @returns ISO8601 timestamp string
  */
 export function now(): string {
   return new Date().toISOString();
@@ -213,6 +221,9 @@ export function now(): string {
 
 /**
  * Helper to add milliseconds to a date and return ISO8601 string
+ * @param date - ISO8601 date string
+ * @param ms - Milliseconds to add
+ * @returns Updated ISO8601 date string
  */
 export function addMilliseconds(date: string, ms: number): string {
   const d = new Date(date);
@@ -222,6 +233,8 @@ export function addMilliseconds(date: string, ms: number): string {
 
 /**
  * Helper to serialize JSON for SQLite storage
+ * @param value - Value to serialize
+ * @returns JSON string or null
  */
 export function toJSON(value: unknown): string | null {
   return value === null || value === undefined ? null : JSON.stringify(value);
@@ -229,6 +242,8 @@ export function toJSON(value: unknown): string | null {
 
 /**
  * Helper to deserialize JSON from SQLite storage
+ * @param value - JSON string or null
+ * @returns Parsed value
  */
 export function fromJSON(value: string | null): unknown {
   return value === null ? null : JSON.parse(value);
@@ -236,6 +251,8 @@ export function fromJSON(value: string | null): unknown {
 
 /**
  * Helper to convert Date to ISO8601 string for SQLite
+ * @param date - Date or null
+ * @returns ISO8601 date string or null
  */
 export function toISO(date: Date | null): string | null {
   return date ? date.toISOString() : null;
@@ -243,6 +260,8 @@ export function toISO(date: Date | null): string | null {
 
 /**
  * Helper to convert ISO8601 string from SQLite to Date
+ * @param dateStr - ISO8601 date string or null
+ * @returns Date or null
  */
 export function fromISO(dateStr: string | null): Date | null {
   return dateStr ? new Date(dateStr) : null;

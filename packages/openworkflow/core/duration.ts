@@ -28,6 +28,8 @@ export type DurationString =
  * Parse a duration string into milliseconds. Exmaples:
  * - short units: "1ms", "5s", "30m", "2h", "7d", "3w", "1y"
  * - long units: "1 millisecond", "5 seconds", "30 minutes", "2 hours", "7 days", "3 weeks", "1 year"
+ * @param str - Duration string
+ * @returns Milliseconds
  */
 export function parseDuration(str: DurationString): Result<number, Error> {
   if (typeof str !== "string") {

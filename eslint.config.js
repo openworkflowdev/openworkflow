@@ -2,6 +2,7 @@
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
 import functional from "eslint-plugin-functional";
+import jsdoc from "eslint-plugin-jsdoc";
 import sonarjs from "eslint-plugin-sonarjs";
 import unicorn from "eslint-plugin-unicorn";
 import { defineConfig } from "eslint/config";
@@ -13,6 +14,7 @@ export default defineConfig(
   tseslint.configs.stylisticTypeChecked,
   sonarjs.configs.recommended,
   unicorn.configs.recommended,
+  jsdoc.configs["flat/recommended-typescript-error"],
   prettier,
   {
     ignores: ["**/dist", "coverage", "eslint.config.js", "prettier.config.js"],
@@ -25,12 +27,22 @@ export default defineConfig(
       },
     },
   },
+  // ---------------------------------------------------------------------------
   {
     rules: {
       "@typescript-eslint/unified-signatures": "off", // Buggy rule, to be enabled later
       "func-style": ["error", "declaration"],
+      "jsdoc/check-indentation": "error",
+      "jsdoc/require-throws": "error",
+      "jsdoc/sort-tags": "error",
       "unicorn/no-null": "off",
       "unicorn/prevent-abbreviations": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "benchmarks/**/*.ts", "examples/**/*.ts"],
+    rules: {
+      "jsdoc/require-jsdoc": "off",
     },
   },
   {

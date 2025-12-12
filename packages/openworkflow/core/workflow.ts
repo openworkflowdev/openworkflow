@@ -89,7 +89,6 @@ export const DEFAULT_WORKFLOW_RESULT_CONFIG = {
 /**
  * Validate input against a Standard Schema. Pure async function that validates
  * input and returns a ValidationResult.
- *
  * @param schema - The Standard Schema to validate against (or null/undefined
  * for no validation)
  * @param input - The input value to validate
@@ -131,7 +130,6 @@ export async function validateInput<RunInput, Input>(
 
 /**
  * Create a workflow configuration object with defaults applied.
- *
  * @param config - The user-provided workflow configuration
  * @returns A normalized workflow configuration
  */
@@ -153,7 +151,6 @@ export function createWorkflowConfig<
 
 /**
  * Check if a workflow definition has a schema for validation.
- *
  * @param config - The workflow configuration
  * @returns True if the workflow has a schema configured
  */
@@ -165,7 +162,6 @@ export function hasSchema<TSchema extends StandardSchemaV1 | undefined>(
 
 /**
  * Check if a workflow run status represents a terminal state.
- *
  * @param status - The workflow run status
  * @returns True if the status is terminal (completed, failed, or canceled)
  */

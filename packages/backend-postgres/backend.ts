@@ -52,6 +52,9 @@ export class BackendPostgres implements Backend {
    * Create and initialize a new BackendPostgres instance. This will
    * automatically run migrations on startup unless `runMigrations` is set to
    * false.
+   * @param url - Postgres connection URL
+   * @param options - Backend options
+   * @returns A connected backend instance
    */
   static async connect(
     url: string,
@@ -629,6 +632,9 @@ export class BackendPostgres implements Backend {
 /**
  * sqlDateDefaultNow returns the provided date or `NOW()` if not.
  * This is needed so we don't have to disable the eslint rule for every query.
+ * @param pg - Postgres client
+ * @param date - Date to use (or null)
+ * @returns The provided date or a NOW() expression
  */
 function sqlDateDefaultNow(pg: Postgres, date: Date | null) {
   return date ?? pg`NOW()`;
@@ -645,12 +651,22 @@ interface Cursor {
   id: string;
 }
 
+/**
+ * Encode a pagination cursor to a string.
+ * @param item - Cursor data
+ * @returns Encoded cursor
+ */
 function encodeCursor(item: Cursor): string {
   return Buffer.from(
     JSON.stringify({ createdAt: item.createdAt, id: item.id }),
   ).toString("base64");
 }
 
+/**
+ * Decode a pagination cursor from a string.
+ * @param cursor - Encoded cursor
+ * @returns Cursor data
+ */
 function decodeCursor(cursor: string): Cursor {
   const decoded = Buffer.from(cursor, "base64").toString("utf8");
   const parsed = JSON.parse(decoded) as { createdAt: string; id: string };

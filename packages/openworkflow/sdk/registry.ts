@@ -18,11 +18,10 @@ export class WorkflowRegistry<
 
   /**
    * Register a workflow in the registry.
-   *
    * @param name - The workflow name
    * @param version - The workflow version (null for unversioned)
    * @param workflow - The workflow to register
-   * @throws Error if a workflow with the same name and version is already registered
+   * @throws {Error} If a workflow with the same name and version is already registered
    */
   register(name: string, version: string | null, workflow: T): void {
     const key = registryKey(name, version);
@@ -35,7 +34,6 @@ export class WorkflowRegistry<
 
   /**
    * Get a workflow from the registry by name and version.
-   *
    * @param name - The workflow name
    * @param version - The workflow version (null for unversioned)
    * @returns The workflow if found, undefined otherwise
@@ -46,6 +44,12 @@ export class WorkflowRegistry<
   }
 }
 
+/**
+ * Build a registry key from name and version.
+ * @param name - Workflow name
+ * @param version - Workflow version (or null)
+ * @returns Registry key
+ */
 function registryKey(name: string, version: string | null): string {
   return version ? `${name}@${version}` : name;
 }

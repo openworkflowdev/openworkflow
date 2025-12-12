@@ -48,6 +48,7 @@ export class Worker {
 
   /**
    * Start the worker. It will begin polling for and executing workflows.
+   * @returns Promise resolved when started
    */
   async start(): Promise<void> {
     if (this.running) return;
@@ -59,6 +60,7 @@ export class Worker {
   /**
    * Stop the worker gracefully. Waits for all active workflow runs to complete
    * before returning.
+   * @returns Promise resolved when stopped
    */
   async stop(): Promise<void> {
     this.running = false;
@@ -73,6 +75,7 @@ export class Worker {
   /**
    * Processes one round of work claims and execution. Exposed for testing.
    * Returns the number of workflow runs claimed.
+   * @returns Number of workflow runs claimed
    */
   async tick(): Promise<number> {
     const availableSlots = this.concurrency - this.activeExecutions.size;
@@ -92,6 +95,7 @@ export class Worker {
 
   /**
    * Get the configured concurrency limit.
+   * @returns Concurrency limit
    */
   private get concurrency(): number {
     return this.workerIds.length;
@@ -172,6 +176,9 @@ export class Worker {
   /**
    * Process a workflow execution, handling heartbeats, step execution, and
    * marking success or failure.
+   * @param execution - Workflow execution
+   * @param workflow - Workflow definition
+   * @returns Promise resolved when processing completes
    */
   private async processExecutionInBackground(
     execution: WorkflowExecution,
@@ -256,6 +263,11 @@ class WorkflowExecution {
   }
 }
 
+/**
+ * Sleep for a given duration.
+ * @param ms - Milliseconds to sleep
+ * @returns Promise resolved after sleeping
+ */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

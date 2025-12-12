@@ -201,7 +201,6 @@ export interface ExecuteWorkflowParams {
  * - Creating the step executor
  * - Executing the workflow function
  * - Completing, failing, or sleeping the workflow run based on the outcome
- *
  * @param params - The execution parameters
  */
 export async function executeWorkflow(

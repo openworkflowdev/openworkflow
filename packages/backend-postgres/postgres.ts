@@ -15,6 +15,9 @@ export type PostgresOptions = Parameters<typeof postgres>[1];
 
 /**
  * newPostgres creates a new Postgres client.
+ * @param url - Database connection URL
+ * @param options - Postgres client options
+ * @returns A Postgres client
  */
 export function newPostgres(url: string, options?: PostgresOptions) {
   return postgres(url, { ...options, transform: postgres.toCamel });
@@ -23,6 +26,9 @@ export function newPostgres(url: string, options?: PostgresOptions) {
 /**
  * newPostgresMaxOne creates a new Postgres client with a maximum pool size of
  * one, which is useful for migrations.
+ * @param url - Database connection URL
+ * @param options - Postgres client options
+ * @returns A Postgres client
  */
 export function newPostgresMaxOne(url: string, options?: PostgresOptions) {
   return newPostgres(url, { ...options, max: 1 });
@@ -30,6 +36,8 @@ export function newPostgresMaxOne(url: string, options?: PostgresOptions) {
 
 /**
  * migrations returns the list of migration SQL statements.
+ * @param schema - Schema name
+ * @returns Migration SQL statements
  */
 export function migrations(schema: string): string[] {
   return [
@@ -195,6 +203,9 @@ export function migrations(schema: string): string[] {
 /**
  * migrate applies pending migrations to the database. Does nothing if the
  * database is already up to date.
+ * @param pg - Postgres client
+ * @param schema - Schema name
+ * @returns Promise resolved when migrations complete
  */
 export async function migrate(pg: Postgres, schema: string) {
   const currentMigrationVersion = await getCurrentMigrationVersion(pg, schema);
@@ -208,6 +219,9 @@ export async function migrate(pg: Postgres, schema: string) {
 
 /**
  * dropSchema drops the specified schema from the database.
+ * @param pg - Postgres client
+ * @param schema - Schema name
+ * @returns Promise resolved when the schema is dropped
  */
 export async function dropSchema(pg: Postgres, schema: string) {
   await pg.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE;`);
@@ -215,6 +229,9 @@ export async function dropSchema(pg: Postgres, schema: string) {
 
 /**
  * getCurrentVersion returns the current migration version of the database.
+ * @param pg - Postgres client
+ * @param schema - Schema name
+ * @returns Current migration version
  */
 async function getCurrentMigrationVersion(
   pg: Postgres,

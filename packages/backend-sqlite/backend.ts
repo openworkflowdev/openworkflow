@@ -58,6 +58,9 @@ export class BackendSqlite implements Backend {
    * Create and initialize a new BackendSqlite instance. This will
    * automatically run migrations on startup unless `runMigrations` is set to
    * false.
+   * @param path - Database path (defaults to ":memory:")
+   * @param options - Backend options
+   * @returns A connected backend instance
    */
   static connect(
     path: string = DEFAULT_DATABASE_PATH,
@@ -872,6 +875,12 @@ interface StepAttemptRow {
 }
 
 // Conversion functions
+/**
+ * Convert a database row to a WorkflowRun.
+ * @param row - Workflow run row
+ * @returns Workflow run
+ * @throws {Error} If required fields are missing
+ */
 function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
   const createdAt = fromISO(row.created_at);
   const updatedAt = fromISO(row.updated_at);
@@ -906,6 +915,12 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
   };
 }
 
+/**
+ * Convert a database row to a StepAttempt.
+ * @param row - Step attempt row
+ * @returns Step attempt
+ * @throws {Error} If required fields are missing
+ */
 function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
   const createdAt = fromISO(row.created_at);
   const updatedAt = fromISO(row.updated_at);
@@ -946,12 +961,22 @@ interface Cursor {
   id: string;
 }
 
+/**
+ * Encode a pagination cursor to a string.
+ * @param item - Cursor data
+ * @returns Encoded cursor
+ */
 function encodeCursor(item: Cursor): string {
   return Buffer.from(
     JSON.stringify({ createdAt: item.createdAt, id: item.id }),
   ).toString("base64");
 }
 
+/**
+ * Decode a pagination cursor from a string.
+ * @param cursor - Encoded cursor
+ * @returns Cursor data
+ */
 function decodeCursor(cursor: string): Cursor {
   const decoded = Buffer.from(cursor, "base64").toString("utf8");
   const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
