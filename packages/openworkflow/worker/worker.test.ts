@@ -674,7 +674,6 @@ describe("Worker", () => {
 
     expect(failed?.status).toBe("pending"); // should be retrying
     expect(failed?.error).toBeDefined();
-    // @ts-expect-error - test suite
     expect(failed?.error?.message).toContain("Invalid duration format");
   });
 

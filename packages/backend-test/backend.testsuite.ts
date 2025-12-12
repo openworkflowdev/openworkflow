@@ -387,7 +387,7 @@ export function testBackend(options: TestBackendOptions): void {
         await backend.failWorkflowRun({
           workflowRunId: claimed.id,
           workerId: claimed.workerId ?? "",
-          error: null,
+          error: { message: "failed" },
         });
         await expect(
           backend.sleepWorkflowRun({

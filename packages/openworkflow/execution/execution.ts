@@ -1,9 +1,9 @@
 import type { Backend } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
+import { serializeError } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
 import type { StepAttempt, StepAttemptCache } from "../core/step.js";
 import {
-  serializeError,
   createStepAttemptCacheFromAttempts,
   getCachedStepAttempt,
   addToStepAttemptCache,

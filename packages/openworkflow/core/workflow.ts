@@ -1,3 +1,4 @@
+import type { SerializableError } from "./error.js";
 import { JsonValue } from "./json.js";
 import type { StandardSchemaV1 } from "./schema.js";
 
@@ -27,7 +28,7 @@ export interface WorkflowRun {
   context: JsonValue | null; // runtime execution metadata
   input: JsonValue | null;
   output: JsonValue | null;
-  error: JsonValue | null;
+  error: SerializableError | null;
   attempts: number;
   parentStepAttemptNamespaceId: string | null;
   parentStepAttemptId: string | null;

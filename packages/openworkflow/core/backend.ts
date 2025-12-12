@@ -1,3 +1,4 @@
+import type { SerializableError } from "./error.js";
 import { JsonValue } from "./json.js";
 import type { StepAttempt, StepAttemptContext, StepKind } from "./step.js";
 import type { WorkflowRun } from "./workflow.js";
@@ -98,7 +99,7 @@ export interface CompleteWorkflowRunParams {
 export interface FailWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
-  error: JsonValue;
+  error: SerializableError;
 }
 
 export interface CancelWorkflowRunParams {
@@ -133,7 +134,7 @@ export interface FailStepAttemptParams {
   workflowRunId: string;
   stepAttemptId: string;
   workerId: string;
-  error: JsonValue;
+  error: SerializableError;
 }
 
 export interface PaginationOptions {
