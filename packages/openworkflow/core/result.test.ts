@@ -7,6 +7,7 @@ describe("Result helpers", () => {
   });
 
   test("err creates error result", () => {
-    expect(err("oops")).toEqual({ ok: false, error: "oops" });
+    const error = new Error("oops");
+    expect(err(error)).toEqual({ ok: false, error });
   });
 });

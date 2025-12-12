@@ -162,7 +162,7 @@ export function normalizeStepOutput(result: unknown): JsonValue {
 export function calculateSleepResumeAt(
   duration: DurationString,
   now: number = Date.now(),
-): Result<Date, Error> {
+): Result<Date> {
   const result = parseDuration(duration);
 
   if (!result.ok) {

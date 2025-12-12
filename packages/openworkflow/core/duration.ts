@@ -31,7 +31,7 @@ export type DurationString =
  * @param str - Duration string
  * @returns Milliseconds
  */
-export function parseDuration(str: DurationString): Result<number, Error> {
+export function parseDuration(str: DurationString): Result<number> {
   if (typeof str !== "string") {
     return err(
       new TypeError(

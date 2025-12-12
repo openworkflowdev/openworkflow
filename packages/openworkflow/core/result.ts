@@ -1,13 +1,13 @@
-export type Result<T, E> = Ok<T> | Err<E>;
+export type Result<T> = Ok<T> | Err;
 
 export interface Ok<T> {
   ok: true;
   value: T;
 }
 
-export interface Err<E> {
+export interface Err {
   ok: false;
-  error: E;
+  error: Error;
 }
 
 /**
@@ -24,6 +24,6 @@ export function ok<T>(value: T): Ok<T> {
  * @param error - Result error
  * @returns Err result
  */
-export function err<E>(error: E): Err<E> {
+export function err(error: Readonly<Error>): Err {
   return { ok: false, error };
 }
