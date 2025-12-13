@@ -5,6 +5,7 @@ import { consola } from "consola";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
+import { OpenWorkflow } from "openworkflow";
 
 /** Initialize OpenWorkflow in the current project. */
 export async function init(): Promise<void> {
@@ -82,7 +83,9 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
   consola.start("Starting worker...");
 
   const { config } = await loadConfig();
-  const worker = config.ow.newWorker({ ...config.worker, ...cliOptions });
+
+  const ow = new OpenWorkflow({ backend: config.backend });
+  const worker = ow.newWorker({ ...config.worker, ...cliOptions });
 
   let shuttingDown = false;
   /** Stop the worker on process shutdown. */
