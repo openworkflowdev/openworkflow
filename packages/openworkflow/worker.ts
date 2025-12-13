@@ -1,8 +1,8 @@
-import type { Backend } from "../core/backend.js";
-import type { WorkflowRun } from "../core/workflow.js";
-import { executeWorkflow } from "../execution/execution.js";
-import type { WorkflowDefinition } from "../sdk/client.js";
-import type { WorkflowRegistry } from "../sdk/registry.js";
+import type { WorkflowDefinition } from "./client.js";
+import type { Backend } from "./core/backend.js";
+import type { WorkflowRun } from "./core/workflow.js";
+import { executeWorkflow } from "./execution.js";
+import type { WorkflowRegistry } from "./registry.js";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s

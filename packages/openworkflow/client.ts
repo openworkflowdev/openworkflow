@@ -1,14 +1,14 @@
-import type { Backend } from "../core/backend.js";
-import type { StandardSchemaV1 } from "../core/schema.js";
+import type { Backend } from "./core/backend.js";
+import type { StandardSchemaV1 } from "./core/schema.js";
 import type {
   SchemaInput,
   SchemaOutput,
   WorkflowRun,
-} from "../core/workflow.js";
-import { validateInput } from "../core/workflow.js";
-import type { WorkflowFunction } from "../execution/execution.js";
-import { Worker } from "../worker/worker.js";
+} from "./core/workflow.js";
+import { validateInput } from "./core/workflow.js";
+import type { WorkflowFunction } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
+import { Worker } from "./worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m

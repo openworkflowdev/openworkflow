@@ -47,6 +47,7 @@ export default defineConfig(
       "func-style": ["error", "declaration"],
       // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
       "import/no-extraneous-dependencies": "error",
+      "import/no-relative-parent-imports": "error",
       "import/no-useless-path-segments": "error",
       "jsdoc/check-indentation": "error",
       "jsdoc/require-throws": "error",
@@ -59,6 +60,12 @@ export default defineConfig(
     files: ["**/*.test.ts", "benchmarks/**/*.ts", "examples/**/*.ts"],
     rules: {
       "jsdoc/require-jsdoc": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "packages/backend-postgres/scripts/**/*.ts"],
+    rules: {
+      "import/no-relative-parent-imports": "off",
     },
   },
   {

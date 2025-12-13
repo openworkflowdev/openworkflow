@@ -349,15 +349,10 @@ graceful shutdown:
     current execution slice and be safely persisted back to the Backend.
 3.  Once all in-flight work is finished, the worker process exits.
 
-## 8. Folder Structure
+## 8. Package/Folder Structure
 
-- `packages/openworkflow/core` contains the types and business logic shared by
-  the SDK and worker. `core` has zero dependencies on other packages.
-- `packages/openworkflow/execution` contains the execution model used by workers
-  to execute workflows.
-- `packages/openworkflow/sdk` contains the SDK client and in-memory registry for
-  defining and invoking workflows from application code.
-- `packages/openworkflow/worker` is the worker.
+- `packages/openworkflow` contains the SDK (client, worker, registry).
 - `packages/backend-postgres` and `packages/backend-sqlite` are infra-specific
   `Backend` implementations.
+- `packages/backend-test` contains test helpers and backend conformance tests.
 - `packages/cli` is the cli.

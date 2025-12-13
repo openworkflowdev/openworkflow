@@ -1,5 +1,5 @@
-import { BackendPostgres } from "../../backend-postgres/backend.js";
-import { DEFAULT_DATABASE_URL } from "../../backend-postgres/postgres.js";
+import { BackendPostgres } from "../backend-postgres/backend.js";
+import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
 import { declareWorkflow, OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";

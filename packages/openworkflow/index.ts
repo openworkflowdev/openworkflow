@@ -1,11 +1,8 @@
-// sdk
-export type { OpenWorkflowOptions } from "./sdk/client.js";
-export { OpenWorkflow, declareWorkflow } from "./sdk/client.js";
-export { WorkflowRegistry } from "./sdk/registry.js";
-
-// worker
-export type { WorkerOptions } from "./worker/worker.js";
-export { Worker } from "./worker/worker.js";
+export type { OpenWorkflowOptions } from "./client.js";
+export { OpenWorkflow, declareWorkflow } from "./client.js";
+export { WorkflowRegistry } from "./registry.js";
+export type { WorkerOptions } from "./worker.js";
+export { Worker } from "./worker.js";
 
 // core
 export * from "./core/backend.js";

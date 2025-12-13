@@ -1,4 +1,4 @@
-import type { WorkflowFunction } from "../execution/execution.js";
+import type { WorkflowFunction } from "./execution.js";
 
 /**
  * Represents a workflow that can be executed by a worker.
