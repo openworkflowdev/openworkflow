@@ -1,11 +1,11 @@
-import { loadConfig, WorkerConfig } from "./config.js";
+import { loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
-import { OpenWorkflow } from "openworkflow";
+import { OpenWorkflow, WorkerConfig } from "openworkflow";
 
 /** Initialize OpenWorkflow in the current project. */
 export async function init(): Promise<void> {

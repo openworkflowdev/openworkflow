@@ -1,12 +1,5 @@
 import { loadConfig as loadC12Config } from "c12";
-import type { Backend, WorkerOptions } from "openworkflow";
-
-export interface OpenWorkflowConfig {
-  backend: Backend;
-  worker?: WorkerConfig;
-}
-
-export type WorkerConfig = Pick<WorkerOptions, "concurrency">;
+import { OpenWorkflowConfig } from "openworkflow";
 
 /**
  * Load openworkflow.config.ts (or other extension; see
