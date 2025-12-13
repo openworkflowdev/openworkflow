@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
+    "@eslint/js": "^9.39.2",
     "@trivago/prettier-plugin-sort-imports": "^6.0.0",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
