@@ -1,4 +1,4 @@
-import type { Backend } from "./core/backend.js";
+import type { Backend } from "./backend.js";
 import type { DurationString } from "./core/duration.js";
 import { serializeError } from "./core/error.js";
 import type { JsonValue } from "./core/json.js";

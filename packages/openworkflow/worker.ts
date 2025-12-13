@@ -1,5 +1,5 @@
+import type { Backend } from "./backend.js";
 import type { WorkflowDefinition } from "./client.js";
-import type { Backend } from "./core/backend.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
 import type { WorkflowRegistry } from "./registry.js";

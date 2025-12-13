@@ -1,4 +1,4 @@
-import type { Backend } from "./core/backend.js";
+import type { Backend } from "./backend.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import type {
   SchemaInput,

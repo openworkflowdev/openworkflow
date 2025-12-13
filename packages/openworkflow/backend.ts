@@ -1,7 +1,7 @@
-import type { SerializedError } from "./error.js";
-import { JsonValue } from "./json.js";
-import type { StepAttempt, StepAttemptContext, StepKind } from "./step.js";
-import type { WorkflowRun } from "./workflow.js";
+import type { SerializedError } from "./core/error.js";
+import { JsonValue } from "./core/json.js";
+import type { StepAttempt, StepAttemptContext, StepKind } from "./core/step.js";
+import type { WorkflowRun } from "./core/workflow.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 

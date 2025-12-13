@@ -1,4 +1,4 @@
-import { Backend } from "./core/backend.js";
+import { Backend } from "./backend.js";
 import { WorkerOptions } from "./worker.js";
 
 export interface OpenWorkflowConfig {
