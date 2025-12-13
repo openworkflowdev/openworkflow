@@ -54,36 +54,6 @@ export interface StepAttempt {
 export type StepAttemptCache = ReadonlyMap<string, StepAttempt>;
 
 /**
- * Serialized error format for JSON compatibility.
- */
-export interface SerializedError {
-  message: string;
-  name?: string;
-  stack?: string | null;
-  [key: string]: JsonValue;
-}
-
-/**
- * Serialize an error to a JSON-compatible format. Pure function that converts
- * any error into a SerializedError object.
- * @param error - The error to serialize (can be Error instance or any value)
- * @returns A JSON-serializable error object
- */
-export function serializeError(error: unknown): SerializedError {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack ?? null,
-    };
-  }
-
-  return {
-    message: String(error),
-  };
-}
-
-/**
  * Create a step attempt cache from an array of attempts. Only includes
  * successful attempts (completed or succeeded status).
  * @param attempts - Array of step attempts to cache
