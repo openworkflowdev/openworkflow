@@ -1,4 +1,4 @@
-import { serializeError } from "../core/error.js";
+import { serializeError } from "./error.js";
 import { describe, expect, test } from "vitest";
 
 describe("serializeError", () => {

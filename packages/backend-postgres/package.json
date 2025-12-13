@@ -21,12 +21,13 @@
     "squawk": "tsx ./scripts/squawk.ts"
   },
   "dependencies": {
+    "openworkflow": "^0.4.1",
     "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@openworkflow/backend-test": "file:../backend-test",
-    "openworkflow": "file:../openworkflow",
-    "squawk-cli": "^2.32.0"
+    "squawk-cli": "^2.32.0",
+    "vitest": "^4.0.15"
   },
   "peerDependencies": {
     "openworkflow": "^0.4.1"

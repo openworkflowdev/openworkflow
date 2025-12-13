@@ -2,6 +2,7 @@
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
 import functional from "eslint-plugin-functional";
+import importPlugin from "eslint-plugin-import";
 import jsdoc from "eslint-plugin-jsdoc";
 import sonarjs from "eslint-plugin-sonarjs";
 import unicorn from "eslint-plugin-unicorn";
@@ -12,6 +13,8 @@ export default defineConfig(
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
+  importPlugin.flatConfigs.recommended,
+  importPlugin.flatConfigs.typescript,
   sonarjs.configs.recommended,
   unicorn.configs.recommended,
   jsdoc.configs["flat/recommended-typescript-error"],
@@ -29,9 +32,22 @@ export default defineConfig(
   },
   // ---------------------------------------------------------------------------
   {
+    settings: {
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+        },
+      },
+    },
+  },
+  // ---------------------------------------------------------------------------
+  {
     rules: {
       "@typescript-eslint/unified-signatures": "off", // Buggy rule, to be enabled later
       "func-style": ["error", "declaration"],
+      // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
+      "import/no-extraneous-dependencies": "error",
+      "import/no-useless-path-segments": "error",
       "jsdoc/check-indentation": "error",
       "jsdoc/require-throws": "error",
       "jsdoc/sort-tags": "error",
@@ -49,6 +65,12 @@ export default defineConfig(
     files: ["**/*.test.ts", "**/*.testsuite.ts"],
     rules: {
       "sonarjs/no-nested-functions": "off",
+    },
+  },
+  {
+    files: ["packages/cli/templates/**/*.ts"],
+    rules: {
+      "import/no-extraneous-dependencies": "off",
     },
   },
   {

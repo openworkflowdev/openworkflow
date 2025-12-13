@@ -1,7 +1,10 @@
 import type { Backend } from "../core/backend.js";
 import type { StandardSchemaV1 } from "../core/schema.js";
-import type { WorkflowRun } from "../core/workflow.js";
-import type { SchemaInput, SchemaOutput } from "../core/workflow.js";
+import type {
+  SchemaInput,
+  SchemaOutput,
+  WorkflowRun,
+} from "../core/workflow.js";
 import { validateInput } from "../core/workflow.js";
 import type { WorkflowFunction } from "../execution/execution.js";
 import { Worker } from "../worker/worker.js";
