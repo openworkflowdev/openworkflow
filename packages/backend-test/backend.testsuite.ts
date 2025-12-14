@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Backend, StepAttempt, WorkflowRun } from "openworkflow";
+import type { Backend, StepAttempt, WorkflowRun } from "openworkflow/internal";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 /**

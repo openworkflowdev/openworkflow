@@ -33,7 +33,7 @@ import {
   WorkflowRun,
   DEFAULT_RETRY_POLICY,
   JsonValue,
-} from "openworkflow";
+} from "openworkflow/internal";
 
 export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
