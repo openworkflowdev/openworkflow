@@ -32,9 +32,9 @@
       "default": "./dist/index.js"
     },
     "./internal": {
-      "types": "./dist/index.internal.d.ts",
-      "development": "./index.internal.ts",
-      "default": "./dist/index.internal.js"
+      "types": "./dist/internal.d.ts",
+      "development": "./internal.ts",
+      "default": "./dist/internal.js"
     }
   },
   "files": [
