@@ -1,4 +1,3 @@
-import { loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
@@ -6,6 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { addDependency, detectPackageManager } from "nypm";
 import { OpenWorkflow, WorkerConfig } from "openworkflow";
+import { loadConfig } from "openworkflow/internal";
 
 /** Initialize OpenWorkflow in the current project. */
 export async function init(): Promise<void> {
@@ -62,7 +62,7 @@ export async function init(): Promise<void> {
 
   const configTemplatePath = path.resolve(
     path.dirname(import.meta.url.replace("file://", "")),
-    "templates/config.ts",
+    "templates/openworkflow.config.ts",
   );
   const configTemplate = readFileSync(configTemplatePath, "utf8");
   const configDestPath = path.join(process.cwd(), "openworkflow.config.ts");

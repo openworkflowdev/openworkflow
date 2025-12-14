@@ -15,3 +15,15 @@ describe("defineConfig", async () => {
     expect(result).toBe(config);
   });
 });
+
+describe("loadConfig", () => {
+  test("loads config file in the specified directory", async () => {
+    const { loadConfig } = await import("./config.js");
+    const { config, configFile } = await loadConfig("./packages/cli/templates");
+    expect(config).toBeDefined();
+    expect(config.backend).toBeDefined();
+    expect(configFile).toContain(
+      "/packages/cli/templates/openworkflow.config.ts",
+    );
+  });
+});
