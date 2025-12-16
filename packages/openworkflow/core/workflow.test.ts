@@ -1,8 +1,6 @@
 import type { StandardSchemaV1 } from "./schema.js";
 import {
   validateInput,
-  createWorkflowConfig,
-  hasSchema,
   isTerminalStatus,
   DEFAULT_WORKFLOW_RESULT_CONFIG,
 } from "./workflow.js";
@@ -131,90 +129,6 @@ describe("validateInput", () => {
     if (result.success) {
       expect(result.value).toBeUndefined();
     }
-  });
-});
-
-describe("createWorkflowConfig", () => {
-  test("creates config with required name", () => {
-    const config = createWorkflowConfig({ name: "my-workflow" });
-
-    expect(config.name).toBe("my-workflow");
-    expect(config.version).toBeNull();
-    expect(config.schema).toBeNull();
-  });
-
-  test("preserves provided version", () => {
-    const config = createWorkflowConfig({
-      name: "versioned-workflow",
-      version: "1.0.0",
-    });
-
-    expect(config.name).toBe("versioned-workflow");
-    expect(config.version).toBe("1.0.0");
-  });
-
-  test("preserves provided schema", () => {
-    const schema = createMockSchema<string>({
-      validate: (input) => ({ value: input as string }),
-    });
-    const config = createWorkflowConfig({
-      name: "validated-workflow",
-      schema,
-    });
-
-    expect(config.name).toBe("validated-workflow");
-    expect(config.schema).toBe(schema);
-  });
-
-  test("creates config with all options", () => {
-    const schema = createMockSchema<number>({
-      validate: (input) => ({ value: input as number }),
-    });
-    const config = createWorkflowConfig({
-      name: "full-workflow",
-      version: "2.5.0",
-      schema,
-    });
-
-    expect(config.name).toBe("full-workflow");
-    expect(config.version).toBe("2.5.0");
-    expect(config.schema).toBe(schema);
-  });
-
-  test("returns frozen/readonly config object", () => {
-    const config = createWorkflowConfig({ name: "readonly-workflow" });
-
-    expect(config.name).toBe("readonly-workflow");
-    // The function signature specifies Readonly<>, so we trust type safety
-  });
-});
-
-describe("hasSchema", () => {
-  test("returns false when no schema provided", () => {
-    const config = { name: "no-schema-workflow" };
-
-    expect(hasSchema(config)).toBe(false);
-  });
-
-  test("returns false when schema is undefined", () => {
-    const config = { name: "undefined-schema", schema: undefined };
-
-    expect(hasSchema(config)).toBe(false);
-  });
-
-  test("returns true when schema is provided", () => {
-    const schema = createMockSchema<string>({
-      validate: (input) => ({ value: input as string }),
-    });
-    const config = { name: "with-schema", schema };
-
-    expect(hasSchema(config)).toBe(true);
-  });
-
-  test("returns true for any truthy schema value", () => {
-    const config = { name: "truthy-schema", schema: {} as StandardSchemaV1 };
-
-    expect(hasSchema(config)).toBe(true);
   });
 });
 

@@ -64,20 +64,6 @@ export type ValidationResult<T> =
   | { success: false; error: string };
 
 /**
- * Configuration options for a workflow definition.
- */
-export interface WorkflowConfig<
-  TSchema extends StandardSchemaV1 | undefined = undefined,
-> {
-  /** The unique name of the workflow. */
-  name: string;
-  /** Optional version string for zero-downtime deployments. */
-  version?: string;
-  /** Optional schema for input validation (Standard Schema v1). */
-  schema?: TSchema;
-}
-
-/**
  * Default configuration for result polling when awaiting workflow completion.
  */
 export const DEFAULT_WORKFLOW_RESULT_CONFIG = {
@@ -127,38 +113,6 @@ export async function validateInput<RunInput, Input>(
     success: true,
     value: resolved.value,
   };
-}
-
-/**
- * Create a workflow configuration object with defaults applied.
- * @param config - The user-provided workflow configuration
- * @returns A normalized workflow configuration
- */
-export function createWorkflowConfig<
-  TSchema extends StandardSchemaV1 | undefined = undefined,
->(
-  config: Readonly<WorkflowConfig<TSchema>>,
-): Readonly<{
-  name: string;
-  version: string | null;
-  schema: TSchema | null;
-}> {
-  return {
-    name: config.name,
-    version: config.version ?? null,
-    schema: config.schema ?? null,
-  };
-}
-
-/**
- * Check if a workflow definition has a schema for validation.
- * @param config - The workflow configuration
- * @returns True if the workflow has a schema configured
- */
-export function hasSchema<TSchema extends StandardSchemaV1 | undefined>(
-  config: Readonly<WorkflowConfig<TSchema>>,
-): boolean {
-  return Boolean(config.schema);
 }
 
 /**
