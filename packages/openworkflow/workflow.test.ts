@@ -11,18 +11,18 @@ describe("defineWorkflowSpec", () => {
 });
 
 describe("defineWorkflow", () => {
-  test("returns workflow with spec and impl", () => {
+  test("returns workflow with spec and fn", () => {
     // eslint-disable-next-line unicorn/consistent-function-scoping
-    function impl() {
+    function fn() {
       return { result: "done" };
     }
 
     const spec = { name: "test-workflow" };
-    const workflow = defineWorkflow(spec, impl);
+    const workflow = defineWorkflow(spec, fn);
 
     expect(workflow).toStrictEqual({
       spec,
-      impl,
+      fn,
     });
   });
 });

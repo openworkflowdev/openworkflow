@@ -1,33 +1,34 @@
 import { WorkflowRegistry } from "./registry.js";
+import { defineWorkflow } from "./workflow.js";
 import { describe, expect, test } from "vitest";
 
 describe("WorkflowRegistry", () => {
   describe("register", () => {
     test("registers a workflow without version", () => {
       const registry = new WorkflowRegistry();
-      const workflow = createMockWorkflow();
+      const workflow = createMockWorkflow("my-workflow");
 
-      registry.register("my-workflow", null, workflow);
+      registry.register(workflow);
 
       expect(registry.get("my-workflow", null)).toBe(workflow);
     });
 
     test("registers a workflow with version", () => {
       const registry = new WorkflowRegistry();
-      const workflow = createMockWorkflow();
+      const workflow = createMockWorkflow("my-workflow", "v1");
 
-      registry.register("my-workflow", "v1", workflow);
+      registry.register(workflow);
 
       expect(registry.get("my-workflow", "v1")).toBe(workflow);
     });
 
     test("registers multiple versions of the same workflow", () => {
       const registry = new WorkflowRegistry();
-      const v1 = createMockWorkflow();
-      const v2 = createMockWorkflow();
+      const v1 = createMockWorkflow("my-workflow", "v1");
+      const v2 = createMockWorkflow("my-workflow", "v2");
 
-      registry.register("my-workflow", "v1", v1);
-      registry.register("my-workflow", "v2", v2);
+      registry.register(v1);
+      registry.register(v2);
 
       expect(registry.get("my-workflow", "v1")).toBe(v1);
       expect(registry.get("my-workflow", "v2")).toBe(v2);
@@ -35,11 +36,11 @@ describe("WorkflowRegistry", () => {
 
     test("registers different workflows with same version", () => {
       const registry = new WorkflowRegistry();
-      const workflow1 = createMockWorkflow();
-      const workflow2 = createMockWorkflow();
+      const workflow1 = createMockWorkflow("workflow-a", "v1");
+      const workflow2 = createMockWorkflow("workflow-b", "v1");
 
-      registry.register("workflow-a", "v1", workflow1);
-      registry.register("workflow-b", "v1", workflow2);
+      registry.register(workflow1);
+      registry.register(workflow2);
 
       expect(registry.get("workflow-a", "v1")).toBe(workflow1);
       expect(registry.get("workflow-b", "v1")).toBe(workflow2);
@@ -47,29 +48,29 @@ describe("WorkflowRegistry", () => {
 
     test("throws when registering duplicate unversioned workflow", () => {
       const registry = new WorkflowRegistry();
-      registry.register("my-workflow", null, createMockWorkflow());
+      registry.register(createMockWorkflow("my-workflow"));
 
       expect(() => {
-        registry.register("my-workflow", null, createMockWorkflow());
+        registry.register(createMockWorkflow("my-workflow"));
       }).toThrow('Workflow "my-workflow" is already registered');
     });
 
     test("throws when registering duplicate versioned workflow", () => {
       const registry = new WorkflowRegistry();
-      registry.register("my-workflow", "v1", createMockWorkflow());
+      registry.register(createMockWorkflow("my-workflow", "v1"));
 
       expect(() => {
-        registry.register("my-workflow", "v1", createMockWorkflow());
+        registry.register(createMockWorkflow("my-workflow", "v1"));
       }).toThrow('Workflow "my-workflow" (version: v1) is already registered');
     });
 
     test("allows same name with different versions", () => {
       const registry = new WorkflowRegistry();
-      const versioned = createMockWorkflow();
-      const unversioned = createMockWorkflow();
+      const versioned = createMockWorkflow("my-workflow", "v1");
+      const unversioned = createMockWorkflow("my-workflow");
 
-      registry.register("my-workflow", "v1", versioned);
-      registry.register("my-workflow", null, unversioned);
+      registry.register(versioned);
+      registry.register(unversioned);
 
       expect(registry.get("my-workflow", "v1")).toBe(versioned);
       expect(registry.get("my-workflow", null)).toBe(unversioned);
@@ -85,7 +86,7 @@ describe("WorkflowRegistry", () => {
 
     test("returns undefined for wrong version", () => {
       const registry = new WorkflowRegistry();
-      registry.register("my-workflow", "v1", createMockWorkflow());
+      registry.register(createMockWorkflow("my-workflow", "v1"));
 
       expect(registry.get("my-workflow", "v2")).toBeUndefined();
       expect(registry.get("my-workflow", null)).toBeUndefined();
@@ -93,25 +94,29 @@ describe("WorkflowRegistry", () => {
 
     test("returns undefined for versioned lookup on unversioned workflow", () => {
       const registry = new WorkflowRegistry();
-      registry.register("my-workflow", null, createMockWorkflow());
+      registry.register(createMockWorkflow("my-workflow"));
 
       expect(registry.get("my-workflow", "v1")).toBeUndefined();
     });
 
     test("returns the registered workflow", () => {
       const registry = new WorkflowRegistry();
-      const workflow = createMockWorkflow();
-      registry.register("my-workflow", null, workflow);
+      const workflow = createMockWorkflow("my-workflow");
+      registry.register(workflow);
 
       expect(registry.get("my-workflow", null)).toBe(workflow);
     });
   });
 });
 
-function createMockWorkflow() {
-  return {
-    fn: async () => {
+function createMockWorkflow(name: string, version?: string) {
+  return defineWorkflow(
+    {
+      name,
+      ...(version && { version }),
+    },
+    async () => {
       // no-op
     },
-  };
+  );
 }

@@ -9,6 +9,11 @@ import { validateInput } from "./core/workflow.js";
 import type { WorkflowFunction } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
 import { Worker } from "./worker.js";
+import {
+  defineWorkflowSpec,
+  type Workflow,
+  type WorkflowSpec,
+} from "./workflow.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -31,9 +36,7 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
-  private registry = new WorkflowRegistry<
-    WorkflowDefinition<unknown, unknown, unknown>
-  >();
+  private registry = new WorkflowRegistry();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
@@ -64,17 +67,12 @@ export class OpenWorkflow {
     spec: WorkflowSpec<Input, Output, RunInput>,
     fn: WorkflowFunction<Input, Output>,
   ): void {
-    const definition = new WorkflowDefinition<Input, Output, RunInput>(
-      this,
+    const workflow: Workflow<Input, Output, RunInput> = {
       spec,
       fn,
-    );
+    };
 
-    this.registry.register(
-      spec.name,
-      spec.version,
-      definition as WorkflowDefinition<unknown, unknown, unknown>,
-    );
+    this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
   }
 
   /**
@@ -103,7 +101,7 @@ export class OpenWorkflow {
 
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: spec.name,
-      version: spec.version,
+      version: spec.version ?? null,
       idempotencyKey: null,
       config: {},
       context: null,
@@ -127,7 +125,7 @@ export class OpenWorkflow {
    * `implementWorkflow` into a single call. For better code splitting and to
    * separate declaration from implementation, consider using those methods
    * separately.
-   * @param config - Workflow config
+   * @param spec - Workflow spec
    * @param fn - Workflow implementation
    * @returns Workflow definition
    * @example
@@ -145,24 +143,33 @@ export class OpenWorkflow {
     Output,
     TSchema extends StandardSchemaV1 | undefined = undefined,
   >(
-    config: WorkflowDefinitionConfig<TSchema>,
+    spec: WorkflowSpec<
+      WorkflowHandlerInput<TSchema, Input>,
+      Output,
+      WorkflowRunInput<TSchema, Input>
+    >,
     fn: WorkflowFunction<WorkflowHandlerInput<TSchema, Input>, Output>,
   ): WorkflowDefinition<
     WorkflowHandlerInput<TSchema, Input>,
     Output,
     WorkflowRunInput<TSchema, Input>
   > {
-    const spec = declareWorkflow<Input, Output, TSchema>(config);
     const definition = new WorkflowDefinition<
       WorkflowHandlerInput<TSchema, Input>,
       Output,
       WorkflowRunInput<TSchema, Input>
     >(this, spec, fn);
-    this.registry.register(
-      spec.name,
-      spec.version,
-      definition as WorkflowDefinition<unknown, unknown, unknown>,
-    );
+
+    const workflow: Workflow<
+      WorkflowHandlerInput<TSchema, Input>,
+      Output,
+      WorkflowRunInput<TSchema, Input>
+    > = {
+      spec,
+      fn,
+    };
+
+    this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
     return definition;
   }
 }
@@ -171,7 +178,7 @@ export class OpenWorkflow {
  * Declare a workflow without providing its implementation (which is provided
  * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
  * that can be used to schedule workflow runs.
- * @param config - Workflow config
+ * @param spec - Workflow spec
  * @returns Workflow spec
  * @example
  * ```ts
@@ -181,77 +188,9 @@ export class OpenWorkflow {
  * });
  * ```
  */
-export function declareWorkflow<
-  Input,
-  Output,
-  TSchema extends StandardSchemaV1 | undefined = undefined,
->(
-  config: WorkflowDefinitionConfig<TSchema>,
-): WorkflowSpec<
-  WorkflowHandlerInput<TSchema, Input>,
-  Output,
-  WorkflowRunInput<TSchema, Input>
-> {
-  return {
-    name: config.name,
-    version: config.version ?? null,
-    schema:
-      (config.schema as
-        | StandardSchemaV1<
-            WorkflowRunInput<TSchema, Input>,
-            WorkflowHandlerInput<TSchema, Input>
-          >
-        | undefined) ?? null,
-  };
-}
-
-//
-// --- Workflow Definition
-//
-
-/**
- * Config for declaring a workflow via `declareWorkflow()` or
- * `defineWorkflow()`.
- */
-export interface WorkflowDefinitionConfig<
-  TSchema extends StandardSchemaV1 | undefined = undefined,
-> {
-  /**
-   * The name of the workflow.
-   */
-  name: string;
-  /**
-   * Optional version string for the workflow. Use this to enable zero-downtime
-   * deployments when changing workflow logic.
-   */
-  version?: string;
-  /**
-   * Optional schema used to validate inputs passed to `.run()`.
-   */
-  schema?: TSchema;
-}
-
-/**
- * A lightweight, serializable specification for a workflow. This object can be
- * shared between different parts of an application (e.g., API servers and
- * workers) without bringing in implementation dependencies.
- *
- * Use `declareWorkflow()` to create a WorkflowSpec, and `ow.runWorkflow()`
- * to schedule runs using only the spec.
- */
-export interface WorkflowSpec<Input, Output, RunInput = Input> {
-  /** The name of the workflow. */
-  name: string;
-  /** The version of the workflow, or null if unversioned. */
-  version: string | null;
-  /** The schema used to validate inputs, or null if none. */
-  schema: StandardSchemaV1<RunInput, Input> | null;
-
-  // phantom types for generics, not used at runtime
-  _input?: Input;
-  _output?: Output;
-  _runInput?: RunInput;
-}
+// kept for backwards compatibility, to be deprecated
+// eslint-disable-next-line unicorn/prefer-export-from
+export const declareWorkflow = defineWorkflowSpec;
 
 //
 // --- Workflow Definition

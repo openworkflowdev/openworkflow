@@ -1,29 +1,23 @@
-import type { WorkflowFunction } from "./execution.js";
-
-/**
- * Represents a workflow that can be executed by a worker.
- */
-interface ExecutableWorkflow {
-  fn: WorkflowFunction<unknown, unknown>;
-}
+import type { Workflow } from "./workflow.js";
 
 /**
  * A registry for storing and retrieving workflows by name and version.
  * Provides a centralized way to manage workflow registrations.
  */
-export class WorkflowRegistry<
-  T extends ExecutableWorkflow = ExecutableWorkflow,
-> {
-  private readonly workflows = new Map<string, T>();
+export class WorkflowRegistry {
+  private readonly workflows = new Map<
+    string,
+    Workflow<unknown, unknown, unknown>
+  >();
 
   /**
    * Register a workflow in the registry.
-   * @param name - The workflow name
-   * @param version - The workflow version (null for unversioned)
    * @param workflow - The workflow to register
    * @throws {Error} If a workflow with the same name and version is already registered
    */
-  register(name: string, version: string | null, workflow: T): void {
+  register(workflow: Workflow<unknown, unknown, unknown>): void {
+    const name = workflow.spec.name;
+    const version = workflow.spec.version ?? null;
     const key = registryKey(name, version);
     if (this.workflows.has(key)) {
       const versionStr = version ? ` (version: ${version})` : "";
@@ -38,7 +32,10 @@ export class WorkflowRegistry<
    * @param version - The workflow version (null for unversioned)
    * @returns The workflow if found, undefined otherwise
    */
-  get(name: string, version: string | null): T | undefined {
+  get(
+    name: string,
+    version: string | null,
+  ): Workflow<unknown, unknown, unknown> | undefined {
     const key = registryKey(name, version);
     return this.workflows.get(key);
   }
