@@ -10,6 +10,7 @@ import type { WorkflowFunction } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
 import { Worker } from "./worker.js";
 import {
+  defineWorkflow,
   defineWorkflowSpec,
   type Workflow,
   type WorkflowSpec,
@@ -127,7 +128,7 @@ export class OpenWorkflow {
    * separately.
    * @param spec - Workflow spec
    * @param fn - Workflow implementation
-   * @returns Workflow definition
+   * @returns Runnable workflow
    * @example
    * ```ts
    * const workflow = ow.defineWorkflow(
@@ -149,28 +150,16 @@ export class OpenWorkflow {
       WorkflowRunInput<TSchema, Input>
     >,
     fn: WorkflowFunction<WorkflowHandlerInput<TSchema, Input>, Output>,
-  ): WorkflowDefinition<
+  ): RunnableWorkflow<
     WorkflowHandlerInput<TSchema, Input>,
     Output,
     WorkflowRunInput<TSchema, Input>
   > {
-    const definition = new WorkflowDefinition<
-      WorkflowHandlerInput<TSchema, Input>,
-      Output,
-      WorkflowRunInput<TSchema, Input>
-    >(this, spec, fn);
-
-    const workflow: Workflow<
-      WorkflowHandlerInput<TSchema, Input>,
-      Output,
-      WorkflowRunInput<TSchema, Input>
-    > = {
-      spec,
-      fn,
-    };
+    const workflow = defineWorkflow(spec, fn);
 
     this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
-    return definition;
+
+    return new RunnableWorkflow(this, workflow);
   }
 }
 
@@ -192,28 +181,18 @@ export class OpenWorkflow {
 // eslint-disable-next-line unicorn/prefer-export-from
 export const declareWorkflow = defineWorkflowSpec;
 
-//
-// --- Workflow Definition
-//
-
 /**
  * A fully defined workflow with its implementation. This class is returned by
- * `defineWorkflow` and provides the `.run()` method for scheduling workflow
- * runs.
+ * `client.defineWorkflow` and provides the `.run()` method for scheduling
+ * workflow runs.
  */
-export class WorkflowDefinition<Input, Output, RunInput = Input> {
+export class RunnableWorkflow<Input, Output, RunInput = Input> {
   private readonly ow: OpenWorkflow;
-  readonly spec: WorkflowSpec<Input, Output, RunInput>;
-  readonly fn: WorkflowFunction<Input, Output>;
+  readonly workflow: Workflow<Input, Output, RunInput>;
 
-  constructor(
-    ow: OpenWorkflow,
-    spec: WorkflowSpec<Input, Output, RunInput>,
-    fn: WorkflowFunction<Input, Output>,
-  ) {
+  constructor(ow: OpenWorkflow, workflow: Workflow<Input, Output, RunInput>) {
     this.ow = ow;
-    this.spec = spec;
-    this.fn = fn;
+    this.workflow = workflow;
   }
 
   /**
@@ -226,7 +205,7 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
     input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
-    return this.ow.runWorkflow(this.spec, input, options);
+    return this.ow.runWorkflow(this.workflow.spec, input, options);
   }
 }
 
@@ -235,8 +214,8 @@ export class WorkflowDefinition<Input, Output, RunInput = Input> {
 //
 
 /**
- * Options for creating a new workflow run from a workflow definition when
- * calling `workflowDef.run()`.
+ * Options for creating a new workflow run from a runnable workflow when calling
+ * `workflowDef.run()`.
  */
 export interface WorkflowRunOptions {
   /**

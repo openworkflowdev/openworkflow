@@ -39,7 +39,7 @@ export interface Workflow<Input, Output, RawInput> {
  * Define a workflow.
  * @param spec - The workflow spec
  * @param fn - The workflow implementation function
- * @returns The workflow definition
+ * @returns The workflow
  */
 // Handles:
 // - `defineWorkflow(spec, impl)` (0 generics)
@@ -53,7 +53,7 @@ export function defineWorkflow<Input, Output, RawInput = Input>(
  * Define a workflow.
  * @param spec - The workflow spec
  * @param fn - The workflow implementation function
- * @returns The workflow definition
+ * @returns The workflow
  */
 // Handles:
 // - `defineWorkflow<Input>(spec, impl)` (1 generic)
@@ -74,7 +74,7 @@ export function defineWorkflow<
  * @internal
  * @param spec - The workflow spec
  * @param fn - The workflow implementation function
- * @returns The workflow definition
+ * @returns The workflow
  */
 export function defineWorkflow<Input, Output, RawInput>(
   spec: WorkflowSpec<Input, Output, RawInput>,
