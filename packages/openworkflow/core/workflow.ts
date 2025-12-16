@@ -64,16 +64,6 @@ export type ValidationResult<T> =
   | { success: false; error: string };
 
 /**
- * Default configuration for result polling when awaiting workflow completion.
- */
-export const DEFAULT_WORKFLOW_RESULT_CONFIG = {
-  /** Polling interval in milliseconds (1 second) */
-  pollIntervalMs: 1000,
-  /** Timeout in milliseconds (5 minutes) */
-  timeoutMs: 5 * 60 * 1000,
-} as const;
-
-/**
  * Validate input against a Standard Schema. Pure async function that validates
  * input and returns a ValidationResult.
  * @param schema - The Standard Schema to validate against (or null/undefined
@@ -113,20 +103,4 @@ export async function validateInput<RunInput, Input>(
     success: true,
     value: resolved.value,
   };
-}
-
-/**
- * Check if a workflow run status represents a terminal state.
- * @param status - The workflow run status
- * @returns True if the status is terminal (completed, failed, or canceled)
- */
-export function isTerminalStatus(
-  status: string,
-): status is "succeeded" | "completed" | "failed" | "canceled" {
-  return (
-    status === "succeeded" ||
-    status === "completed" ||
-    status === "failed" ||
-    status === "canceled"
-  );
 }

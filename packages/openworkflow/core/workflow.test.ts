@@ -1,9 +1,5 @@
 import type { StandardSchemaV1 } from "./schema.js";
-import {
-  validateInput,
-  isTerminalStatus,
-  DEFAULT_WORKFLOW_RESULT_CONFIG,
-} from "./workflow.js";
+import { validateInput } from "./workflow.js";
 import { describe, expect, test } from "vitest";
 
 describe("validateInput", () => {
@@ -129,52 +125,6 @@ describe("validateInput", () => {
     if (result.success) {
       expect(result.value).toBeUndefined();
     }
-  });
-});
-
-describe("isTerminalStatus", () => {
-  test("returns true for 'completed' status", () => {
-    expect(isTerminalStatus("completed")).toBe(true);
-  });
-
-  test("returns true for 'succeeded' status (deprecated)", () => {
-    expect(isTerminalStatus("succeeded")).toBe(true);
-  });
-
-  test("returns true for 'failed' status", () => {
-    expect(isTerminalStatus("failed")).toBe(true);
-  });
-
-  test("returns true for 'canceled' status", () => {
-    expect(isTerminalStatus("canceled")).toBe(true);
-  });
-
-  test("returns false for 'pending' status", () => {
-    expect(isTerminalStatus("pending")).toBe(false);
-  });
-
-  test("returns false for 'running' status", () => {
-    expect(isTerminalStatus("running")).toBe(false);
-  });
-
-  test("returns false for 'sleeping' status", () => {
-    expect(isTerminalStatus("sleeping")).toBe(false);
-  });
-
-  test("returns false for unknown status strings", () => {
-    expect(isTerminalStatus("unknown")).toBe(false);
-    expect(isTerminalStatus("")).toBe(false);
-    expect(isTerminalStatus("COMPLETED")).toBe(false);
-  });
-});
-
-describe("DEFAULT_WORKFLOW_RESULT_CONFIG", () => {
-  test("has expected poll interval", () => {
-    expect(DEFAULT_WORKFLOW_RESULT_CONFIG.pollIntervalMs).toBe(1000);
-  });
-
-  test("has expected timeout (5 minutes)", () => {
-    expect(DEFAULT_WORKFLOW_RESULT_CONFIG.timeoutMs).toBe(5 * 60 * 1000);
   });
 });
 

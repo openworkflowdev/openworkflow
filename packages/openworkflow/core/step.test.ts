@@ -2,7 +2,6 @@ import { ok } from "./result.js";
 import {
   createStepAttemptCacheFromAttempts,
   getCachedStepAttempt,
-  hasCompletedStep,
   addToStepAttemptCache,
   normalizeStepOutput,
   calculateSleepResumeAt,
@@ -122,27 +121,6 @@ describe("getCachedStepAttempt", () => {
     expect(getCachedStepAttempt(cache, "step-2")).toBeUndefined();
     expect(getCachedStepAttempt(cache, "Step-1")).toBeUndefined();
     expect(getCachedStepAttempt(cache, "step-1 ")).toBeUndefined();
-  });
-});
-
-describe("hasCompletedStep", () => {
-  test("returns true when step is in cache", () => {
-    const attempt = createMockStepAttempt({ stepName: "step-x" });
-    const cache: StepAttemptCache = new Map([["step-x", attempt]]);
-
-    expect(hasCompletedStep(cache, "step-x")).toBe(true);
-  });
-
-  test("returns false when step is not in cache", () => {
-    const cache: StepAttemptCache = new Map();
-
-    expect(hasCompletedStep(cache, "step-y")).toBe(false);
-  });
-
-  test("returns false for empty cache", () => {
-    const cache: StepAttemptCache = new Map();
-
-    expect(hasCompletedStep(cache, "any-step")).toBe(false);
   });
 });
 

@@ -87,19 +87,6 @@ export function getCachedStepAttempt(
 }
 
 /**
- * Check if a step attempt is cached (has completed successfully).
- * @param cache - The step attempt cache
- * @param stepName - The name of the step to check
- * @returns True if the step has a cached successful result
- */
-export function hasCompletedStep(
-  cache: StepAttemptCache,
-  stepName: string,
-): boolean {
-  return cache.has(stepName);
-}
-
-/**
  * Add a step attempt to the cache (returns new cache, original unchanged). This
  * is an immutable operation.
  * @param cache - The existing step attempt cache
