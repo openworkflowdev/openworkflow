@@ -39,6 +39,14 @@ export class WorkflowRegistry {
     const key = registryKey(name, version);
     return this.workflows.get(key);
   }
+
+  /**
+   * Get all registered workflows.
+   * @returns Array of all registered workflows
+   */
+  getAll(): Workflow<unknown, unknown, unknown>[] {
+    return [...this.workflows.values()];
+  }
 }
 
 /**

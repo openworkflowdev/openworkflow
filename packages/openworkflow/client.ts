@@ -52,7 +52,7 @@ export class OpenWorkflow {
   newWorker(options?: { concurrency?: number | undefined }): Worker {
     return new Worker({
       backend: this.backend,
-      registry: this.registry,
+      workflows: this.registry.getAll(),
       concurrency: options?.concurrency,
     });
   }

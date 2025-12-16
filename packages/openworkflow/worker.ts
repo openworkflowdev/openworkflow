@@ -1,7 +1,7 @@
 import type { Backend } from "./backend.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
-import type { WorkflowRegistry } from "./registry.js";
+import { WorkflowRegistry } from "./registry.js";
 import type { Workflow } from "./workflow.js";
 import { randomUUID } from "node:crypto";
 
@@ -15,7 +15,7 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export interface WorkerOptions {
   backend: Backend;
-  registry: WorkflowRegistry;
+  workflows: Workflow<unknown, unknown, unknown>[];
   concurrency?: number | undefined;
 }
 
@@ -26,14 +26,17 @@ export interface WorkerOptions {
 export class Worker {
   private readonly backend: Backend;
   private readonly workerIds: string[];
-  private readonly registry: WorkflowRegistry;
+  private readonly registry = new WorkflowRegistry();
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
   private loopPromise: Promise<void> | null = null;
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
-    this.registry = options.registry;
+
+    for (const workflow of options.workflows) {
+      this.registry.register(workflow);
+    }
 
     const concurrency = Math.max(
       DEFAULT_CONCURRENCY,

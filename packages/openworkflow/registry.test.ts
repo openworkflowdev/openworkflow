@@ -107,6 +107,28 @@ describe("WorkflowRegistry", () => {
       expect(registry.get("my-workflow", null)).toBe(workflow);
     });
   });
+
+  describe("getAll", () => {
+    test("returns all registered workflows", () => {
+      const registry = new WorkflowRegistry();
+      const a = createMockWorkflow("workflow-a");
+      const b = createMockWorkflow("workflow-b", "v1");
+      const c = createMockWorkflow("workflow-a", "v2");
+
+      registry.register(a);
+      registry.register(b);
+      registry.register(c);
+
+      const all = registry.getAll();
+      expect(all).toHaveLength(3);
+      expect(all).toEqual(expect.arrayContaining([a, b, c]));
+    });
+
+    test("returns empty array when none registered", () => {
+      const registry = new WorkflowRegistry();
+      expect(registry.getAll()).toEqual([]);
+    });
+  });
 });
 
 function createMockWorkflow(name: string, version?: string) {
