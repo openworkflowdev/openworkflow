@@ -29,7 +29,7 @@ import {
   JsonValue,
 } from "openworkflow/internal";
 
-export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
+const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
 interface BackendPostgresOptions {
   namespaceId?: string;

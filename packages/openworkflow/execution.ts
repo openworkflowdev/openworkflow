@@ -65,7 +65,7 @@ export type WorkflowFunction<Input, Output> = (
  * Signal thrown when a workflow needs to sleep. Contains the time when the
  * workflow should resume.
  */
-export class SleepSignal extends Error {
+class SleepSignal extends Error {
   readonly resumeAt: Date;
 
   constructor(resumeAt: Readonly<Date>) {
@@ -89,7 +89,7 @@ export interface StepExecutorOptions {
  * Replays prior step attempts and persists new ones while memoizing
  * deterministic step outputs.
  */
-export class StepExecutor implements StepApi {
+class StepExecutor implements StepApi {
   private readonly backend: Backend;
   private readonly workflowRunId: string;
   private readonly workerId: string;
