@@ -26,7 +26,7 @@
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^25.0.1",
     "@vitest/coverage-v8": "^4.0.15",
-    "eslint": "^9.39.1",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-functional": "^9.0.2",
