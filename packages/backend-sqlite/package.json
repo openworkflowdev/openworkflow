@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@openworkflow/backend-test": "file:../backend-test",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.16"
   },
   "peerDependencies": {
     "openworkflow": "^0.4.1"

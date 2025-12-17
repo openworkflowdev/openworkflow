@@ -27,7 +27,7 @@
   "devDependencies": {
     "@openworkflow/backend-test": "file:../backend-test",
     "squawk-cli": "^2.32.0",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.16"
   },
   "peerDependencies": {
     "openworkflow": "^0.4.1"
