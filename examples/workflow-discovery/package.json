@@ -1,0 +1,16 @@
+{
+  "name": "example-workflow-discovery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "worker": "tsx ../../packages/cli/index.ts worker start"
+  },
+  "dependencies": {
+    "@openworkflow/backend-sqlite": "file:../../packages/backend-sqlite",
+    "openworkflow": "file:../../packages/openworkflow"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}

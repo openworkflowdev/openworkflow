@@ -1,6 +1,13 @@
 // config
 export { loadConfig } from "./config.js";
 
+// client
+export { createClient } from "./client.js";
+
+// workflow
+export type { Workflow } from "./workflow.js";
+export { defineWorkflow, isWorkflow } from "./workflow.js";
+
 // backend
 export * from "./backend.js";
 
