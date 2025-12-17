@@ -1,17 +1,31 @@
 import { CLIError } from "./errors.js";
+import {
+  HELLO_WORLD_WORKFLOW,
+  POSTGRES_CONFIG,
+  POSTGRES_PROD_SQLITE_DEV_CONFIG,
+  SQLITE_CONFIG,
+} from "./templates.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
 import { createJiti } from "jiti";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { addDependency, detectPackageManager } from "nypm";
 import { OpenWorkflow, WorkerConfig } from "openworkflow";
 import { isWorkflow, loadConfig, Workflow } from "openworkflow/internal";
 
+type BackendChoice = "sqlite" | "postgres" | "both";
+
 /** Initialize OpenWorkflow in the current project. */
 export async function init(): Promise<void> {
-  p.intro("OpenWorkflow");
+  p.intro("Initializing OpenWorkflow...");
 
   const { configFile } = await loadConfig();
 
@@ -20,6 +34,34 @@ export async function init(): Promise<void> {
       "Config already exists.",
       `Delete ${configFile} first to reinitialize.`,
     );
+  }
+
+  const backendChoice = (await p.select({
+    message: "Select a backend for OpenWorkflow:",
+    options: [
+      {
+        value: "sqlite",
+        label: "SQLite",
+        hint: "Recommended for testing and development",
+      },
+      {
+        value: "postgres",
+        label: "PostgreSQL",
+        hint: "Recommended for production",
+      },
+      {
+        value: "both",
+        label: "Both",
+        hint: "SQLite for dev, PostgreSQL for production",
+      },
+    ],
+    initialValue: "sqlite",
+  })) as BackendChoice;
+
+  if (p.isCancel(backendChoice)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
   }
 
   const spinner = p.spinner();
@@ -31,7 +73,7 @@ export async function init(): Promise<void> {
   spinner.stop(`Using ${packageManager}`);
 
   const shouldInstall = await p.confirm({
-    message: `Install OpenWorkflow in your ${packageManager} dependencies?`,
+    message: `Install OpenWorkflow?`,
     initialValue: true,
   });
 
@@ -42,39 +84,94 @@ export async function init(): Promise<void> {
   }
 
   if (shouldInstall) {
-    spinner.start(
-      "Installing openworkflow, @openworkflow/backend-sqlite, @openworkflow/backend-postgres...",
-    );
-    await addDependency(
-      [
-        "openworkflow",
-        "@openworkflow/backend-sqlite",
-        "@openworkflow/backend-postgres",
-      ],
-      { silent: true },
-    );
-    spinner.stop(
-      "Installed openworkflow, @openworkflow/backend-sqlite, @openworkflow/backend-postgres",
-    );
+    const packages = ["openworkflow"];
+
+    if (backendChoice === "sqlite" || backendChoice === "both") {
+      packages.push("@openworkflow/backend-sqlite");
+    }
+
+    if (backendChoice === "postgres" || backendChoice === "both") {
+      packages.push("@openworkflow/backend-postgres");
+    }
+
+    spinner.start(`Installing ${packages.join(", ")}...`);
+    await addDependency(packages, { silent: true });
+    spinner.stop(`Installed ${packages.join(", ")}`);
   }
 
   // write config file (last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init)
   spinner.start("Writing config...");
 
-  const configTemplatePath = path.resolve(
-    path.dirname(import.meta.url.replace("file://", "")),
-    "templates/openworkflow.config.ts",
-  );
-  const configTemplate = readFileSync(configTemplatePath, "utf8");
-  const configDestPath = path.join(process.cwd(), "openworkflow.config.ts");
+  let configTemplate: string;
+  switch (backendChoice) {
+    case "sqlite": {
+      configTemplate = SQLITE_CONFIG;
+      break;
+    }
+    case "postgres": {
+      configTemplate = POSTGRES_CONFIG;
+      break;
+    }
+    case "both": {
+      configTemplate = POSTGRES_PROD_SQLITE_DEV_CONFIG;
+      break;
+    }
+  }
 
+  const configDestPath = path.join(process.cwd(), "openworkflow.config.ts");
   writeFileSync(configDestPath, configTemplate, "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 
+  // create openworkflow dir and add hello_world.ts
+  spinner.start("Creating example (hello-world) workflow...");
+
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
+  }
+
+  const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
+  writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+  spinner.stop(
+    `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+  );
+
+  // add worker script to package.json
+  spinner.start("Adding worker script to package.json...");
+
+  const packageJsonPath = path.join(process.cwd(), "package.json");
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+        scripts?: Record<string, string>;
+      };
+
+      packageJson.scripts ??= {};
+      packageJson.scripts["worker"] = "ow worker start";
+
+      writeFileSync(
+        packageJsonPath,
+        JSON.stringify(packageJson, null, 2) + "\n",
+        "utf8",
+      );
+
+      spinner.stop('Added "worker" script to package.json');
+    } catch {
+      spinner.stop("Failed to update package.json");
+      consola.warn("Could not add worker script to package.json");
+    }
+  } else {
+    spinner.stop("No package.json found");
+    consola.warn("No package.json found - skipping script injection");
+  }
+
   // wrap up
-  p.note(`➡️ Start a worker with:\n$ ow worker start`, "Next steps");
-  p.outro("Done!");
+  p.note(
+    `➡️ Start a worker with:\n$ ${packageManager === "npm" ? "npm run" : packageManager} worker\n\nOr directly with:\n$ ow worker start`,
+    "Next steps",
+  );
+  p.outro("✅ Setup complete!");
 }
 
 /**
