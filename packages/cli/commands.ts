@@ -171,8 +171,10 @@ function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
     let entries;
     try {
       entries = readdirSync(absoluteDir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
       // doesn't exist or can't be read, skip
+      const errMessage = error instanceof Error ? error.message : String(error);
+      consola.debug(`Failed to read directory: ${absoluteDir} - ${errMessage}`);
       return;
     }
 
