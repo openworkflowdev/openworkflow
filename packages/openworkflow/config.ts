@@ -5,6 +5,14 @@ import { loadConfig as loadC12Config } from "c12";
 export interface OpenWorkflowConfig {
   backend: Backend;
   worker?: WorkerConfig;
+  /**
+   * Directory or directories to scan for workflow files.
+   * All `.ts` and `.js` files in these directories (recursively) will be loaded.
+   * Workflow files should export workflows created with `defineWorkflow()`.
+   * @example "./openworkflow"
+   * @example ["./openworkflow", "./src/openworkflow", "./workflows"]
+   */
+  dirs?: string | string[];
 }
 
 export type WorkerConfig = Pick<WorkerOptions, "concurrency">;

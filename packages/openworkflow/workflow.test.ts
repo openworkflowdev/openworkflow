@@ -1,4 +1,4 @@
-import { defineWorkflow, defineWorkflowSpec } from "./workflow.js";
+import { defineWorkflow, defineWorkflowSpec, isWorkflow } from "./workflow.js";
 import { describe, expect, test } from "vitest";
 
 describe("defineWorkflowSpec", () => {
@@ -24,6 +24,47 @@ describe("defineWorkflow", () => {
       spec,
       fn,
     });
+  });
+});
+
+describe("isWorkflow", () => {
+  test("returns true for valid workflow objects", () => {
+    const workflow = defineWorkflow({ name: "test" }, () => "done");
+    expect(isWorkflow(workflow)).toBe(true);
+  });
+
+  test("returns false for null", () => {
+    expect(isWorkflow(null)).toBe(false);
+  });
+
+  test("returns false for undefined", () => {
+    // eslint-disable-next-line unicorn/no-useless-undefined
+    expect(isWorkflow(undefined)).toBe(false);
+  });
+
+  test("returns false for primitives", () => {
+    expect(isWorkflow("string")).toBe(false);
+    expect(isWorkflow(123)).toBe(false);
+    expect(isWorkflow(true)).toBe(false);
+  });
+
+  test("returns false for objects without spec", () => {
+    expect(isWorkflow({ fn: () => "result" })).toBe(false);
+  });
+
+  test("returns false for objects without fn", () => {
+    expect(isWorkflow({ spec: { name: "test" } })).toBe(false);
+  });
+
+  test("returns false for objects with invalid spec", () => {
+    expect(isWorkflow({ spec: null, fn: () => "result" })).toBe(false);
+    expect(isWorkflow({ spec: "invalid", fn: () => "result" })).toBe(false);
+  });
+
+  test("returns false for objects with invalid fn", () => {
+    expect(isWorkflow({ spec: { name: "test" }, fn: "not-a-function" })).toBe(
+      false,
+    );
   });
 });
 

@@ -1,4 +1,5 @@
 import type { Backend } from "./backend.js";
+import { loadConfig } from "./config.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import type {
   SchemaInput,
@@ -161,6 +162,15 @@ export class OpenWorkflow {
 
     return new RunnableWorkflow(this, workflow);
   }
+}
+
+/**
+ * Create an OpenWorkflow client from the project config file.
+ * @returns OpenWorkflow instance
+ */
+export async function createClient(): Promise<OpenWorkflow> {
+  const { config } = await loadConfig();
+  return new OpenWorkflow({ backend: config.backend });
 }
 
 /**

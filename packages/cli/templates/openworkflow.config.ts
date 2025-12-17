@@ -14,4 +14,5 @@ const backend =
 
 export default defineConfig({
   backend,
+  dirs: "./openworkflow",
 });
