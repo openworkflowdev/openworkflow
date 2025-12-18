@@ -246,6 +246,18 @@ export interface WorkflowHandleOptions {
 }
 
 /**
+ * Options for result() on a WorkflowRunHandle.
+ */
+export interface WorkflowRunHandleResultOptions {
+  /**
+   * Time to wait for a workflow run to complete. Throws an error if the timeout
+   * is exceeded.
+   * @default 300000 (5 minutes)
+   */
+  timeoutMs?: number;
+}
+
+/**
  * Represents a started workflow run and provides methods to await its result.
  * Returned from `workflowDef.run()`.
  */
@@ -264,10 +276,12 @@ export class WorkflowRunHandle<Output> {
 
   /**
    * Waits for the workflow run to complete and returns the result.
+   * @param options - Options for waiting for the result
    * @returns Workflow output
    */
-  async result(): Promise<Output> {
+  async result(options?: WorkflowRunHandleResultOptions): Promise<Output> {
     const start = Date.now();
+    const timeout = options?.timeoutMs ?? this.resultTimeoutMs;
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
@@ -296,7 +310,7 @@ export class WorkflowRunHandle<Output> {
         );
       }
 
-      if (Date.now() - start > this.resultTimeoutMs) {
+      if (Date.now() - start > timeout) {
         throw new Error(
           `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
         );
