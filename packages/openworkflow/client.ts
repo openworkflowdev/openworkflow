@@ -246,11 +246,13 @@ export interface WorkflowHandleOptions {
 }
 
 /**
- * Options for WorkflowResult.
+ * Options for result() on a WorkflowRunHandle.
  */
-export interface WorkflowResultOptions {
+export interface WorkflowRunHandleResultOptions {
   /**
-   * Timeout for workflow run.
+   * Time to wait for a workflow run to complete. Throws an error if the timeout
+   * is exceeded.
+   * @default 300000 (5 minutes)
    */
   timeoutMs?: number;
 }
@@ -274,10 +276,10 @@ export class WorkflowRunHandle<Output> {
 
   /**
    * Waits for the workflow run to complete and returns the result.
-   * @param options  - Result options
+   * @param options - Options for waiting for the result
    * @returns Workflow output
    */
-  async result(options?: WorkflowResultOptions): Promise<Output> {
+  async result(options?: WorkflowRunHandleResultOptions): Promise<Output> {
     const start = Date.now();
     const timeout = options?.timeoutMs ?? this.resultTimeoutMs;
 
