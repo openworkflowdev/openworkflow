@@ -475,7 +475,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(delayMs).toBeLessThan(1500);
       });
 
-      test("reschedules with increasing backoff on multiple failures (known slow test)", async () => {
+      test("reschedules with increasing backoff on multiple failures", async () => {
         // this test needs isolated namespace
         const backend = await setup();
 

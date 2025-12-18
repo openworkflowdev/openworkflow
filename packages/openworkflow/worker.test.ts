@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
 describe("Worker", () => {
-  test("passes workflow input to handlers (known slow test)", async () => {
+  test("passes workflow input to handlers", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -23,7 +23,7 @@ describe("Worker", () => {
     expect(result).toEqual(payload);
   });
 
-  test("processes workflow runs to completion (known slow test)", async () => {
+  test("processes workflow runs to completion", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -40,7 +40,7 @@ describe("Worker", () => {
     expect(result).toBe(42);
   });
 
-  test("step.run reuses cached results (known slow test)", async () => {
+  test("step.run reuses cached results", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -97,7 +97,7 @@ describe("Worker", () => {
     expect(updated?.availableAt).not.toBeNull();
   });
 
-  test("retries failed workflows automatically (known slow test)", async () => {
+  test("retries failed workflows automatically", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -141,7 +141,7 @@ describe("Worker", () => {
     await worker.tick(); // no runs queued
   });
 
-  test("handles step functions that return undefined (known slow test)", async () => {
+  test("handles step functions that return undefined", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -167,7 +167,7 @@ describe("Worker", () => {
     expect(result).toEqual({ success: true });
   });
 
-  test("executes steps synchronously within workflow (known slow test)", async () => {
+  test("executes steps synchronously within workflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -199,7 +199,7 @@ describe("Worker", () => {
     expect(result).toEqual(["start", "step1", "between", "step2", "end"]);
   });
 
-  test("executes parallel steps with Promise.all (known slow test)", async () => {
+  test("executes parallel steps with Promise.all", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -275,7 +275,7 @@ describe("Worker", () => {
     expect(completed).toBe(2);
   });
 
-  test("worker starts, processes work, and stops gracefully (known slow test)", async () => {
+  test("worker starts, processes work, and stops gracefully", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -294,7 +294,7 @@ describe("Worker", () => {
     expect(result).toBe("complete");
   });
 
-  test("recovers from crashes during parallel step execution (known slow test)", async () => {
+  test("recovers from crashes during parallel step execution", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -341,7 +341,7 @@ describe("Worker", () => {
     expect(attemptCount).toBe(2);
   });
 
-  test("reclaims workflow run when heartbeat stops (known slow test)", async () => {
+  test("reclaims workflow run when heartbeat stops", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -427,7 +427,7 @@ describe("Worker", () => {
     await worker.stop();
   });
 
-  test("worker only sleeps between claims when no work is available (known slow test)", async () => {
+  test("worker only sleeps between claims when no work is available", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -461,7 +461,7 @@ describe("Worker", () => {
     expect(duration).toBeLessThan(3000); // should complete in under 3 seconds
   });
 
-  test("only failed steps re-execute on retry (known slow test)", async () => {
+  test("only failed steps re-execute on retry", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -530,7 +530,7 @@ describe("Worker", () => {
     });
   });
 
-  test("step.sleep postpones workflow execution (known slow test)", async () => {
+  test("step.sleep postpones workflow execution", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -677,7 +677,7 @@ describe("Worker", () => {
     expect(failed?.error?.message).toContain("Invalid duration format");
   });
 
-  test("step.sleep handles multiple sequential sleeps (known slow test)", async () => {
+  test("step.sleep handles multiple sequential sleeps", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -794,7 +794,7 @@ describe("Worker", () => {
     expect(claimed?.workerId).toBe("test-worker");
   });
 
-  test("sleep is not skipped when worker crashes after creating sleep step but before marking workflow as sleeping (known slow test)", async () => {
+  test("sleep is not skipped when worker crashes after creating sleep step but before marking workflow as sleeping", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -867,7 +867,7 @@ describe("Worker", () => {
     expect(result.afterSleepCount).toBe(1);
   });
 
-  test("version enables conditional code paths (known slow test)", async () => {
+  test("version enables conditional code paths", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 

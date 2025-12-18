@@ -15,7 +15,7 @@ const TEST_TIMEOUT_MS = 30_000;
 
 describe("chaos test", () => {
   test(
-    "workflow completes despite random worker deaths (known slow test)",
+    "workflow completes despite random worker deaths",
     async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
