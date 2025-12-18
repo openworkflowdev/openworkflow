@@ -116,7 +116,7 @@ export class OpenWorkflow {
       backend: this.backend,
       workflowRun: workflowRun,
       resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
-      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
+      resultTimeoutMs: options?.timeoutMs ?? DEFAULT_RESULT_TIMEOUT_MS,
     });
   }
 
@@ -233,6 +233,11 @@ export interface WorkflowRunOptions {
    * it will be marked as failed.
    */
   deadlineAt?: Date;
+
+  /**
+   * Timeout for workflow run.
+   */
+  timeoutMs?: number;
 }
 
 /**
