@@ -274,6 +274,7 @@ export class WorkflowRunHandle<Output> {
 
   /**
    * Waits for the workflow run to complete and returns the result.
+   * @param options  - Result options
    * @returns Workflow output
    */
   async result(options?: WorkflowResultOptions): Promise<Output> {
