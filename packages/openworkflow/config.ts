@@ -35,7 +35,6 @@ interface LoadedConfig {
 
 const CONFIG_NAME = "openworkflow.config";
 const CONFIG_EXTENSIONS = ["js", "mjs", "cjs"];
-const CONFIG_EXTENSIONS_JOINED = "{js,mjs,cjs}";
 
 /**
  * Load the OpenWorkflow config at openworkflow.config.{js,mjs,cjs}.
@@ -73,7 +72,11 @@ export async function loadConfig(rootDir?: string): Promise<LoadedConfig> {
     }
   }
 
-  throw new Error(
-    `No config file found. Please create one of: ${CONFIG_NAME}.${CONFIG_EXTENSIONS_JOINED}`,
-  );
+  return {
+    // not great, but meant to match the c12 api since that is what was used in
+    // the initial implementation of loadConfig
+    // this can be easily refactored later
+    config: {} as unknown as OpenWorkflowConfig,
+    configFile: undefined, // no config found
+  };
 }
