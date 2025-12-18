@@ -1,3 +1,4 @@
+/* v8 ignore file -- @preserve */
 import { consola } from "consola";
 
 /**

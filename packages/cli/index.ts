@@ -1,3 +1,4 @@
+/* v8 ignore file -- @preserve */
 import { init, workerStart } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";

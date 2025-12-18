@@ -21,7 +21,7 @@ import { addDependency, detectPackageManager } from "nypm";
 import { OpenWorkflow, WorkerConfig } from "openworkflow";
 import { isWorkflow, loadConfig, Workflow } from "openworkflow/internal";
 
-type BackendChoice = "sqlite" | "postgres" | "both";
+export type BackendChoice = "sqlite" | "postgres" | "both";
 
 /** Initialize OpenWorkflow in the current project. */
 export async function init(): Promise<void> {
@@ -84,16 +84,7 @@ export async function init(): Promise<void> {
   }
 
   if (shouldInstall) {
-    const packages = ["openworkflow"];
-
-    if (backendChoice === "sqlite" || backendChoice === "both") {
-      packages.push("@openworkflow/backend-sqlite");
-    }
-
-    if (backendChoice === "postgres" || backendChoice === "both") {
-      packages.push("@openworkflow/backend-postgres");
-    }
-
+    const packages = getPackagesToInstall(backendChoice);
     spinner.start(`Installing ${packages.join(", ")}...`);
     await addDependency(packages, { silent: true });
     spinner.stop(`Installed ${packages.join(", ")}`);
@@ -103,21 +94,7 @@ export async function init(): Promise<void> {
   // which would prevent re-running init)
   spinner.start("Writing config...");
 
-  let configTemplate: string;
-  switch (backendChoice) {
-    case "sqlite": {
-      configTemplate = SQLITE_CONFIG;
-      break;
-    }
-    case "postgres": {
-      configTemplate = POSTGRES_CONFIG;
-      break;
-    }
-    case "both": {
-      configTemplate = POSTGRES_PROD_SQLITE_DEV_CONFIG;
-      break;
-    }
-  }
+  const configTemplate = getConfigTemplate(backendChoice);
 
   const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
   writeFileSync(configDestPath, configTemplate, "utf8");
@@ -255,7 +232,10 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
  * @param baseDir - Base directory to resolve relative paths from
  * @returns Array of absolute file paths
  */
-function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
+export function discoverWorkflowFiles(
+  dirs: string[],
+  baseDir: string,
+): string[] {
   const discoveredFiles: string[] = [];
 
   /**
@@ -302,7 +282,7 @@ function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
  * @param files - Array of absolute file paths to import
  * @returns Array of discovered workflows
  */
-async function importWorkflows(
+export async function importWorkflows(
   files: string[],
 ): Promise<Workflow<unknown, unknown, unknown>[]> {
   const workflows: Workflow<unknown, unknown, unknown>[] = [];
@@ -335,4 +315,42 @@ async function importWorkflows(
   }
 
   return workflows;
+}
+
+/**
+ * Get the config template for a backend choice.
+ * @param backendChoice - The selected backend choice
+ * @returns The config template string
+ */
+export function getConfigTemplate(backendChoice: BackendChoice): string {
+  switch (backendChoice) {
+    case "sqlite": {
+      return SQLITE_CONFIG;
+    }
+    case "postgres": {
+      return POSTGRES_CONFIG;
+    }
+    case "both": {
+      return POSTGRES_PROD_SQLITE_DEV_CONFIG;
+    }
+  }
+}
+
+/**
+ * Get the packages to install for a backend choice.
+ * @param backendChoice - The selected backend choice
+ * @returns Array of package names to install
+ */
+export function getPackagesToInstall(backendChoice: BackendChoice): string[] {
+  const packages = ["openworkflow"];
+
+  if (backendChoice === "sqlite" || backendChoice === "both") {
+    packages.push("@openworkflow/backend-sqlite");
+  }
+
+  if (backendChoice === "postgres" || backendChoice === "both") {
+    packages.push("@openworkflow/backend-postgres");
+  }
+
+  return packages;
 }

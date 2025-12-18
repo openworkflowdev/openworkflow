@@ -28,7 +28,8 @@
     "nypm": "^0.6.2"
   },
   "devDependencies": {
-    "openworkflow": "file:../openworkflow"
+    "openworkflow": "file:../openworkflow",
+    "vitest": "^4.0.16"
   },
   "peerDependencies": {
     "openworkflow": "^0.4.1"
