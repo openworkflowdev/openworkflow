@@ -73,10 +73,10 @@ describe("loadConfig", () => {
     );
   });
 
-  test("throws if no config file is found", async () => {
-    await expect(loadConfig(tmpDir)).rejects.toThrow(
-      /No config file found. Please create one of: openworkflow.config\.{js,mjs,cjs}/,
-    );
+  test("returns empty config object when no config file is found", async () => {
+    const { config, configFile } = await loadConfig(tmpDir);
+    expect(config).toEqual({});
+    expect(configFile).toBeUndefined();
   });
 
   test("falls back to module when default export is undefined", async () => {
