@@ -155,6 +155,7 @@ export async function init(): Promise<void> {
  * Start a worker using the project config.
  * @param cliOptions - Worker config overrides
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
   consola.start("Starting worker...");
 
@@ -197,6 +198,24 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
   consola.success(
     `Loaded ${String(workflows.length)} workflow(s): ${workflows.map((w) => w.spec.name).join(", ")}`,
   );
+
+  // check for duplicate workflow names (considering versions)
+  const workflowKeys = new Map<string, Workflow<unknown, unknown, unknown>>();
+  for (const workflow of workflows) {
+    const name = workflow.spec.name;
+    const version = workflow.spec.version ?? null;
+    const key = version ? `${name}@${version}` : name;
+
+    if (workflowKeys.has(key)) {
+      const versionStr = version ? ` (version: ${version})` : "";
+      throw new CLIError(
+        `Duplicate workflow name detected: "${name}"${versionStr}`,
+        `Multiple workflow files export a workflow with the same name${versionStr}.\n` +
+          `Each workflow must have a unique name${version ? " and version combination" : ""}.`,
+      );
+    }
+    workflowKeys.set(key, workflow);
+  }
 
   const ow = new OpenWorkflow({ backend: config.backend });
 

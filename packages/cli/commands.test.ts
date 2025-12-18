@@ -143,6 +143,158 @@ describe("workerStart", () => {
     await expect(workerStart({})).rejects.toThrow(CLIError);
     await expect(workerStart({})).rejects.toThrow(/No workflows found/);
   });
+
+  test("throws CLIError when duplicate workflow names found (unversioned)", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create a duplicate of greeting.ts in the examples directory temporarily
+    const greetingContent = fs.readFileSync(
+      path.join(examplesDir, "greeting.ts"),
+      "utf8",
+    );
+    const duplicatePath = path.join(examplesDir, "greeting-duplicate-test.ts");
+    fs.writeFileSync(duplicatePath, greetingContent);
+
+    try {
+      // create config pointing to the real example directory
+      fs.writeFileSync(
+        path.join(tmpDir, "openworkflow.config.js"),
+        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      );
+
+      await expect(workerStart({})).rejects.toThrow(CLIError);
+      await expect(workerStart({})).rejects.toThrow(/Duplicate workflow name/);
+      await expect(workerStart({})).rejects.toThrow(/greeting/);
+    } finally {
+      // clean up the duplicate file
+      if (fs.existsSync(duplicatePath)) {
+        fs.unlinkSync(duplicatePath);
+      }
+    }
+  });
+
+  test("throws CLIError when duplicate workflow names found (versioned)", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create a duplicate of greeting-default.ts in the examples directory
+    // temporarily
+    const greetingDefaultContent = fs.readFileSync(
+      path.join(examplesDir, "greeting-default.ts"),
+      "utf8",
+    );
+    const duplicatePath = path.join(
+      examplesDir,
+      "greeting-default-duplicate-test.ts",
+    );
+    fs.writeFileSync(duplicatePath, greetingDefaultContent);
+
+    try {
+      // create config pointing to the real example directory
+      fs.writeFileSync(
+        path.join(tmpDir, "openworkflow.config.js"),
+        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      );
+
+      await expect(workerStart({})).rejects.toThrow(CLIError);
+      await expect(workerStart({})).rejects.toThrow(/Duplicate workflow name/);
+      await expect(workerStart({})).rejects.toThrow(/greeting-default/);
+      await expect(workerStart({})).rejects.toThrow(/version: 1\.0\.0/);
+    } finally {
+      // clean up the duplicate file
+      if (fs.existsSync(duplicatePath)) {
+        fs.unlinkSync(duplicatePath);
+      }
+    }
+  });
+
+  test("allows same name with different versions", async () => {
+    // create config
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: "./workflows" }`,
+    );
+
+    // create workflows directory
+    const workflowsDir = path.join(tmpDir, "workflows");
+    fs.mkdirSync(workflowsDir);
+
+    // copy math.ts and set both workflows to same name but different versions
+    const mathContent = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        "../../examples/workflow-discovery/openworkflow/math.ts",
+      ),
+      "utf8",
+    );
+    // change both workflow names to "my-workflow" with different versions
+    const content = mathContent
+      .replace(
+        /name: "add-numbers", version: "1\.0\.0"/,
+        'name: "my-workflow", version: "v1"',
+      )
+      .replace(
+        /name: "multiply-numbers", version: "1\.0\.0"/,
+        'name: "my-workflow", version: "v2"',
+      );
+    fs.writeFileSync(path.join(workflowsDir, "workflows.ts"), content);
+
+    // this should not throw - different versions should be allowed we'll just
+    // check that it doesn't throw a duplicate error it will still fail because
+    // backend is undefined, but that's a different error
+    await expect(workerStart({})).rejects.toThrow();
+    // should not have thrown duplicate error
+    await expect(workerStart({})).rejects.not.toThrow(
+      /Duplicate workflow name/,
+    );
+  });
+
+  test("allows same name when one is versioned and one is not", async () => {
+    // create config
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: "./workflows" }`,
+    );
+
+    // create workflows directory
+    const workflowsDir = path.join(tmpDir, "workflows");
+    fs.mkdirSync(workflowsDir);
+
+    // copy math.ts and set one workflow with version and one without
+    const mathContent = fs.readFileSync(
+      path.join(
+        import.meta.dirname,
+        "../../examples/workflow-discovery/openworkflow/math.ts",
+      ),
+      "utf8",
+    );
+    // change both to same name, but one with version and one without
+    const content = mathContent
+      .replace(
+        /name: "add-numbers", version: "1\.0\.0"/,
+        'name: "my-workflow", version: "v1"',
+      )
+      .replace(
+        /name: "multiply-numbers", version: "1\.0\.0"/,
+        'name: "my-workflow"',
+      );
+    fs.writeFileSync(path.join(workflowsDir, "workflows.ts"), content);
+
+    // this should not throw - versioned and unversioned with same name should
+    // be allowed
+    await expect(workerStart({})).rejects.toThrow();
+    // should not have thrown duplicate error
+    await expect(workerStart({})).rejects.not.toThrow(
+      /Duplicate workflow name/,
+    );
+  });
 });
 
 describe("discoverWorkflowFiles", () => {
