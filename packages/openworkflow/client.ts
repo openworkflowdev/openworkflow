@@ -116,7 +116,7 @@ export class OpenWorkflow {
       backend: this.backend,
       workflowRun: workflowRun,
       resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
-      resultTimeoutMs: options?.timeoutMs ?? DEFAULT_RESULT_TIMEOUT_MS,
+      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
     });
   }
 
@@ -233,11 +233,6 @@ export interface WorkflowRunOptions {
    * it will be marked as failed.
    */
   deadlineAt?: Date;
-
-  /**
-   * Timeout for workflow run.
-   */
-  timeoutMs?: number;
 }
 
 /**
@@ -248,6 +243,16 @@ export interface WorkflowHandleOptions {
   workflowRun: WorkflowRun;
   resultPollIntervalMs: number;
   resultTimeoutMs: number;
+}
+
+/**
+ * Options for WorkflowResult.
+ */
+export interface WorkflowResultOptions {
+  /**
+   * Timeout for workflow run.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -271,8 +276,9 @@ export class WorkflowRunHandle<Output> {
    * Waits for the workflow run to complete and returns the result.
    * @returns Workflow output
    */
-  async result(): Promise<Output> {
+  async result(options?: WorkflowResultOptions): Promise<Output> {
     const start = Date.now();
+    const timeout = options?.timeoutMs ?? this.resultTimeoutMs;
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
@@ -301,7 +307,7 @@ export class WorkflowRunHandle<Output> {
         );
       }
 
-      if (Date.now() - start > this.resultTimeoutMs) {
+      if (Date.now() - start > timeout) {
         throw new Error(
           `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
         );
