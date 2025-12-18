@@ -119,7 +119,7 @@ export async function init(): Promise<void> {
     }
   }
 
-  const configDestPath = path.join(process.cwd(), "openworkflow.config.ts");
+  const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
   writeFileSync(configDestPath, configTemplate, "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 

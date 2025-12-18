@@ -435,9 +435,7 @@ describe("createClient", () => {
 
     vi.spyOn(configModule, "loadConfig").mockResolvedValueOnce({
       config: { backend: mockBackend },
-      configFile: "/mock/openworkflow.config.ts",
-      cwd: "/mock",
-      layers: [],
+      configFile: "/mock/openworkflow.config.js",
     });
 
     const client = await createClient();

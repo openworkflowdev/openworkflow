@@ -44,9 +44,6 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "dependencies": {
-    "c12": "^3.3.3"
-  },
   "devDependencies": {
     "arktype": "^2.1.29",
     "valibot": "^1.2.0",
