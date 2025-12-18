@@ -1,5 +1,6 @@
 import {
   discoverWorkflowFiles,
+  doctor,
   getConfigTemplate,
   getPackagesToInstall,
   importWorkflows,
@@ -12,6 +13,7 @@ import {
   POSTGRES_PROD_SQLITE_DEV_CONFIG,
   SQLITE_CONFIG,
 } from "./templates.js";
+import { consola } from "consola";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -561,5 +563,253 @@ describe("getPackagesToInstall", () => {
     expect(packages).toContain("openworkflow");
     expect(packages).toContain("@openworkflow/backend-sqlite");
     expect(packages).toContain("@openworkflow/backend-postgres");
+  });
+});
+
+describe("doctor", () => {
+  let tmpDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-doctor-test-"));
+    originalCwd = process.cwd();
+    process.chdir(tmpDir);
+
+    // spy on consola methods
+    vi.spyOn(consola, "start");
+    vi.spyOn(consola, "success");
+    vi.spyOn(consola, "info");
+    vi.spyOn(consola, "warn");
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  test("throws CLIError if no config file found", async () => {
+    await expect(doctor()).rejects.toThrow(CLIError);
+    await expect(doctor()).rejects.toThrow(/No config file found/);
+  });
+
+  test("throws CLIError if no workflow files found", async () => {
+    // create a minimal config file
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {} }`,
+    );
+
+    await expect(doctor()).rejects.toThrow(CLIError);
+    await expect(doctor()).rejects.toThrow(/No workflows found/);
+  });
+
+  test("throws CLIError if workflow files have no workflow exports", async () => {
+    // create config with custom dirs
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: "./workflows" }`,
+    );
+
+    // create workflows directory with a file that has no workflow exports
+    const workflowsDir = path.join(tmpDir, "workflows");
+    fs.mkdirSync(workflowsDir);
+    fs.writeFileSync(
+      path.join(workflowsDir, "not-a-workflow.ts"),
+      `export const notAWorkflow = "string";`,
+    );
+
+    await expect(doctor()).rejects.toThrow(CLIError);
+    await expect(doctor()).rejects.toThrow(/No workflows found/);
+  });
+
+  test("successfully discovers and lists workflows", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create config pointing to the real example directory
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+    );
+
+    await doctor();
+
+    // verify consola was called with expected messages
+    expect(consola.start).toHaveBeenCalledWith(
+      "Running OpenWorkflow doctor...",
+    );
+    expect(consola.success).toHaveBeenCalledWith(
+      expect.stringContaining("Config file:"),
+    );
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("Workflow directories:"),
+    );
+    expect(consola.success).toHaveBeenCalledWith(
+      expect.stringMatching(/Found \d+ workflow file\(s\):/),
+    );
+    expect(consola.success).toHaveBeenCalledWith(
+      expect.stringMatching(/Discovered \d+ workflow\(s\):/),
+    );
+    expect(consola.success).toHaveBeenCalledWith(
+      "\n✅ Configuration looks good!",
+    );
+  });
+
+  test("lists individual workflow files", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create config pointing to the real example directory
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+    );
+
+    await doctor();
+
+    // verify consola.info was called with file paths
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("greeting.ts"),
+    );
+  });
+
+  test("lists individual workflows with names", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create config pointing to the real example directory
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+    );
+
+    await doctor();
+
+    // verify consola.info was called with workflow names
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("greeting"),
+    );
+  });
+
+  test("displays workflow versions when present", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create config pointing to the real example directory
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+    );
+
+    await doctor();
+
+    // greeting-default.ts has version 1.0.0
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("greeting-default (version: 1.0.0)"),
+    );
+  });
+
+  test("warns about duplicate workflows", async () => {
+    // use the real example directory
+    const examplesDir = path.join(
+      import.meta.dirname,
+      "../../examples/workflow-discovery/openworkflow",
+    );
+
+    // create a duplicate of greeting.ts
+    const greetingContent = fs.readFileSync(
+      path.join(examplesDir, "greeting.ts"),
+      "utf8",
+    );
+    const duplicatePath = path.join(examplesDir, "greeting-duplicate-test.ts");
+    fs.writeFileSync(duplicatePath, greetingContent);
+
+    try {
+      // create config pointing to the real example directory
+      fs.writeFileSync(
+        path.join(tmpDir, "openworkflow.config.js"),
+        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      );
+
+      await doctor();
+
+      // verify warning was issued
+      expect(consola.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Duplicate workflow detected"),
+      );
+      expect(consola.warn).toHaveBeenCalledWith(
+        expect.stringContaining("greeting"),
+      );
+    } finally {
+      // clean up the duplicate file
+      if (fs.existsSync(duplicatePath)) {
+        fs.unlinkSync(duplicatePath);
+      }
+    }
+  });
+
+  test("uses default directory when dirs not specified in config", async () => {
+    // create config without dirs
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {} }`,
+    );
+
+    // create the default openworkflow dir (empty)
+    fs.mkdirSync(path.join(tmpDir, "openworkflow"));
+
+    await expect(doctor()).rejects.toThrow(CLIError);
+    // should mention the default directory
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("./openworkflow"),
+    );
+  });
+
+  test("handles dirs as string instead of array", async () => {
+    // create config with dirs as a string (not array)
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: "./single-dir" }`,
+    );
+
+    // create the directory (empty)
+    fs.mkdirSync(path.join(tmpDir, "single-dir"));
+
+    await expect(doctor()).rejects.toThrow(CLIError);
+    // should handle the string correctly
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("./single-dir"),
+    );
+  });
+
+  test("handles dirs as array in config", async () => {
+    // create config with dirs as array
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.js"),
+      `export default { backend: {}, dirs: ["./dir1", "./dir2"] }`,
+    );
+
+    // create both directories (empty)
+    fs.mkdirSync(path.join(tmpDir, "dir1"));
+    fs.mkdirSync(path.join(tmpDir, "dir2"));
+
+    await expect(doctor()).rejects.toThrow(CLIError);
+    // should handle the array correctly
+    expect(consola.info).toHaveBeenCalledWith(
+      expect.stringContaining("./dir1, ./dir2"),
+    );
   });
 });

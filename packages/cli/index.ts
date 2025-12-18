@@ -1,5 +1,5 @@
 /* v8 ignore file -- @preserve */
-import { init, workerStart } from "./commands.js";
+import { doctor, init, workerStart } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";
 
@@ -12,6 +12,10 @@ program
   .command("init")
   .description("initialize OpenWorkflow")
   .action(withErrorHandling(init));
+program
+  .command("doctor")
+  .description("check configuration and list workflows")
+  .action(withErrorHandling(doctor));
 const workerCmd = program.command("worker").description("manage workers");
 workerCmd
   .command("start")

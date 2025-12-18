@@ -245,6 +245,113 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
 }
 
 /**
+ * Check configuration and list discovered workflows.
+ * Used for debugging discovery issues.
+ */
+export async function doctor(): Promise<void> {
+  consola.start("Running OpenWorkflow doctor...");
+
+  const { config, configFile } = await loadConfig();
+  if (!configFile) {
+    throw new CLIError(
+      "No config file found.",
+      "Run `ow init` to create a config file.",
+    );
+  }
+  consola.success(`Config file: ${configFile}`);
+
+  // discover directories
+  const dirs = getWorkflowDirectories(config);
+  consola.info(`Workflow directories: ${dirs.join(", ")}`);
+
+  // discover files
+  const configFileDir = path.dirname(configFile);
+  const files = discoverWorkflowFiles(dirs, configFileDir);
+  if (files.length === 0) {
+    throw new CLIError(
+      "No workflows found.",
+      `No workflow files found in: ${dirs.join(", ")}\n` +
+        `Make sure your workflow files (*.ts or *.js) exist in these directories.`,
+    );
+  }
+  consola.success(`Found ${String(files.length)} workflow file(s):`);
+  for (const file of files) {
+    consola.info(`  • ${file}`);
+  }
+
+  // import workflows
+  const workflows = await importWorkflows(files);
+  if (workflows.length === 0) {
+    throw new CLIError(
+      "No workflows found.",
+      `No workflows exported in: ${dirs.join(", ")}\n` +
+        `Make sure your workflow files export workflows created with defineWorkflow().`,
+    );
+  }
+
+  printDiscoveredWorkflows(workflows);
+  checkForDuplicates(workflows);
+
+  consola.success("\n✅ Configuration looks good!");
+}
+
+/**
+ * Get workflow directories from config.
+ * @param config - The loaded config
+ * @returns Array of workflow directory paths
+ */
+function getWorkflowDirectories(
+  config: Awaited<ReturnType<typeof loadConfig>>["config"],
+): string[] {
+  if (config.dirs) {
+    return Array.isArray(config.dirs) ? config.dirs : [config.dirs];
+  }
+  return ["./openworkflow"];
+}
+
+/**
+ * Print discovered workflows to the console.
+ * @param workflows - Array of discovered workflows
+ */
+function printDiscoveredWorkflows(
+  workflows: Workflow<unknown, unknown, unknown>[],
+): void {
+  consola.success(`\nDiscovered ${String(workflows.length)} workflow(s):\n`);
+  for (const workflow of workflows) {
+    const name = workflow.spec.name;
+    const version = workflow.spec.version ?? "unversioned";
+    const versionStr =
+      version === "unversioned" ? "" : ` (version: ${version})`;
+    consola.info(`  ✓ ${name}${versionStr}`);
+  }
+}
+
+/**
+ * Check for duplicate workflows and warn if found.
+ * @param workflows - Array of discovered workflows
+ */
+function checkForDuplicates(
+  workflows: Workflow<unknown, unknown, unknown>[],
+): void {
+  const workflowKeys = new Map<string, Workflow<unknown, unknown, unknown>>();
+  for (const workflow of workflows) {
+    const name = workflow.spec.name;
+    const version = workflow.spec.version ?? null;
+    const key = version ? `${name}@${version}` : name;
+
+    if (workflowKeys.has(key)) {
+      const versionStr = version ? ` (version: ${version})` : "";
+      consola.warn(`\n⚠️  Duplicate workflow detected: "${name}"${versionStr}`);
+      consola.warn(
+        "   Multiple files export a workflow with the same name and version.",
+      );
+    } else {
+      workflowKeys.set(key, workflow);
+    }
+  }
+}
+
+/**
  * Discover workflow files from directories.
  * Recursively scans directories for .ts and .js files.
  * @param dirs - Directory or directories to scan for workflow files
