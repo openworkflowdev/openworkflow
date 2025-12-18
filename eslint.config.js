@@ -20,7 +20,13 @@ export default defineConfig(
   jsdoc.configs["flat/recommended-typescript-error"],
   prettier,
   {
-    ignores: ["**/dist", "coverage", "eslint.config.js", "prettier.config.js"],
+    ignores: [
+      "**/dist",
+      "coverage",
+      "eslint.config.js",
+      "prettier.config.js",
+      "examples/workflow-discovery/openworkflow.config.js",
+    ],
   },
   {
     languageOptions: {
