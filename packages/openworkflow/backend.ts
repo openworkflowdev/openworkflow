@@ -54,6 +54,9 @@ export interface Backend {
   failStepAttempt(
     params: Readonly<FailStepAttemptParams>,
   ): Promise<StepAttempt>;
+
+  // Lifecycle
+  stop(): Promise<void>;
 }
 
 export interface CreateWorkflowRunParams {

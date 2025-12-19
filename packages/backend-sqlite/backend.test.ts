@@ -20,9 +20,8 @@ describe("BackendSqlite (in-memory)", () => {
         }),
       );
     },
-    teardown: (backend) => {
-      (backend as BackendSqlite).stop();
-      return Promise.resolve();
+    teardown: async (backend) => {
+      await backend.stop();
     },
   });
 });
@@ -56,9 +55,8 @@ describe("BackendSqlite (file-based)", () => {
         }),
       );
     },
-    teardown: (backend) => {
-      (backend as BackendSqlite).stop();
-      return Promise.resolve();
+    teardown: async (backend) => {
+      await backend.stop();
     },
   });
 });

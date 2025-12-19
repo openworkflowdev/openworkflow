@@ -16,6 +16,6 @@ testBackend({
     });
   },
   teardown: async (backend) => {
-    await (backend as BackendPostgres).stop();
+    await backend.stop();
   },
 });

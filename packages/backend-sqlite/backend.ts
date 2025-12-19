@@ -81,7 +81,8 @@ export class BackendSqlite implements Backend {
     return new BackendSqlite(db, namespaceId);
   }
 
-  stop(): void {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async stop(): Promise<void> {
     this.db.close();
   }
 
