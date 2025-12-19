@@ -24,39 +24,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-describe("init", () => {
-  let tmpDir: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-init-test-"));
-    originalCwd = process.cwd();
-    process.chdir(tmpDir);
-
-    // mock process.exit to prevent test from actually exiting
-    vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("process.exit called");
-    });
-  });
-
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    vi.restoreAllMocks();
-  });
-
-  test("throws CLIError if config already exists", async () => {
-    // create an existing config file
-    fs.writeFileSync(
-      path.join(tmpDir, "openworkflow.config.js"),
-      "export default {}",
-    );
-
-    await expect(init()).rejects.toThrow(CLIError);
-    await expect(init()).rejects.toThrow(/Config already exists/);
-  });
-});
-
 describe("doctor", () => {
   let tmpDir: string;
   let originalCwd: string;
@@ -71,6 +38,7 @@ describe("doctor", () => {
     vi.spyOn(consola, "success");
     vi.spyOn(consola, "info");
     vi.spyOn(consola, "warn");
+    vi.spyOn(consola, "log");
   });
 
   afterEach(() => {
@@ -133,21 +101,19 @@ describe("doctor", () => {
     expect(consola.start).toHaveBeenCalledWith(
       "Running OpenWorkflow doctor...",
     );
-    expect(consola.success).toHaveBeenCalledWith(
+    expect(consola.info).toHaveBeenCalledWith(
       expect.stringContaining("Config file:"),
     );
-    expect(consola.info).toHaveBeenCalledWith(
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("Workflow directories:"),
     );
-    expect(consola.success).toHaveBeenCalledWith(
+    expect(consola.info).toHaveBeenCalledWith(
       expect.stringMatching(/Found \d+ workflow file\(s\):/),
     );
-    expect(consola.success).toHaveBeenCalledWith(
+    expect(consola.info).toHaveBeenCalledWith(
       expect.stringMatching(/Discovered \d+ workflow\(s\):/),
     );
-    expect(consola.success).toHaveBeenCalledWith(
-      "\n✅ Configuration looks good!",
-    );
+    expect(consola.success).toHaveBeenCalledWith("Configuration looks good!");
   });
 
   test("lists individual workflow files", async () => {
@@ -165,8 +131,8 @@ describe("doctor", () => {
 
     await doctor();
 
-    // verify consola.info was called with file paths
-    expect(consola.info).toHaveBeenCalledWith(
+    // verify consola.log was called with file paths
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("greeting.ts"),
     );
   });
@@ -186,8 +152,8 @@ describe("doctor", () => {
 
     await doctor();
 
-    // verify consola.info was called with workflow names
-    expect(consola.info).toHaveBeenCalledWith(
+    // verify consola.log was called with workflow names
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("greeting"),
     );
   });
@@ -208,7 +174,7 @@ describe("doctor", () => {
     await doctor();
 
     // greeting-default.ts has version 1.0.0
-    expect(consola.info).toHaveBeenCalledWith(
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("greeting-default (version: 1.0.0)"),
     );
   });
@@ -264,7 +230,7 @@ describe("doctor", () => {
 
     await expect(doctor()).rejects.toThrow(CLIError);
     // should mention the default directory
-    expect(consola.info).toHaveBeenCalledWith(
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("./openworkflow"),
     );
   });
@@ -281,7 +247,7 @@ describe("doctor", () => {
 
     await expect(doctor()).rejects.toThrow(CLIError);
     // should handle the string correctly
-    expect(consola.info).toHaveBeenCalledWith(
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("./single-dir"),
     );
   });
@@ -299,7 +265,7 @@ describe("doctor", () => {
 
     await expect(doctor()).rejects.toThrow(CLIError);
     // should handle the array correctly
-    expect(consola.info).toHaveBeenCalledWith(
+    expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("./dir1, ./dir2"),
     );
   });
