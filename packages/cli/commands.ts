@@ -543,6 +543,12 @@ async function createExampleWorkflow(): Promise<void> {
  * Update .gitignore with user confirmation.
  */
 async function updateGitignoreForSqlite(): Promise<void> {
+  // ensure .openworkflow directory
+  const dbDir = path.join(process.cwd(), ".openworkflow");
+  if (!existsSync(dbDir)) {
+    mkdirSync(dbDir, { recursive: true });
+  }
+
   const gitignorePath = path.join(process.cwd(), ".gitignore");
   const gitignoreExists = existsSync(gitignorePath);
 
