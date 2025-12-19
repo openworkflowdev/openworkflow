@@ -69,4 +69,4 @@ workflowRunsCmd
   .description("describe a workflow run")
   .action(withErrorHandling(describeRun));
 
-program.parse();
+await program.parseAsync(process.argv);
