@@ -16,7 +16,7 @@ export class CLIError extends Error {
 
 /**
  * Wraps a CLI action / handler function with error handling that catches
- * CLIError, prints it to the console, then exits. Other errors are rethrown.
+ * errors, prints them to the console, then exits.
  * @param fn - Action handler
  * @returns Wrapped handler
  */
@@ -33,7 +33,13 @@ export function withErrorHandling<T extends unknown[]>(
         // eslint-disable-next-line unicorn/no-process-exit
         process.exit(1);
       }
-      throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      consola.error(`Unexpected error: ${message}`);
+      if (error instanceof Error && error.stack) {
+        consola.debug(error.stack);
+      }
+      // eslint-disable-next-line unicorn/no-process-exit
+      process.exit(1);
     }
   };
 }
