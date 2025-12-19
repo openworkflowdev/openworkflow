@@ -796,7 +796,7 @@ describe("workerStart", () => {
   });
 
   test("handles dirs as array in config", async () => {
-    // creat config with dirs as array
+    // create config with dirs as array
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: ${MOCK_BACKEND}, dirs: ["./workflows", "./more-workflows"] }`,

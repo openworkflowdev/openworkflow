@@ -20,7 +20,7 @@ interface SummarizeDocOutput {
 
 /**
  * An example workflow that extracts, cleans, summarizes, and saves a document
- * from a URL. It explicitally specifies <Input, Output> types for better type
+ * from a URL. It explicitly specifies <Input, Output> types for better type
  * safety, but that's optional.
  */
 const summarizeDoc = ow.defineWorkflow<SummarizeDocInput, SummarizeDocOutput>(

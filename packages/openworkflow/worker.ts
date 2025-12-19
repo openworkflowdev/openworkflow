@@ -122,7 +122,7 @@ export class Worker {
   }
 
   /*
-   * Cclaim and process a workflow run for the given worker ID. Do not await the
+   * Claim and process a workflow run for the given worker ID. Do not await the
    * processing here to avoid blocking the caller.
    * Returns the claimed workflow run, or null if none was available.
    */
