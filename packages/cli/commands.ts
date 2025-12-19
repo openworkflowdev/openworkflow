@@ -14,6 +14,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -38,10 +39,19 @@ export async function init(): Promise<void> {
   const { configFile } = await loadConfigWithEnv();
 
   if (configFile) {
-    throw new CLIError(
-      "Config already exists.",
-      `Delete ${configFile} first to reinitialize.`,
-    );
+    const shouldOverride = await p.confirm({
+      message: `Config file already exists at ${configFile}. Override it?`,
+      initialValue: false,
+    });
+
+    if (!shouldOverride || p.isCancel(shouldOverride)) {
+      p.cancel("Setup cancelled.");
+      // eslint-disable-next-line unicorn/no-process-exit
+      process.exit(0);
+    }
+
+    // delete the existing config file
+    unlinkSync(configFile);
   }
 
   const backendChoice = await p.select<BackendChoice>({
