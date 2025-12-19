@@ -122,6 +122,18 @@ export async function init(): Promise<void> {
     `Created example (hello-world) workflow at ${helloWorldDestPath}`,
   );
 
+  // add .openworkflow to .gitignore for SQLite-based configs
+  if (backendChoice === "sqlite" || backendChoice === "both") {
+    spinner.start("Updating .gitignore...");
+    const gitignorePath = path.join(process.cwd(), ".gitignore");
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+    spinner.stop(
+      result.added
+        ? "Added .openworkflow to .gitignore"
+        : ".openworkflow already in .gitignore",
+    );
+  }
+
   // add worker script to package.json
   spinner.start("Adding worker script to package.json...");
 
@@ -496,6 +508,47 @@ export function getPackagesToInstall(backendChoice: BackendChoice): string[] {
   }
 
   return packages;
+}
+
+/**
+ * Ensure a specific entry exists in a .gitignore file. Creates the file if it
+ * doesn't exist, appends the entry if not present.
+ * @param gitignorePath - Path to the .gitignore file
+ * @param entry - The entry to add (e.g. ".openworkflow")
+ * @returns Object indicating whether the entry was added or already existed
+ */
+export function ensureGitignoreEntry(
+  gitignorePath: string,
+  entry: string,
+): { added: boolean; created: boolean } {
+  const fileExists = existsSync(gitignorePath);
+  let content = "";
+
+  if (fileExists) {
+    content = readFileSync(gitignorePath, "utf8");
+  }
+
+  // check if entry already exists
+  const lines = content.split("\n");
+  const hasEntry = lines.some((line) => line.trim() === entry);
+
+  if (hasEntry) {
+    return { added: false, created: false };
+  }
+
+  // add entry to .gitignore
+  let newContent: string;
+  if (content === "") {
+    newContent = `${entry}\n`;
+  } else if (content.endsWith("\n")) {
+    newContent = `${content}${entry}\n`;
+  } else {
+    newContent = `${content}\n${entry}\n`;
+  }
+
+  writeFileSync(gitignorePath, newContent, "utf8");
+
+  return { added: true, created: !fileExists };
 }
 
 /**

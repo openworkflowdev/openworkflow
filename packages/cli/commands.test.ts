@@ -3,6 +3,7 @@ import {
   describeRun,
   discoverWorkflowFiles,
   doctor,
+  ensureGitignoreEntry,
   getConfigTemplate,
   getPackagesToInstall,
   importWorkflows,
@@ -1393,6 +1394,95 @@ describe("describeRun", () => {
     expect(consola.log).toHaveBeenCalledWith(
       expect.stringContaining("page-two"),
     );
+  });
+});
+
+describe("ensureGitignoreEntry", () => {
+  let tmpDir: string;
+  let gitignorePath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-gitignore-test-"));
+    gitignorePath = path.join(tmpDir, ".gitignore");
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("creates .gitignore file with entry when file does not exist", () => {
+    expect(fs.existsSync(gitignorePath)).toBe(false);
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: true, created: true });
+    expect(fs.existsSync(gitignorePath)).toBe(true);
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe(".openworkflow\n");
+  });
+
+  test("appends entry to existing .gitignore with trailing newline", () => {
+    fs.writeFileSync(gitignorePath, "node_modules\n.env\n", "utf8");
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe(
+      "node_modules\n.env\n.openworkflow\n",
+    );
+  });
+
+  test("appends entry to existing .gitignore without trailing newline", () => {
+    fs.writeFileSync(gitignorePath, "node_modules\n.env", "utf8");
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe(
+      "node_modules\n.env\n.openworkflow\n",
+    );
+  });
+
+  test("does not add duplicate entry when already present", () => {
+    fs.writeFileSync(
+      gitignorePath,
+      "node_modules\n.openworkflow\n.env\n",
+      "utf8",
+    );
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: false, created: false });
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe(
+      "node_modules\n.openworkflow\n.env\n",
+    );
+  });
+
+  test("detects entry with surrounding whitespace", () => {
+    fs.writeFileSync(
+      gitignorePath,
+      "node_modules\n  .openworkflow  \n",
+      "utf8",
+    );
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: false, created: false });
+  });
+
+  test("handles empty file", () => {
+    fs.writeFileSync(gitignorePath, "", "utf8");
+
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe(".openworkflow\n");
+  });
+
+  test("works with different entry names", () => {
+    const result = ensureGitignoreEntry(gitignorePath, "dist");
+
+    expect(result).toEqual({ added: true, created: true });
+    expect(fs.readFileSync(gitignorePath, "utf8")).toBe("dist\n");
   });
 });
 
