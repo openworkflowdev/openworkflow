@@ -1,11 +1,11 @@
 export const SQLITE_CONFIG = `import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { defineConfig } from "openworkflow";
 
-// Use in-memory SQLite for development and testing
-const backend = BackendSqlite.connect(":memory:");
-
 export default defineConfig({
-  backend,
+  // Use SQLite as the backend
+  backend: BackendSqlite.connect(":memory:"),
+
+  // The directories where your workflows are defined
   dirs: "./openworkflow",
 });
 `;
@@ -13,16 +13,11 @@ export default defineConfig({
 export const POSTGRES_CONFIG = `import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { defineConfig } from "openworkflow";
 
-const databaseUrl = process.env["DATABASE_URL"];
-
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL environment variable is required");
-}
-
-const backend = await BackendPostgres.connect(databaseUrl);
-
 export default defineConfig({
-  backend,
+  // Use Postgres as the backend
+  backend: await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"]),
+
+  // The directories where your workflows are defined
   dirs: "./openworkflow",
 });
 `;
@@ -31,18 +26,14 @@ export const POSTGRES_PROD_SQLITE_DEV_CONFIG = `import { BackendPostgres } from 
 import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { defineConfig } from "openworkflow";
 
-const isProduction = process.env["NODE_ENV"] === "production";
-const databaseUrl = process.env["DATABASE_URL"];
-
-// Use Postgres in production (configured with DATABASE_URL), otherwise use
-// in-memory SQLite
-const backend =
-  isProduction && databaseUrl
-    ? await BackendPostgres.connect(databaseUrl)
-    : BackendSqlite.connect(":memory:");
-
 export default defineConfig({
-  backend,
+  // Use Postgres as the backend in production, otherwise use SQLite
+  backend:
+    process.env["NODE_ENV"] === "production"
+      ? await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"])
+      : BackendSqlite.connect(":memory:"),
+
+  // The directories where your workflows are defined
   dirs: "./openworkflow",
 });
 `;

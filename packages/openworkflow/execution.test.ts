@@ -1,5 +1,5 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
-import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
 import { randomUUID } from "node:crypto";
 import { describe, test, expect } from "vitest";
@@ -541,7 +541,7 @@ describe("executeWorkflow", () => {
 });
 
 async function createBackend(): Promise<BackendPostgres> {
-  return await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+  return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(),
   });
 }

@@ -34,9 +34,9 @@ import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { OpenWorkflow } from "openworkflow";
 
-// use Postgres if DATABASE_URL is set, otherwise use SQLite
-const backend = process.env["DATABASE_URL"]
-  ? await BackendPostgres.connect(process.env["DATABASE_URL"])
+// use Postgres if OPENWORKFLOW_POSTGRES_URL is set, otherwise use SQLite
+const backend = process.env["OPENWORKFLOW_POSTGRES_URL"]
+  ? await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"])
   : BackendSqlite.connect(); // optionally provide SQLite file path
 
 const ow = new OpenWorkflow({ backend });

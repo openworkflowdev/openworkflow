@@ -1,5 +1,5 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
-import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
 import { OpenWorkflow } from "./client.js";
 import { Worker } from "./worker.js";
 import { randomInt, randomUUID } from "node:crypto";
@@ -104,7 +104,7 @@ async function runChaosTest(params: {
 }
 
 async function createBackend(): Promise<BackendPostgres> {
-  return await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+  return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(),
   });
 }

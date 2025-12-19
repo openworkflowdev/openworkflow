@@ -1,6 +1,6 @@
 import postgres from "postgres";
 
-export const DEFAULT_DATABASE_URL =
+export const DEFAULT_POSTGRES_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
 
 // The default schema to use for OpenWorkflow data. This type is more for

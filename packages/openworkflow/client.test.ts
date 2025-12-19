@@ -1,5 +1,5 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
-import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
 import { createClient, declareWorkflow, OpenWorkflow } from "./client.js";
 import * as configModule from "./config.js";
 import { type as arkType } from "arktype";
@@ -429,7 +429,7 @@ describe("OpenWorkflow", () => {
 
 describe("createClient", () => {
   test("creates client from project config file", async () => {
-    const mockBackend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+    const mockBackend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
       namespaceId: randomUUID(),
     });
 
@@ -445,7 +445,7 @@ describe("createClient", () => {
 });
 
 async function createBackend(): Promise<BackendPostgres> {
-  return await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+  return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(), // unique namespace per test
   });
 }

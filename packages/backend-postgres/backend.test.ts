@@ -1,5 +1,5 @@
 import { BackendPostgres } from "./backend.js";
-import { DEFAULT_DATABASE_URL } from "./postgres.js";
+import { DEFAULT_POSTGRES_URL } from "./postgres.js";
 import { testBackend } from "@openworkflow/backend-test";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
@@ -11,7 +11,7 @@ test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () 
 
 testBackend({
   setup: async () => {
-    return await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+    return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
       namespaceId: randomUUID(),
     });
   },

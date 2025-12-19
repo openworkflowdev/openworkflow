@@ -1,5 +1,5 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
-import { DEFAULT_DATABASE_URL } from "../backend-postgres/postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
 import { defineConfig, loadConfig } from "./config.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -8,7 +8,7 @@ import path from "node:path";
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
 describe("defineConfig", async () => {
-  const backend = await BackendPostgres.connect(DEFAULT_DATABASE_URL, {
+  const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(),
   });
 

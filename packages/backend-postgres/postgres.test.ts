@@ -1,5 +1,5 @@
 import {
-  DEFAULT_DATABASE_URL,
+  DEFAULT_POSTGRES_URL,
   DEFAULT_SCHEMA,
   Postgres,
   newPostgresMaxOne,
@@ -15,7 +15,7 @@ describe("postgres", () => {
   beforeAll(() => {
     // maxOne since we use SQL-based transactions instead of the postgres
     // driver's built-in transactions
-    pg = newPostgresMaxOne(DEFAULT_DATABASE_URL);
+    pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
   });
 
   afterAll(async () => {
