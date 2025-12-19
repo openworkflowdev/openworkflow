@@ -40,24 +40,13 @@ export default defineConfig({
 
 export const HELLO_WORLD_WORKFLOW = `import { defineWorkflow } from "openworkflow";
 
-export interface HelloWorldInput {
-  name?: string;
-}
-
-export interface HelloWorldOutput {
-  greeting: string;
-}
-
-export const helloWorld = defineWorkflow<HelloWorldInput, HelloWorldOutput>(
+export const helloWorld = defineWorkflow(
   { name: "hello-world" },
-  async ({ input, step }) => {
+  async ({ step }) => {
     const greeting = await step.run({ name: "greet" }, () => {
-      const name = input.name ?? "World";
-      return \`Hello, \${name}!\`;
+      return "Hello, World!";
     });
-    
-    console.log(greeting);
-    
+
     return { greeting };
   },
 );
