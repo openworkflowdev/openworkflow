@@ -98,70 +98,17 @@ export async function init(): Promise<void> {
     spinner.stop(`Installed ${packages.join(", ")}`);
   }
 
-  // write config file (last, so canceling earlier doesn't leave a config file
-  // which would prevent re-running init)
-  spinner.start("Writing config...");
+  await createExampleWorkflow();
 
-  const configTemplate = getConfigTemplate(backendChoice);
-
-  const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
-  writeFileSync(configDestPath, configTemplate, "utf8");
-  spinner.stop(`Config written to ${configDestPath}`);
-
-  // create openworkflow dir and add hello_world.ts
-  spinner.start("Creating example (hello-world) workflow...");
-
-  const workflowsDir = path.join(process.cwd(), "openworkflow");
-  if (!existsSync(workflowsDir)) {
-    mkdirSync(workflowsDir, { recursive: true });
-  }
-
-  const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
-  writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
-  spinner.stop(
-    `Created example (hello-world) workflow at ${helloWorldDestPath}`,
-  );
-
-  // add .openworkflow to .gitignore for SQLite-based configs
   if (backendChoice === "sqlite" || backendChoice === "both") {
-    spinner.start("Updating .gitignore...");
-    const gitignorePath = path.join(process.cwd(), ".gitignore");
-    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
-    spinner.stop(
-      result.added
-        ? "Added .openworkflow to .gitignore"
-        : ".openworkflow already in .gitignore",
-    );
+    await updateGitignoreForSqlite();
   }
 
-  // add worker script to package.json
-  spinner.start("Adding worker script to package.json...");
+  await addWorkerScriptToPackageJson();
 
-  const packageJsonPath = path.join(process.cwd(), "package.json");
-  if (existsSync(packageJsonPath)) {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-        scripts?: Record<string, string>;
-      };
-
-      packageJson.scripts ??= {};
-      packageJson.scripts["worker"] = "ow worker start";
-
-      writeFileSync(
-        packageJsonPath,
-        JSON.stringify(packageJson, null, 2) + "\n",
-        "utf8",
-      );
-
-      spinner.stop('Added "worker" script to package.json');
-    } catch {
-      spinner.stop("Failed to update package.json");
-      consola.warn("Could not add worker script to package.json");
-    }
-  } else {
-    spinner.stop("No package.json found");
-    consola.warn("No package.json found - skipping script injection");
-  }
+  // write config file last, so canceling earlier doesn't leave a config file
+  // which would prevent re-running init
+  await createConfigFile(backendChoice);
 
   // wrap up
   p.note(
@@ -508,6 +455,145 @@ export function getPackagesToInstall(backendChoice: BackendChoice): string[] {
   }
 
   return packages;
+}
+
+/**
+ * Create config file with user confirmation.
+ * @param backendChoice - The selected backend choice
+ * @returns True if config was created, false otherwise
+ */
+async function createConfigFile(
+  backendChoice: BackendChoice,
+): Promise<boolean> {
+  const shouldCreateConfig = await p.confirm({
+    message: "Create openworkflow.config.js?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldCreateConfig)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldCreateConfig) {
+    const spinner = p.spinner();
+    spinner.start("Writing config...");
+    const configTemplate = getConfigTemplate(backendChoice);
+    const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
+    writeFileSync(configDestPath, configTemplate, "utf8");
+    spinner.stop(`Config written to ${configDestPath}`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Create example workflow with user confirmation.
+ */
+async function createExampleWorkflow(): Promise<void> {
+  const shouldCreateExample = await p.confirm({
+    message: "Create example hello-world workflow in ./openworkflow/?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldCreateExample)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldCreateExample) {
+    const spinner = p.spinner();
+    spinner.start("Creating example (hello-world) workflow...");
+    const workflowsDir = path.join(process.cwd(), "openworkflow");
+    if (!existsSync(workflowsDir)) {
+      mkdirSync(workflowsDir, { recursive: true });
+    }
+    const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
+    writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+    spinner.stop(
+      `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+    );
+  }
+}
+
+/**
+ * Update .gitignore with user confirmation.
+ */
+async function updateGitignoreForSqlite(): Promise<void> {
+  const gitignorePath = path.join(process.cwd(), ".gitignore");
+  const gitignoreExists = existsSync(gitignorePath);
+
+  const shouldUpdateGitignore = await p.confirm({
+    message: gitignoreExists
+      ? "Add .openworkflow to .gitignore?"
+      : "Create .gitignore with .openworkflow entry?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldUpdateGitignore)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldUpdateGitignore) {
+    const spinner = p.spinner();
+    spinner.start("Updating .gitignore...");
+    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+    spinner.stop(
+      result.added
+        ? "Added .openworkflow to .gitignore"
+        : ".openworkflow already in .gitignore",
+    );
+  }
+}
+
+/**
+ * Add worker script to package.json with user confirmation.
+ */
+async function addWorkerScriptToPackageJson(): Promise<void> {
+  const packageJsonPath = path.join(process.cwd(), "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return;
+  }
+
+  const shouldAddScript = await p.confirm({
+    message: 'Add "worker" script to package.json?',
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldAddScript)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldAddScript) {
+    const spinner = p.spinner();
+    spinner.start("Adding worker script to package.json...");
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+        scripts?: Record<string, string>;
+      };
+
+      packageJson.scripts ??= {};
+      packageJson.scripts["worker"] = "ow worker start";
+
+      writeFileSync(
+        packageJsonPath,
+        JSON.stringify(packageJson, null, 2) + "\n",
+        "utf8",
+      );
+
+      spinner.stop('Added "worker" script to package.json');
+    } catch {
+      spinner.stop("Failed to update package.json");
+      consola.warn("Could not add worker script to package.json");
+    }
+  }
 }
 
 /**
