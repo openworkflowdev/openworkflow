@@ -86,7 +86,7 @@ describe("doctor", () => {
     // create a minimal config file
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {} }`,
+      `export default { backend: ${MOCK_BACKEND} }`,
     );
 
     await expect(doctor()).rejects.toThrow(CLIError);
@@ -97,7 +97,7 @@ describe("doctor", () => {
     // create config with custom dirs
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./workflows" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./workflows" }`,
     );
 
     // create workflows directory with a file that has no workflow exports
@@ -122,7 +122,7 @@ describe("doctor", () => {
     // create config pointing to the real example directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await doctor();
@@ -158,7 +158,7 @@ describe("doctor", () => {
     // create config pointing to the real example directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await doctor();
@@ -179,7 +179,7 @@ describe("doctor", () => {
     // create config pointing to the real example directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await doctor();
@@ -200,7 +200,7 @@ describe("doctor", () => {
     // create config pointing to the real example directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await doctor();
@@ -230,7 +230,7 @@ describe("doctor", () => {
       // create config pointing to the real example directory
       fs.writeFileSync(
         path.join(tmpDir, "openworkflow.config.js"),
-        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+        `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
       );
 
       await doctor();
@@ -254,7 +254,7 @@ describe("doctor", () => {
     // create config without dirs
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {} }`,
+      `export default { backend: ${MOCK_BACKEND} }`,
     );
 
     // create the default openworkflow dir (empty)
@@ -271,7 +271,7 @@ describe("doctor", () => {
     // create config with dirs as a string (not array)
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./single-dir" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./single-dir" }`,
     );
 
     // create the directory (empty)
@@ -288,7 +288,7 @@ describe("doctor", () => {
     // create config with dirs as array
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["./dir1", "./dir2"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["./dir1", "./dir2"] }`,
     );
 
     // create both directories (empty)
@@ -608,7 +608,7 @@ describe("createRun", () => {
     // create config with workflow directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await expect(
@@ -623,7 +623,7 @@ describe("createRun", () => {
     // create config with workflow directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await expect(
@@ -638,7 +638,7 @@ describe("createRun", () => {
     // create config with workflow directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await expect(
@@ -653,7 +653,7 @@ describe("createRun", () => {
     // create config with workflow directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     // create invalid JSON file
@@ -674,7 +674,7 @@ describe("createRun", () => {
     fs.mkdirSync(emptyDir);
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["./empty"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["./empty"] }`,
     );
 
     await expect(createRun(undefined, {})).rejects.toThrow(CLIError);
@@ -702,7 +702,7 @@ describe("createRun", () => {
       // create config pointing to the real example directory
       fs.writeFileSync(
         path.join(tmpDir, "openworkflow.config.js"),
-        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+        `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
       );
 
       await expect(createRun("greeting", {})).rejects.toThrow(CLIError);
@@ -722,7 +722,7 @@ describe("createRun", () => {
     // create config with workflow directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await expect(createRun("nonexistent-workflow", {})).rejects.toThrow(
@@ -759,7 +759,7 @@ describe("workerStart", () => {
     // create a minimal config file
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {} }`,
+      `export default { backend: ${MOCK_BACKEND} }`,
     );
 
     await expect(workerStart({})).rejects.toThrow(CLIError);
@@ -770,7 +770,7 @@ describe("workerStart", () => {
     // create config with custom dirs
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./workflows" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./workflows" }`,
     );
 
     // create workflows directory with a file that has no workflow exports
@@ -789,7 +789,7 @@ describe("workerStart", () => {
     // create config with dirs as a string (not array)
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./single-dir" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./single-dir" }`,
     );
 
     // test should throw because no workflow files in the dir
@@ -801,7 +801,7 @@ describe("workerStart", () => {
     // create config without dirs - should default to "./openworkflow"
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {} }`,
+      `export default { backend: ${MOCK_BACKEND} }`,
     );
 
     // create the default openworkflow dir (empty)
@@ -816,7 +816,7 @@ describe("workerStart", () => {
     // creat config with dirs as array
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["./workflows", "./more-workflows"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["./workflows", "./more-workflows"] }`,
     );
 
     // create both directories (empty)
@@ -838,7 +838,7 @@ describe("workerStart", () => {
     // create config pointing to the real example directory
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
     );
 
     await expect(workerStart({ concurrency: Number.NaN })).rejects.toThrow(
@@ -868,7 +868,7 @@ describe("workerStart", () => {
       // create config pointing to the real example directory
       fs.writeFileSync(
         path.join(tmpDir, "openworkflow.config.js"),
-        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+        `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
       );
 
       await expect(workerStart({})).rejects.toThrow(CLIError);
@@ -905,7 +905,7 @@ describe("workerStart", () => {
       // create config pointing to the real example directory
       fs.writeFileSync(
         path.join(tmpDir, "openworkflow.config.js"),
-        `export default { backend: {}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
+        `export default { backend: ${MOCK_BACKEND}, dirs: ["${examplesDir.replaceAll("\\", "\\\\")}"] }`,
       );
 
       await expect(workerStart({})).rejects.toThrow(CLIError);
@@ -924,7 +924,7 @@ describe("workerStart", () => {
     // create config
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./workflows" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./workflows" }`,
     );
 
     // create workflows directory
@@ -965,7 +965,7 @@ describe("workerStart", () => {
     // create config
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: {}, dirs: "./workflows" }`,
+      `export default { backend: ${MOCK_BACKEND}, dirs: "./workflows" }`,
     );
 
     // create workflows directory
@@ -1032,6 +1032,7 @@ describe("listRuns", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         listWorkflowRuns: async () => ({ data: [], pagination: { next: null, prev: null } })
       }}`,
     );
@@ -1062,6 +1063,7 @@ describe("listRuns", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         listWorkflowRuns: async () => ({
           data: ${JSON.stringify(mockRuns).replaceAll('"', "'").replaceAll("'", '"')},
           pagination: { next: null, prev: null }
@@ -1086,6 +1088,7 @@ describe("listRuns", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         listWorkflowRuns: async () => ({
           data: [{ id: "run-1", workflowName: "test", version: null, status: "pending", createdAt: new Date() }],
           pagination: { next: "cursor-next", prev: null }
@@ -1105,6 +1108,7 @@ describe("listRuns", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         listWorkflowRuns: async (params) => {
           // The test verifies the function is called - if limit isn't passed correctly
           // the function would fail. We return empty data to complete the test.
@@ -1125,7 +1129,7 @@ describe("listRuns", () => {
   test("throws CLIError for invalid limit", async () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
-      `export default { backend: { listWorkflowRuns: async () => ({ data: [], pagination: { next: null, prev: null } }) } }`,
+      `export default { backend: { stop: async () => {}, listWorkflowRuns: async () => ({ data: [], pagination: { next: null, prev: null } }) } }`,
     );
 
     await expect(listRuns({ limit: Number.NaN })).rejects.toThrow(CLIError);
@@ -1166,6 +1170,7 @@ describe("describeRun", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => null
       }}`,
     );
@@ -1194,6 +1199,7 @@ describe("describeRun", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => (${JSON.stringify(mockRun).replaceAll(/"(\d{4}-\d{2}-\d{2}T[\d:.]+Z)"/g, 'new Date("$1")')}),
         listStepAttempts: async () => ({ data: [], pagination: { next: null, prev: null } })
       }}`,
@@ -1230,6 +1236,7 @@ describe("describeRun", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => (${JSON.stringify(mockRun).replaceAll(/"(\d{4}-\d{2}-\d{2}T[\d:.]+Z)"/g, 'new Date("$1")')}),
         listStepAttempts: async () => ({ data: [], pagination: { next: null, prev: null } })
       }}`,
@@ -1268,6 +1275,7 @@ describe("describeRun", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => (${JSON.stringify(mockRun).replaceAll(/"(\d{4}-\d{2}-\d{2}T[\d:.]+Z)"/g, 'new Date("$1")')}),
         listStepAttempts: async () => ({ data: [], pagination: { next: null, prev: null } })
       }}`,
@@ -1299,6 +1307,7 @@ describe("describeRun", () => {
     fs.writeFileSync(
       path.join(tmpDir, "openworkflow.config.js"),
       `export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => (${JSON.stringify(mockRun).replaceAll(/"(\d{4}-\d{2}-\d{2}T[\d:.]+Z)"/g, 'new Date("$1")')}),
         listStepAttempts: async () => ({
           data: [
@@ -1340,6 +1349,7 @@ describe("describeRun", () => {
       path.join(tmpDir, "openworkflow.config.js"),
       `let callCount = 0;
       export default { backend: {
+        stop: async () => {},
         getWorkflowRun: async () => (${JSON.stringify(mockRun).replaceAll(/"(\d{4}-\d{2}-\d{2}T[\d:.]+Z)"/g, 'new Date("$1")')}),
         listStepAttempts: async () => {
           callCount += 1;
@@ -1369,3 +1379,10 @@ describe("describeRun", () => {
     );
   });
 });
+
+// ugly mock backend that implements the minimal Backend interface
+// used in config files to avoid "backend.stop is not a function" errors
+// will come back for a longer term fix later
+const MOCK_BACKEND = `{
+  stop: async () => {},
+}`;
