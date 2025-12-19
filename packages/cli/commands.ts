@@ -135,27 +135,32 @@ export async function doctor(): Promise<void> {
   const backend = config.backend;
 
   try {
-    consola.success(`Config file: ${configFile}`);
+    consola.log("");
+    consola.info(`Config file: ${configFile}`);
+
+    const backendName = backend.constructor.name.replace("Backend", "");
+    consola.log(`  • Backend: ${backendName}`);
 
     // discover directories
     const dirs = getWorkflowDirectories(config);
-    consola.info(`Workflow directories: ${dirs.join(", ")}`);
-
+    consola.log(`  • Workflow directories: ${dirs.join(", ")}`);
     // discover files
     const configFileDir = path.dirname(configFile);
     const { files, workflows } = await discoverWorkflowsInDirs(
       dirs,
       configFileDir,
     );
-    consola.success(`Found ${String(files.length)} workflow file(s):`);
+    consola.log("");
+    consola.info(`Found ${String(files.length)} workflow file(s):`);
     for (const file of files) {
-      consola.info(`  • ${file}`);
+      consola.log(`  • ${file}`);
     }
 
     printDiscoveredWorkflows(workflows);
     warnAboutDuplicateWorkflows(workflows);
 
-    consola.success("\n✅ Configuration looks good!");
+    consola.log("");
+    consola.success("Configuration looks good!");
   } finally {
     await backend.stop();
   }
@@ -259,10 +264,10 @@ function warnAboutDuplicateWorkflows(
       ? ` (version: ${duplicate.version})`
       : "";
     consola.warn(
-      `\n⚠️  Duplicate workflow detected: "${duplicate.name}"${versionStr}`,
+      `Duplicate workflow detected: "${duplicate.name}"${versionStr}`,
     );
     consola.warn(
-      "   Multiple files export a workflow with the same name and version.",
+      "Multiple files export a workflow with the same name and version.",
     );
   }
 }
@@ -274,13 +279,14 @@ function warnAboutDuplicateWorkflows(
 function printDiscoveredWorkflows(
   workflows: Workflow<unknown, unknown, unknown>[],
 ): void {
-  consola.success(`\nDiscovered ${String(workflows.length)} workflow(s):\n`);
+  consola.log("");
+  consola.info(`Discovered ${String(workflows.length)} workflow(s):`);
   for (const workflow of workflows) {
     const name = workflow.spec.name;
     const version = workflow.spec.version ?? "unversioned";
     const versionStr =
       version === "unversioned" ? "" : ` (version: ${version})`;
-    consola.info(`  ✓ ${name}${versionStr}`);
+    consola.log(`  • ${name}${versionStr}`);
   }
 }
 
