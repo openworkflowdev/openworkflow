@@ -8,7 +8,6 @@ import {
   getConfigTemplate,
   getPackagesToInstall,
   importWorkflows,
-  init,
   listRuns,
   workerStart,
 } from "./commands.js";
