@@ -3,14 +3,12 @@ import { DatabaseSync } from "node:sqlite";
 
 export type Database = DatabaseSync;
 
-export const DEFAULT_DATABASE_PATH = ":memory:";
-
 /**
  * newDatabase creates a new SQLite database connection.
- * @param path - Database file path (or ":memory:")
+ * @param path - Database file path (or ":memory:") for testing
  * @returns SQLite database connection
  */
-export function newDatabase(path: string = DEFAULT_DATABASE_PATH): Database {
+export function newDatabase(path: string): Database {
   const db = new DatabaseSync(path);
   // Only enable WAL mode for file-based databases
   if (path !== ":memory:") {

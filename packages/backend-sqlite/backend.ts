@@ -9,7 +9,6 @@ import {
   fromJSON,
   toISO,
   fromISO,
-  DEFAULT_DATABASE_PATH,
 } from "./sqlite.js";
 import {
   DEFAULT_NAMESPACE_ID,
@@ -58,14 +57,11 @@ export class BackendSqlite implements Backend {
    * Create and initialize a new BackendSqlite instance. This will
    * automatically run migrations on startup unless `runMigrations` is set to
    * false.
-   * @param path - Database path (defaults to ":memory:")
+   * @param path - Database path
    * @param options - Backend options
    * @returns A connected backend instance
    */
-  static connect(
-    path: string = DEFAULT_DATABASE_PATH,
-    options?: BackendSqliteOptions,
-  ): BackendSqlite {
+  static connect(path: string, options?: BackendSqliteOptions): BackendSqlite {
     const { namespaceId, runMigrations } = {
       namespaceId: DEFAULT_NAMESPACE_ID,
       runMigrations: true,
