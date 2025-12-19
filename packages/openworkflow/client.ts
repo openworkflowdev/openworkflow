@@ -174,24 +174,6 @@ export async function createClient(): Promise<OpenWorkflow> {
 }
 
 /**
- * Declare a workflow without providing its implementation (which is provided
- * separately via `implementWorkflow`). Returns a lightweight WorkflowSpec
- * that can be used to schedule workflow runs.
- * @param spec - Workflow spec
- * @returns Workflow spec
- * @example
- * ```ts
- * export const emailWorkflow = declareWorkflow({
- *   name: 'send-email',
- *   schema: z.object({ to: z.string().email() }),
- * });
- * ```
- */
-// kept for backwards compatibility, to be deprecated
-// eslint-disable-next-line unicorn/prefer-export-from
-export const declareWorkflow = defineWorkflowSpec;
-
-/**
  * A fully defined workflow with its implementation. This class is returned by
  * `client.defineWorkflow` and provides the `.run()` method for scheduling
  * workflow runs.

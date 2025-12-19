@@ -1,7 +1,7 @@
 import greetingDefaultWorkflow from "./openworkflow/greeting-default.js";
 import { greetingWorkflow } from "./openworkflow/greeting.js";
 import { addWorkflow, multiplyWorkflow } from "./openworkflow/math.js";
-import { createClient } from "openworkflow/internal";
+import { createClient } from "openworkflow";
 
 const ow = await createClient();
 

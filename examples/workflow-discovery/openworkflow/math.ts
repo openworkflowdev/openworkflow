@@ -1,4 +1,4 @@
-import { defineWorkflow } from "openworkflow/internal";
+import { defineWorkflow } from "openworkflow";
 
 interface AddNumbersInput {
   a: number;

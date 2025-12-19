@@ -1,5 +1,5 @@
 import { GreetingInput, GreetingOutput } from "./greeting.js";
-import { defineWorkflow } from "openworkflow/internal";
+import { defineWorkflow } from "openworkflow";
 
 // A workflow with a default export
 export default defineWorkflow<GreetingInput, GreetingOutput>(

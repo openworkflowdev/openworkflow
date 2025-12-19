@@ -1,4 +1,4 @@
-import { defineWorkflow } from "openworkflow/internal";
+import { defineWorkflow } from "openworkflow";
 
 export interface GreetingInput {
   name: string;

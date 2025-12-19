@@ -29,6 +29,14 @@ export function defineWorkflowSpec<Input, Output = unknown, RawInput = Input>(
 }
 
 /**
+ * Define a workflow spec.
+ * @param spec - The workflow spec
+ * @returns The workflow spec
+ * @deprecated use `defineWorkflowSpec` instead
+ */
+export const declareWorkflow = defineWorkflowSpec;
+
+/**
  * A workflow spec and implementation.
  */
 export interface Workflow<Input, Output, RawInput> {
