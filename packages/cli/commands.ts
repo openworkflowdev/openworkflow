@@ -173,27 +173,33 @@ export async function doctor(): Promise<void> {
       "Run `ow init` to create a config file.",
     );
   }
-  consola.success(`Config file: ${configFile}`);
+  const backend = config.backend;
 
-  // discover directories
-  const dirs = getWorkflowDirectories(config);
-  consola.info(`Workflow directories: ${dirs.join(", ")}`);
+  try {
+    consola.success(`Config file: ${configFile}`);
 
-  // discover files
-  const configFileDir = path.dirname(configFile);
-  const { files, workflows } = await discoverWorkflowsInDirs(
-    dirs,
-    configFileDir,
-  );
-  consola.success(`Found ${String(files.length)} workflow file(s):`);
-  for (const file of files) {
-    consola.info(`  • ${file}`);
+    // discover directories
+    const dirs = getWorkflowDirectories(config);
+    consola.info(`Workflow directories: ${dirs.join(", ")}`);
+
+    // discover files
+    const configFileDir = path.dirname(configFile);
+    const { files, workflows } = await discoverWorkflowsInDirs(
+      dirs,
+      configFileDir,
+    );
+    consola.success(`Found ${String(files.length)} workflow file(s):`);
+    for (const file of files) {
+      consola.info(`  • ${file}`);
+    }
+
+    printDiscoveredWorkflows(workflows);
+    warnAboutDuplicateWorkflows(workflows);
+
+    consola.success("\n✅ Configuration looks good!");
+  } finally {
+    await backend.stop();
   }
-
-  printDiscoveredWorkflows(workflows);
-  warnAboutDuplicateWorkflows(workflows);
-
-  consola.success("\n✅ Configuration looks good!");
 }
 
 /**
@@ -502,28 +508,33 @@ export async function createRun(
       "Run `ow init` to create a config file.",
     );
   }
+  const backend = config.backend;
 
-  // Parse input from --input or --file
-  const input = parseInput(options);
+  try {
+    // Parse input from --input or --file
+    const input = parseInput(options);
 
-  // Discover workflows
-  const workflows = await discoverAllWorkflows(config, configFile);
+    // Discover workflows
+    const workflows = await discoverAllWorkflows(config, configFile);
 
-  // Select workflow (interactively if not provided)
-  const workflow = await selectWorkflow(workflows, workflowName);
+    // Select workflow (interactively if not provided)
+    const workflow = await selectWorkflow(workflows, workflowName);
 
-  consola.start(`Creating workflow run for "${workflow.spec.name}"...`);
+    consola.start(`Creating workflow run for "${workflow.spec.name}"...`);
 
-  // Create the workflow run
-  const ow = new OpenWorkflow({ backend: config.backend });
-  const run = await ow.runWorkflow(workflow.spec, input);
+    // Create the workflow run
+    const ow = new OpenWorkflow({ backend });
+    const run = await ow.runWorkflow(workflow.spec, input);
 
-  consola.success(`Workflow run created!`);
-  consola.info(`Run ID: ${run.workflowRun.id}`);
-  consola.info(`Status: ${run.workflowRun.status}`);
-  consola.box(
-    `Describe this run with:\n$ ow runs describe ${run.workflowRun.id}`,
-  );
+    consola.success(`Workflow run created!`);
+    consola.info(`Run ID: ${run.workflowRun.id}`);
+    consola.info(`Status: ${run.workflowRun.status}`);
+    consola.box(
+      `Describe this run with:\n$ ow runs describe ${run.workflowRun.id}`,
+    );
+  } finally {
+    await backend.stop();
+  }
 }
 
 /**
@@ -540,38 +551,10 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
       "Run `ow init` to create a config file.",
     );
   }
+  const backend = config.backend;
+  const ow = new OpenWorkflow({ backend });
 
-  // discover and import workflows
-  const dirs = getWorkflowDirectories(config);
-  consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
-
-  const configFileDir = path.dirname(configFile);
-  const { files, workflows } = await discoverWorkflowsInDirs(
-    dirs,
-    configFileDir,
-  );
-  consola.info(`Found ${String(files.length)} workflow file(s)`);
-
-  consola.success(
-    `Loaded ${String(workflows.length)} workflow(s): ${workflows.map((w) => w.spec.name).join(", ")}`,
-  );
-
-  assertNoDuplicateWorkflows(workflows);
-
-  const workerOptions = mergeDefinedOptions(config.worker, cliOptions);
-  if (workerOptions.concurrency !== undefined) {
-    assertPositiveInteger("concurrency", workerOptions.concurrency);
-  }
-
-  const ow = new OpenWorkflow({ backend: config.backend });
-
-  // register discovered workflows
-  for (const workflow of workflows) {
-    ow.implementWorkflow(workflow.spec, workflow.fn);
-  }
-
-  const worker = ow.newWorker(workerOptions);
-
+  let worker: ReturnType<typeof ow.newWorker> | null = null;
   let shuttingDown = false;
 
   /** Stop the worker on process shutdown. */
@@ -580,14 +563,53 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
     shuttingDown = true;
 
     consola.warn("Shutting down worker...");
-    await worker.stop();
+    try {
+      await worker?.stop();
+    } finally {
+      await backend.stop();
+    }
     consola.success("Worker stopped");
   }
-  process.on("SIGINT", () => void gracefulShutdown());
-  process.on("SIGTERM", () => void gracefulShutdown());
 
-  await worker.start();
-  consola.success("Worker started.");
+  try {
+    // discover and import workflows
+    const dirs = getWorkflowDirectories(config);
+    consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
+
+    const configFileDir = path.dirname(configFile);
+    const { files, workflows } = await discoverWorkflowsInDirs(
+      dirs,
+      configFileDir,
+    );
+    consola.info(`Found ${String(files.length)} workflow file(s)`);
+
+    consola.success(
+      `Loaded ${String(workflows.length)} workflow(s): ${workflows.map((w) => w.spec.name).join(", ")}`,
+    );
+
+    assertNoDuplicateWorkflows(workflows);
+
+    const workerOptions = mergeDefinedOptions(config.worker, cliOptions);
+    if (workerOptions.concurrency !== undefined) {
+      assertPositiveInteger("concurrency", workerOptions.concurrency);
+    }
+
+    // register discovered workflows
+    for (const workflow of workflows) {
+      ow.implementWorkflow(workflow.spec, workflow.fn);
+    }
+
+    worker = ow.newWorker(workerOptions);
+
+    process.on("SIGINT", () => void gracefulShutdown());
+    process.on("SIGTERM", () => void gracefulShutdown());
+
+    await worker.start();
+    consola.success("Worker started.");
+  } catch (error) {
+    await gracefulShutdown();
+    throw error;
+  }
 }
 
 export interface ListRunsOptions {
@@ -613,56 +635,64 @@ export async function listRuns(options: ListRunsOptions): Promise<void> {
     );
   }
 
+  const backend = config.backend;
+
   if (options.limit !== undefined) {
     assertPositiveInteger("limit", options.limit);
   }
 
-  const params: { limit: number; after?: string; before?: string } = {
-    limit: options.limit ?? 20,
-  };
-  if (options.after) {
-    params.after = options.after;
-  }
-  if (options.before) {
-    params.before = options.before;
-  }
-
-  const result = await config.backend.listWorkflowRuns(params);
-
-  if (result.data.length === 0) {
-    consola.info("No workflow runs found.");
-    return;
-  }
-
-  consola.info(`Showing ${String(result.data.length)} workflow run(s):\n`);
-
-  // Print header
-  const header = formatRunRow("ID", "Workflow", "Status", "Created At");
-  consola.log(header);
-  consola.log("-".repeat(header.length));
-
-  // Print rows
-  for (const run of result.data) {
-    const row = formatRunRow(
-      run.id,
-      formatWorkflowName(run),
-      formatStatus(run.status),
-      formatDate(run.createdAt),
-    );
-    consola.log(row);
-  }
-
-  // Pagination info
-  if (result.pagination.next || result.pagination.prev) {
-    consola.log("");
-    if (result.pagination.next) {
-      consola.info(`Next page: ow runs list --after ${result.pagination.next}`);
+  try {
+    const params: { limit: number; after?: string; before?: string } = {
+      limit: options.limit ?? 20,
+    };
+    if (options.after) {
+      params.after = options.after;
     }
-    if (result.pagination.prev) {
-      consola.info(
-        `Previous page: ow runs list --before ${result.pagination.prev}`,
+    if (options.before) {
+      params.before = options.before;
+    }
+
+    const result = await backend.listWorkflowRuns(params);
+
+    if (result.data.length === 0) {
+      consola.info("No workflow runs found.");
+      return;
+    }
+
+    consola.info(`Showing ${String(result.data.length)} workflow run(s):\n`);
+
+    // Print header
+    const header = formatRunRow("ID", "Workflow", "Status", "Created At");
+    consola.log(header);
+    consola.log("-".repeat(header.length));
+
+    // Print rows
+    for (const run of result.data) {
+      const row = formatRunRow(
+        run.id,
+        formatWorkflowName(run),
+        formatStatus(run.status),
+        formatDate(run.createdAt),
       );
+      consola.log(row);
     }
+
+    // Pagination info
+    if (result.pagination.next || result.pagination.prev) {
+      consola.log("");
+      if (result.pagination.next) {
+        consola.info(
+          `Next page: ow runs list --after ${result.pagination.next}`,
+        );
+      }
+      if (result.pagination.prev) {
+        consola.info(
+          `Previous page: ow runs list --before ${result.pagination.prev}`,
+        );
+      }
+    }
+  } finally {
+    await backend.stop();
   }
 }
 
@@ -679,43 +709,48 @@ export async function describeRun(runId: string): Promise<void> {
       "Run `ow init` to create a config file.",
     );
   }
+  const backend = config.backend;
 
-  // Fetch run details
-  const run = await config.backend.getWorkflowRun({ workflowRunId: runId });
+  try {
+    // Fetch run details
+    const run = await backend.getWorkflowRun({ workflowRunId: runId });
 
-  if (!run) {
-    throw new CLIError(
-      `Workflow run not found: ${runId}`,
-      "Make sure the run ID is correct.",
-    );
-  }
+    if (!run) {
+      throw new CLIError(
+        `Workflow run not found: ${runId}`,
+        "Make sure the run ID is correct.",
+      );
+    }
 
-  // Fetch step attempts
-  const steps = await listAllStepAttempts(config.backend, runId);
+    // Fetch step attempts
+    const steps = await listAllStepAttempts(backend, runId);
 
-  // Display run details
-  printRunDetails(run);
+    // Display run details
+    printRunDetails(run);
 
-  // Display input/output
-  if (run.input !== null) {
-    consola.log("\n📥 Input:");
-    consola.log(formatJson(run.input));
-  }
+    // Display input/output
+    if (run.input !== null) {
+      consola.log("\n📥 Input:");
+      consola.log(formatJson(run.input));
+    }
 
-  if (run.output !== null) {
-    consola.log("\n📤 Output:");
-    consola.log(formatJson(run.output));
-  }
+    if (run.output !== null) {
+      consola.log("\n📤 Output:");
+      consola.log(formatJson(run.output));
+    }
 
-  if (run.error) {
-    consola.log("\n❌ Error:");
-    consola.log(formatJson(run.error));
-  }
+    if (run.error) {
+      consola.log("\n❌ Error:");
+      consola.log(formatJson(run.error));
+    }
 
-  // Display steps timeline
-  if (steps.length > 0) {
-    consola.log("\n📋 Steps Timeline:");
-    printStepsTimeline(steps);
+    // Display steps timeline
+    if (steps.length > 0) {
+      consola.log("\n📋 Steps Timeline:");
+      printStepsTimeline(steps);
+    }
+  } finally {
+    await backend.stop();
   }
 }
 
