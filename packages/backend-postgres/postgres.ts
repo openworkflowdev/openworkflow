@@ -1,4 +1,4 @@
-import postgres, { toCamel } from "postgres";
+import postgres from "postgres";
 
 export const DEFAULT_DATABASE_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -20,7 +20,7 @@ export type PostgresOptions = Parameters<typeof postgres>[1];
  * @returns A Postgres client
  */
 export function newPostgres(url: string, options?: PostgresOptions) {
-  return postgres(url, { ...options, transform: toCamel });
+  return postgres(url, { ...options, transform: postgres.toCamel });
 }
 
 /**
