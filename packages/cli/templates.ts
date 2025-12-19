@@ -38,7 +38,7 @@ export default defineConfig({
 });
 `;
 
-export const HELLO_WORLD_WORKFLOW = `import { defineWorkflow } from "openworkflow/internal";
+export const HELLO_WORLD_WORKFLOW = `import { defineWorkflow } from "openworkflow";
 
 export interface HelloWorldInput {
   name?: string;
