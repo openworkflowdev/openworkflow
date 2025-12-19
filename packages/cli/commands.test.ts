@@ -343,6 +343,22 @@ describe("discoverWorkflowFiles", () => {
     expect(files).toContain(jsFile);
   });
 
+  test("discovers .mjs files", () => {
+    const mjsFile = path.join(tmpDir, "workflow.mjs");
+    fs.writeFileSync(mjsFile, "export const x = 1;");
+
+    const files = discoverWorkflowFiles([tmpDir], tmpDir);
+    expect(files).toContain(mjsFile);
+  });
+
+  test("discovers .cjs files", () => {
+    const cjsFile = path.join(tmpDir, "workflow.cjs");
+    fs.writeFileSync(cjsFile, "module.exports = { x: 1 };");
+
+    const files = discoverWorkflowFiles([tmpDir], tmpDir);
+    expect(files).toContain(cjsFile);
+  });
+
   test("excludes .d.ts files", () => {
     const dtsFile = path.join(tmpDir, "workflow.d.ts");
     fs.writeFileSync(dtsFile, "export declare const x: number;");

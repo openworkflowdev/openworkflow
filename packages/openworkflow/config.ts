@@ -8,8 +8,8 @@ export interface OpenWorkflowConfig {
   backend: Backend;
   worker?: WorkerConfig;
   /**
-   * Directory or directories to scan for workflow files.
-   * All `.ts` and `.js` files in these directories (recursively) will be loaded.
+   * Directory or directories to scan for workflow files. All `.ts`, `.js`,
+   * `.mjs`, and `.cjs` files in these directories (recursively) will be loaded.
    * Workflow files should export workflows created with `defineWorkflow()`.
    * @example "./openworkflow"
    * @example ["./openworkflow", "./src/openworkflow", "./workflows"]
@@ -34,7 +34,7 @@ interface LoadedConfig {
 }
 
 const CONFIG_NAME = "openworkflow.config";
-const CONFIG_EXTENSIONS = ["js", "mjs", "cjs"];
+const CONFIG_EXTENSIONS = ["js", "mjs", "cjs"] as const;
 
 /**
  * Load the OpenWorkflow config at openworkflow.config.{js,mjs,cjs}.

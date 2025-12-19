@@ -325,9 +325,11 @@ function printDiscoveredWorkflows(
   }
 }
 
+const WORKFLOW_EXTENSIONS = ["ts", "js", "mjs", "cjs"] as const;
+
 /**
- * Discover workflow files from directories.
- * Recursively scans directories for .ts and .js files.
+ * Discover workflow files from directories. Recursively scans directories for
+ * workflow files with supported extensions (.ts, .js, .mjs, .cjs).
  * @param dirs - Directory or directories to scan for workflow files
  * @param baseDir - Base directory to resolve relative paths from
  * @returns Array of absolute file paths
@@ -361,7 +363,9 @@ export function discoverWorkflowFiles(
         scanDirectory(fullPath);
       } else if (
         entry.isFile() &&
-        (entry.name.endsWith(".ts") || entry.name.endsWith(".js")) &&
+        WORKFLOW_EXTENSIONS.some((ext: string) =>
+          entry.name.endsWith(`.${ext}`),
+        ) &&
         !entry.name.endsWith(".d.ts")
       ) {
         discoveredFiles.push(fullPath);
@@ -433,10 +437,13 @@ async function discoverWorkflowsInDirs(
   const files = discoverWorkflowFiles(dirs, baseDir);
 
   if (files.length === 0) {
+    const extensionsStr = WORKFLOW_EXTENSIONS.map(
+      (ext: string) => `*.${ext}`,
+    ).join(", ");
     throw new CLIError(
       "No workflow files found.",
       `No workflow files found in: ${dirs.join(", ")}\n` +
-        "Make sure your workflow files (*.ts or *.js) exist in these directories.",
+        `Make sure your workflow files (${extensionsStr}) exist in these directories.`,
     );
   }
 
