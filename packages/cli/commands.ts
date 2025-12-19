@@ -45,7 +45,7 @@ export async function init(): Promise<void> {
     });
 
     if (!shouldOverride || p.isCancel(shouldOverride)) {
-      p.cancel("Setup cancelled.");
+      p.cancel("Setup canceled.");
       // eslint-disable-next-line unicorn/no-process-exit
       process.exit(0);
     }
@@ -77,7 +77,7 @@ export async function init(): Promise<void> {
   });
 
   if (p.isCancel(backendChoice)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -96,7 +96,7 @@ export async function init(): Promise<void> {
   });
 
   if (p.isCancel(shouldInstall)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -491,7 +491,7 @@ async function createConfigFile(
   });
 
   if (p.isCancel(shouldCreateConfig)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -519,7 +519,7 @@ async function createExampleWorkflow(): Promise<void> {
   });
 
   if (p.isCancel(shouldCreateExample)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -560,7 +560,7 @@ async function updateGitignoreForSqlite(): Promise<void> {
   });
 
   if (p.isCancel(shouldUpdateGitignore)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -592,7 +592,7 @@ async function addWorkerScriptToPackageJson(): Promise<void> {
   });
 
   if (p.isCancel(shouldAddScript)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -678,7 +678,7 @@ async function updateEnvForPostgres(): Promise<void> {
   });
 
   if (p.isCancel(shouldUpdateEnv)) {
-    p.cancel("Setup cancelled.");
+    p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
@@ -1397,7 +1397,7 @@ async function selectWorkflow(
   });
 
   if (p.isCancel(selected)) {
-    p.cancel("Run cancelled.");
+    p.cancel("Run canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }

@@ -55,6 +55,7 @@ export default defineConfig(
         "error",
         {
           cspell: {
+            flagWords: ["cancellation", "cancelled"], // prefer en-US spelling for consistency
             ignoreWords: [
               "arktype",
               "heartbeating",
