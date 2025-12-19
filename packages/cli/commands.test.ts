@@ -3,6 +3,7 @@ import {
   describeRun,
   discoverWorkflowFiles,
   doctor,
+  ensureEnvEntry,
   ensureGitignoreEntry,
   getConfigTemplate,
   getPackagesToInstall,
@@ -1483,6 +1484,144 @@ describe("ensureGitignoreEntry", () => {
 
     expect(result).toEqual({ added: true, created: true });
     expect(fs.readFileSync(gitignorePath, "utf8")).toBe("dist\n");
+  });
+});
+
+describe("ensureEnvEntry", () => {
+  let tmpDir: string;
+  let envPath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-env-test-"));
+    envPath = path.join(tmpDir, ".env");
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("creates .env file with entry when file does not exist", () => {
+    expect(fs.existsSync(envPath)).toBe(false);
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: true, created: true });
+    expect(fs.existsSync(envPath)).toBe(true);
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "OPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/db\n",
+    );
+  });
+
+  test("appends entry to existing .env with trailing newline", () => {
+    fs.writeFileSync(envPath, "NODE_ENV=development\nPORT=3000\n", "utf8");
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "NODE_ENV=development\nPORT=3000\nOPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/db\n",
+    );
+  });
+
+  test("appends entry to existing .env without trailing newline", () => {
+    fs.writeFileSync(envPath, "NODE_ENV=development\nPORT=3000", "utf8");
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "NODE_ENV=development\nPORT=3000\nOPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/db\n",
+    );
+  });
+
+  test("does not add duplicate entry when already present", () => {
+    fs.writeFileSync(
+      envPath,
+      "NODE_ENV=development\nOPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/existing\nPORT=3000\n",
+      "utf8",
+    );
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: false, created: false });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "NODE_ENV=development\nOPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/existing\nPORT=3000\n",
+    );
+  });
+
+  test("detects entry with spaces around equals sign", () => {
+    fs.writeFileSync(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL = postgresql://localhost:5432/db\n",
+      "utf8",
+    );
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/new",
+    );
+
+    expect(result).toEqual({ added: false, created: false });
+  });
+
+  test("handles empty file", () => {
+    fs.writeFileSync(envPath, "", "utf8");
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "OPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/db\n",
+    );
+  });
+
+  test("works with different environment variables", () => {
+    const result = ensureEnvEntry(envPath, "DATABASE_URL", "postgres://db");
+
+    expect(result).toEqual({ added: true, created: true });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "DATABASE_URL=postgres://db\n",
+    );
+  });
+
+  test("does not match similar variable names", () => {
+    fs.writeFileSync(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL_BACKUP=postgresql://backup\n",
+      "utf8",
+    );
+
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://localhost:5432/db",
+    );
+
+    expect(result).toEqual({ added: true, created: false });
+    expect(fs.readFileSync(envPath, "utf8")).toBe(
+      "OPENWORKFLOW_POSTGRES_URL_BACKUP=postgresql://backup\nOPENWORKFLOW_POSTGRES_URL=postgresql://localhost:5432/db\n",
+    );
   });
 });
 

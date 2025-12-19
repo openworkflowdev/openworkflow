@@ -114,6 +114,10 @@ export async function init(): Promise<void> {
     await updateGitignoreForSqlite();
   }
 
+  if (backendChoice === "postgres" || backendChoice === "both") {
+    await updateEnvForPostgres();
+  }
+
   await addWorkerScriptToPackageJson();
 
   // write config file last, so canceling earlier doesn't leave a config file
@@ -649,6 +653,89 @@ export function ensureGitignoreEntry(
   }
 
   writeFileSync(gitignorePath, newContent, "utf8");
+
+  return { added: true, created: !fileExists };
+}
+
+/**
+ * Add DATABASE_URL to .env file with user confirmation.
+ */
+async function updateEnvForPostgres(): Promise<void> {
+  const envPath = path.join(process.cwd(), ".env");
+  const envExists = existsSync(envPath);
+
+  const shouldUpdateEnv = await p.confirm({
+    message: envExists
+      ? "Add OPENWORKFLOW_POSTGRES_URL to .env?"
+      : "Create .env with OPENWORKFLOW_POSTGRES_URL entry?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(shouldUpdateEnv)) {
+    p.cancel("Setup cancelled.");
+    // eslint-disable-next-line unicorn/no-process-exit
+    process.exit(0);
+  }
+
+  if (shouldUpdateEnv) {
+    const spinner = p.spinner();
+    spinner.start("Updating .env...");
+    const result = ensureEnvEntry(
+      envPath,
+      "OPENWORKFLOW_POSTGRES_URL",
+      "postgresql://user:password@localhost:5432/openworkflow",
+    );
+    spinner.stop(
+      result.added
+        ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
+        : "OPENWORKFLOW_POSTGRES_URL already in .env",
+    );
+  }
+}
+
+/**
+ * Ensure a specific environment variable exists in a .env file. Creates the file if it
+ * doesn't exist, appends the variable if not present.
+ * @param envPath - Path to the .env file
+ * @param key - The environment variable key (e.g. "OPENWORKFLOW_POSTGRES_URL")
+ * @param value - The default value for the environment variable
+ * @returns Object indicating whether the entry was added or already existed
+ */
+export function ensureEnvEntry(
+  envPath: string,
+  key: string,
+  value: string,
+): { added: boolean; created: boolean } {
+  const fileExists = existsSync(envPath);
+  let content = "";
+
+  if (fileExists) {
+    content = readFileSync(envPath, "utf8");
+  }
+
+  // check if key already exists (looking for KEY= at start of line)
+  const lines = content.split("\n");
+  const hasKey = lines.some((line) => {
+    const trimmed = line.trim();
+    return trimmed.startsWith(`${key}=`) || trimmed.startsWith(`${key} =`);
+  });
+
+  if (hasKey) {
+    return { added: false, created: false };
+  }
+
+  // add entry to .env
+  let newContent: string;
+  const envEntry = `${key}=${value}`;
+  if (content === "") {
+    newContent = `${envEntry}\n`;
+  } else if (content.endsWith("\n")) {
+    newContent = `${content}${envEntry}\n`;
+  } else {
+    newContent = `${content}\n${envEntry}\n`;
+  }
+
+  writeFileSync(envPath, newContent, "utf8");
 
   return { added: true, created: !fileExists };
 }
