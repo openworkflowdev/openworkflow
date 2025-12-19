@@ -1,7 +1,8 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
-import { createClient, declareWorkflow, OpenWorkflow } from "./client.js";
+import { createClient, OpenWorkflow } from "./client.js";
 import * as configModule from "./config.js";
+import { defineWorkflowSpec } from "./workflow.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
@@ -287,12 +288,12 @@ describe("OpenWorkflow", () => {
     expect(workflowRun?.finishedAt).not.toBeNull();
   });
 
-  describe("declareWorkflow / implementWorkflow API", () => {
-    test("declareWorkflow returns a spec that can be used to schedule runs", async () => {
+  describe("defineWorkflowSpec / implementWorkflow API", () => {
+    test("defineWorkflowSpec returns a spec that can be used to schedule runs", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = declareWorkflow({ name: "declare-test" });
+      const spec = defineWorkflowSpec({ name: "declare-test" });
 
       const handle = await client.runWorkflow(spec, { message: "hello" });
       expect(handle.workflowRun.workflowName).toBe("declare-test");
@@ -304,7 +305,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = declareWorkflow({ name: "implement-test" });
+      const spec = defineWorkflowSpec({ name: "implement-test" });
       client.implementWorkflow(spec, ({ input }) => {
         return { received: input };
       });
@@ -322,7 +323,7 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = declareWorkflow({ name: "duplicate-test" });
+      const spec = defineWorkflowSpec({ name: "duplicate-test" });
       client.implementWorkflow(spec, noopFn);
 
       expect(() => {
@@ -334,11 +335,11 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const specV1 = declareWorkflow({
+      const specV1 = defineWorkflowSpec({
         name: "multi-version",
         version: "v1",
       });
-      const specV2 = declareWorkflow({
+      const specV2 = defineWorkflowSpec({
         name: "multi-version",
         version: "v2",
       });
@@ -352,11 +353,11 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec1 = declareWorkflow({
+      const spec1 = defineWorkflowSpec({
         name: "version-duplicate",
         version: "v1",
       });
-      const spec2 = declareWorkflow({
+      const spec2 = defineWorkflowSpec({
         name: "version-duplicate",
         version: "v1",
       });
@@ -370,14 +371,14 @@ describe("OpenWorkflow", () => {
       );
     });
 
-    test("declareWorkflow with schema validates input on runWorkflow", async () => {
+    test("defineWorkflowSpec with schema validates input on runWorkflow", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
       const schema = z.object({
         email: z.email(),
       });
-      const spec = declareWorkflow({
+      const spec = defineWorkflowSpec({
         name: "declare-schema-test",
         schema,
       });
@@ -392,11 +393,11 @@ describe("OpenWorkflow", () => {
       ).rejects.toThrow();
     });
 
-    test("declareWorkflow with version sets version on workflow run", async () => {
+    test("defineWorkflowSpec with version sets version on workflow run", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const spec = declareWorkflow({
+      const spec = defineWorkflowSpec({
         name: "declare-version-test",
         version: "v1.2.3",
       });
@@ -407,7 +408,7 @@ describe("OpenWorkflow", () => {
       await handle.cancel();
     });
 
-    test("defineWorkflow wraps declareWorkflow and implementWorkflow", async () => {
+    test("defineWorkflow defines a workflow", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 

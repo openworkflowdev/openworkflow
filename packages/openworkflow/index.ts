@@ -15,7 +15,5 @@ export type { Workflow } from "./workflow.js";
 export {
   defineWorkflowSpec,
   defineWorkflow,
-
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
-  declareWorkflow,
+  declareWorkflow, // eslint-disable-line @typescript-eslint/no-deprecated
 } from "./workflow.js";

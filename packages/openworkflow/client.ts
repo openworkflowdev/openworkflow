@@ -12,7 +12,6 @@ import { WorkflowRegistry } from "./registry.js";
 import { Worker } from "./worker.js";
 import {
   defineWorkflow,
-  defineWorkflowSpec,
   type Workflow,
   type WorkflowSpec,
 } from "./workflow.js";
@@ -122,11 +121,6 @@ export class OpenWorkflow {
 
   /**
    * Define and register a new workflow.
-   *
-   * This is a convenience method that combines `declareWorkflow` and
-   * `implementWorkflow` into a single call. For better code splitting and to
-   * separate declaration from implementation, consider using those methods
-   * separately.
    * @param spec - Workflow spec
    * @param fn - Workflow implementation
    * @returns Runnable workflow
