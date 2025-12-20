@@ -37,6 +37,10 @@
       "default": "./dist/internal.js"
     }
   },
+  "bin": {
+    "openworkflow": "./dist/bin/openworkflow.js",
+    "ow": "./dist/bin/openworkflow.js"
+  },
   "files": [
     "dist"
   ],
