@@ -10,13 +10,19 @@ import {
 } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";
+import { readFileSync, existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // openworkflow | ow
 const program = new Command();
 program
   .name("openworkflow")
   .alias("ow")
-  .description("OpenWorkflow CLI - learn more at https://openworkflow.dev");
+  .description("OpenWorkflow CLI - learn more at https://openworkflow.dev")
+  .version(getVersion());
 program
   .command("init")
   .description("initialize OpenWorkflow")
@@ -70,3 +76,29 @@ workflowRunsCmd
   .action(withErrorHandling(describeRun));
 
 await program.parseAsync(process.argv);
+
+/**
+ * Get the CLI version, checking both package.json and ../package.json.
+ * @returns the version string, or "-" if it cannot be determined
+ */
+function getVersion(): string {
+  const paths = [
+    path.join(__dirname, "package.json"), // dev: package.json
+    path.join(__dirname, "..", "package.json"), // prod: dist/../package.json
+  ];
+
+  for (const pkgPath of paths) {
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+          version?: string;
+        };
+        if (pkg.version) return pkg.version;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return "-";
+}
