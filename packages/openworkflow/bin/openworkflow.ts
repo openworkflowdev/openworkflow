@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+/**
+ * This script is a zero-dependency entrypoint for the OpenWorkflow CLI. It
+ * allows users to run `npx openworkflow <command>` without requiring the core
+ * 'openworkflow' package to have any production dependencies (like commander,
+ * consola, etc).
+ *
+ * Note: This file is transpiled to `./dist/bin/openworkflow.js`. Relative paths
+ * below are calculated based on that runtime location.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
