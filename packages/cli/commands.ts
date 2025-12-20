@@ -1014,7 +1014,7 @@ export async function describeRun(runId: string): Promise<void> {
  * @returns Loaded config and metadata.
  */
 async function loadConfigWithEnv() {
-  loadDotenv();
+  loadDotenv({ quiet: true });
   try {
     return await loadConfig();
   } catch (error) {
