@@ -12,7 +12,7 @@
     "knip": "knip",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "ow": "npx --workspace=openworkflow ow",
+    "ow": "tsx ./packages/cli/index.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
