@@ -35,7 +35,7 @@
     "eslint-plugin-jsdoc": "^61.5.0",
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^62.0.0",
-    "knip": "^5.76.3",
+    "knip": "^5.77.1",
     "prettier": "^3.7.4",
     "prettier-plugin-packagejson": "^2.5.20",
     "tsx": "^4.21.0",
