@@ -93,12 +93,14 @@ class StepExecutor implements StepApi {
   private readonly backend: Backend;
   private readonly workflowRunId: string;
   private readonly workerId: string;
+  private readonly attempts: StepAttempt[];
   private cache: StepAttemptCache;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
+    this.attempts = [...options.attempts];
 
     this.cache = createStepAttemptCacheFromAttempts(options.attempts);
   }
@@ -114,9 +116,14 @@ class StepExecutor implements StepApi {
     if (existingAttempt) {
       return existingAttempt.output as Output;
     }
+    // check for existing running attempt
+    // if not found, create new step attempt
+    let attempt = this.attempts.find(
+      (a) =>
+        a.stepName === name && a.status === "running" && a.kind === "function",
+    );
 
-    // not in cache, create new step attempt
-    const attempt = await this.backend.createStepAttempt({
+    attempt ??= await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName: name,
@@ -143,6 +150,9 @@ class StepExecutor implements StepApi {
 
       return savedAttempt.output as Output;
     } catch (error) {
+      if (error instanceof SleepSignal) {
+        throw error;
+      }
       // mark failure
       await this.backend.failStepAttempt({
         workflowRunId: this.workflowRunId,
