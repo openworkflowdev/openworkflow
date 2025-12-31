@@ -103,7 +103,7 @@ export class OpenWorkflow {
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: spec.name,
       version: spec.version ?? null,
-      idempotencyKey: null,
+      idempotencyKey: options?.idempotencyKey ?? null,
       config: {},
       context: null,
       input: parsedInput ?? null,
@@ -209,6 +209,12 @@ export interface WorkflowRunOptions {
    * it will be marked as failed.
    */
   deadlineAt?: Date;
+  /**
+   * Idempotency key for this workflow run. If a run with the same workflow name
+   * and idempotency key already exists, the existing run will be returned instead
+   * of creating a new one.
+   */
+  idempotencyKey?: string;
 }
 
 /**
