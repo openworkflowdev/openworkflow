@@ -16,6 +16,9 @@ export interface Backend {
   getWorkflowRun(
     params: Readonly<GetWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
+  getWorkflowRunByIdempotencyKey(
+    params: Readonly<GetWorkflowRunByIdempotencyKeyParams>,
+  ): Promise<WorkflowRun | null>;
   listWorkflowRuns(
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
@@ -72,6 +75,11 @@ export interface CreateWorkflowRunParams {
 
 export interface GetWorkflowRunParams {
   workflowRunId: string;
+}
+
+export interface GetWorkflowRunByIdempotencyKeyParams {
+  workflowName: string;
+  idempotencyKey: string;
 }
 
 export type ListWorkflowRunsParams = PaginationOptions;

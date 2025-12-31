@@ -19,6 +19,7 @@ import {
   CreateWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
+  GetWorkflowRunByIdempotencyKeyParams,
   ExtendWorkflowRunLeaseParams,
   ListStepAttemptsParams,
   ListWorkflowRunsParams,
@@ -85,6 +86,17 @@ export class BackendSqlite implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
+    // Check for existing run with same idempotency key
+    if (params.idempotencyKey) {
+      const existing = await this.getWorkflowRunByIdempotencyKey({
+        workflowName: params.workflowName,
+        idempotencyKey: params.idempotencyKey,
+      });
+      if (existing) {
+        return existing;
+      }
+    }
+
     const id = generateUUID();
     const currentTime = now();
     const availableAt = params.availableAt
@@ -143,6 +155,27 @@ export class BackendSqlite implements Backend {
     const row = stmt.get(this.namespaceId, params.workflowRunId) as
       | WorkflowRunRow
       | undefined;
+
+    return Promise.resolve(row ? rowToWorkflowRun(row) : null);
+  }
+
+  getWorkflowRunByIdempotencyKey(
+    params: GetWorkflowRunByIdempotencyKeyParams,
+  ): Promise<WorkflowRun | null> {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+      AND "workflow_name" = ?
+      AND "idempotency_key" = ?
+      LIMIT 1
+    `);
+
+    const row = stmt.get(
+      this.namespaceId,
+      params.workflowName,
+      params.idempotencyKey,
+    ) as WorkflowRunRow | undefined;
 
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }
