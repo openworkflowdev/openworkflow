@@ -66,6 +66,7 @@ export interface CreateWorkflowRunParams {
   workflowName: string;
   version: string | null;
   idempotencyKey: string | null;
+  idempotencyKeyCreatedAfter: Date | null; // TTL cutoff for idempotency lookup
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
@@ -80,6 +81,7 @@ export interface GetWorkflowRunParams {
 export interface GetWorkflowRunByIdempotencyKeyParams {
   workflowName: string;
   idempotencyKey: string;
+  createdAfter: Date | null;
 }
 
 export type ListWorkflowRunsParams = PaginationOptions;

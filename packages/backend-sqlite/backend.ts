@@ -86,11 +86,12 @@ export class BackendSqlite implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    // Check for existing run with same idempotency key
+    // Check for existing run with same idempotency key (within TTL window)
     if (params.idempotencyKey) {
       const existing = await this.getWorkflowRunByIdempotencyKey({
         workflowName: params.workflowName,
         idempotencyKey: params.idempotencyKey,
+        createdAfter: params.idempotencyKeyCreatedAfter,
       });
       if (existing) {
         return existing;
@@ -162,20 +163,30 @@ export class BackendSqlite implements Backend {
   getWorkflowRunByIdempotencyKey(
     params: GetWorkflowRunByIdempotencyKeyParams,
   ): Promise<WorkflowRun | null> {
+    const createdAfterClause = params.createdAfter
+      ? `AND "created_at" > ?`
+      : "";
+
     const stmt = this.db.prepare(`
       SELECT *
       FROM "workflow_runs"
       WHERE "namespace_id" = ?
       AND "workflow_name" = ?
       AND "idempotency_key" = ?
+      ${createdAfterClause}
       LIMIT 1
     `);
 
-    const row = stmt.get(
+    const queryParams: (string | null)[] = [
       this.namespaceId,
       params.workflowName,
       params.idempotencyKey,
-    ) as WorkflowRunRow | undefined;
+    ];
+    if (params.createdAfter) {
+      queryParams.push(toISO(params.createdAfter));
+    }
+
+    const row = stmt.get(...queryParams) as WorkflowRunRow | undefined;
 
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }

@@ -84,11 +84,12 @@ export class BackendPostgres implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    // Check for existing run with same idempotency key
+    // Check for existing run with same idempotency key (within TTL window)
     if (params.idempotencyKey) {
       const existing = await this.getWorkflowRunByIdempotencyKey({
         workflowName: params.workflowName,
         idempotencyKey: params.idempotencyKey,
+        createdAfter: params.idempotencyKeyCreatedAfter,
       });
       if (existing) {
         return existing;
@@ -153,12 +154,17 @@ export class BackendPostgres implements Backend {
   async getWorkflowRunByIdempotencyKey(
     params: GetWorkflowRunByIdempotencyKeyParams,
   ): Promise<WorkflowRun | null> {
+    const createdAfterClause = params.createdAfter
+      ? this.pg`AND "created_at" > ${params.createdAfter}`
+      : this.pg``;
+
     const [workflowRun] = await this.pg<WorkflowRun[]>`
       SELECT *
       FROM "openworkflow"."workflow_runs"
       WHERE "namespace_id" = ${this.namespaceId}
       AND "workflow_name" = ${params.workflowName}
       AND "idempotency_key" = ${params.idempotencyKey}
+      ${createdAfterClause}
       LIMIT 1
     `;
 

@@ -1,5 +1,7 @@
 import type { Backend } from "./backend.js";
 import { loadConfig } from "./config.js";
+import type { DurationString } from "./core/duration.js";
+import { parseDuration } from "./core/duration.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import type {
   SchemaInput,
@@ -18,6 +20,7 @@ import {
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
+const DEFAULT_IDEMPOTENCY_TTL: DurationString = "24h";
 
 /* The data the worker function receives (after transformation). */
 type WorkflowHandlerInput<TSchema, Input> = SchemaOutput<TSchema, Input>;
@@ -100,10 +103,23 @@ export class OpenWorkflow {
     }
     const parsedInput = validationResult.value;
 
+    // Calculate idempotency key TTL cutoff
+    let idempotencyKeyCreatedAfter: Date | null = null;
+    if (options?.idempotencyKey) {
+      const ttlString = (options.idempotencyTTL ??
+        DEFAULT_IDEMPOTENCY_TTL) as DurationString;
+      const ttlResult = parseDuration(ttlString);
+      if (!ttlResult.ok) {
+        throw new Error(`Invalid idempotencyTTL: ${ttlResult.error.message}`);
+      }
+      idempotencyKeyCreatedAfter = new Date(Date.now() - ttlResult.value);
+    }
+
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: spec.name,
       version: spec.version ?? null,
       idempotencyKey: options?.idempotencyKey ?? null,
+      idempotencyKeyCreatedAfter,
       config: {},
       context: null,
       input: parsedInput ?? null,
@@ -211,10 +227,16 @@ export interface WorkflowRunOptions {
   deadlineAt?: Date;
   /**
    * Idempotency key for this workflow run. If a run with the same workflow name
-   * and idempotency key already exists, the existing run will be returned instead
-   * of creating a new one.
+   * and idempotency key already exists (within the TTL window), the existing run
+   * will be returned instead of creating a new one.
    */
   idempotencyKey?: string;
+  /**
+   * Time-to-live for the idempotency key. After this duration, the same key can
+   * create a new workflow run. Supports duration strings like "24h", "30m", "7d".
+   * Defaults to "24h" if not specified.
+   */
+  idempotencyTTL?: string;
 }
 
 /**
