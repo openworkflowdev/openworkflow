@@ -101,6 +101,193 @@ export function testBackend(options: TestBackendOptions): void {
         expect(deltaSeconds(createdMin.availableAt)).toBeLessThan(1); // defaults to NOW()
         expect(createdMin.deadlineAt).toBeNull();
       });
+
+      test("returns existing run when idempotency key matches", async () => {
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+
+        // Create first run with idempotency key
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey,
+          input: { first: true },
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        // Create second run with same idempotency key - should return existing
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey,
+          input: { second: true }, 
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        // Should return the same run
+        expect(second.id).toBe(first.id);
+        expect(second.input).toEqual({ first: true }); 
+      });
+
+      test("creates new run when idempotency key differs", async () => {
+        const workflowName = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: { first: true },
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: randomUUID(), 
+          input: { second: true },
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).not.toBe(first.id);
+      });
+
+      test("same idempotency key with different workflow name creates new run", async () => {
+        const idempotencyKey = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName: randomUUID(), // different workflow
+          version: null,
+          idempotencyKey, // same key
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).not.toBe(first.id);
+      });
+
+      test("null idempotency key always creates new runs", async () => {
+        const workflowName = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).not.toBe(first.id);
+      });
+    });
+
+    describe("getWorkflowRunByIdempotencyKey()", () => {
+      test("returns workflow run when idempotency key matches", async () => {
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+
+        const created = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey,
+          input: { test: true },
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const found = await backend.getWorkflowRunByIdempotencyKey({
+          workflowName,
+          idempotencyKey,
+        });
+
+        expect(found).not.toBeNull();
+        expect(found?.id).toBe(created.id);
+      });
+
+      test("returns null when idempotency key does not match", async () => {
+        const workflowName = randomUUID();
+
+        await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const found = await backend.getWorkflowRunByIdempotencyKey({
+          workflowName,
+          idempotencyKey: randomUUID(), // different key
+        });
+
+        expect(found).toBeNull();
+      });
+
+      test("returns null when workflow name does not match", async () => {
+        const idempotencyKey = randomUUID();
+
+        await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const found = await backend.getWorkflowRunByIdempotencyKey({
+          workflowName: randomUUID(), // different workflow
+          idempotencyKey,
+        });
+
+        expect(found).toBeNull();
+      });
     });
 
     describe("listWorkflowRuns()", () => {
