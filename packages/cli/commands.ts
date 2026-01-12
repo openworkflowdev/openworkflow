@@ -58,6 +58,7 @@ export async function init(): Promise<void> {
   p.intro("Initializing OpenWorkflow...");
 
   const { configFile } = await loadConfigWithEnv();
+  let configFileToDelete: string | null = null;
 
   if (configFile) {
     const shouldOverride = await p.confirm({
@@ -71,8 +72,7 @@ export async function init(): Promise<void> {
       process.exit(0);
     }
 
-    // delete the existing config file
-    unlinkSync(configFile);
+    configFileToDelete = configFile;
   }
 
   const backendChoice = await p.select<BackendChoice>({
@@ -111,39 +111,49 @@ export async function init(): Promise<void> {
   const packageManager = pm?.name ?? "your package manager";
   spinner.stop(`Using ${packageManager}`);
 
-  const shouldInstall = await p.confirm({
-    message: `Install OpenWorkflow?`,
+  const shouldSetup = await p.confirm({
+    message:
+      "Install packages and set up project files (.env, .gitignore, package.json, openworkflow.config.js, openworkflow/hello-world.ts)?",
     initialValue: true,
   });
 
-  if (p.isCancel(shouldInstall)) {
+  if (p.isCancel(shouldSetup)) {
     p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
 
-  if (shouldInstall) {
+  if (!shouldSetup) {
+    p.outro("Setup skipped.");
+    return;
+  }
+
+  if (configFileToDelete) {
+    unlinkSync(configFileToDelete);
+  }
+
+  {
     const packages = getPackagesToInstall(backendChoice);
     spinner.start(`Installing ${packages.join(", ")}...`);
     await addDependency(packages, { silent: true });
     spinner.stop(`Installed ${packages.join(", ")}`);
   }
 
-  await createExampleWorkflow();
+  createExampleWorkflow();
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
-    await updateGitignoreForSqlite();
+    updateGitignoreForSqlite();
   }
 
   if (backendChoice === "postgres" || backendChoice === "both") {
-    await updateEnvForPostgres();
+    updateEnvForPostgres();
   }
 
-  await addWorkerScriptToPackageJson();
+  addWorkerScriptToPackageJson();
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
-  await createConfigFile(backendChoice);
+  createConfigFile(backendChoice);
 
   // wrap up
   p.note(
@@ -172,6 +182,12 @@ export async function doctor(): Promise<void> {
 
     const backendName = backend.constructor.name.replace("Backend", "");
     consola.log(`  • Backend: ${backendName}`);
+
+    const packageJson = readPackageJsonForDoctor();
+    if (packageJson) {
+      warnIfMissingBackendPackage(backendName, packageJson);
+      warnIfMissingTsconfig(packageJson);
+    }
 
     // discover directories
     const dirs = getWorkflowDirectories(config);
@@ -571,71 +587,47 @@ function getPackagesToInstall(backendChoice: BackendChoice): string[] {
 }
 
 /**
- * Create config file with user confirmation.
+ * Create config file.
  * @param backendChoice - The selected backend choice
- * @returns True if config was created, false otherwise
  */
-async function createConfigFile(
-  backendChoice: BackendChoice,
-): Promise<boolean> {
-  const shouldCreateConfig = await p.confirm({
-    message: "Create openworkflow.config.js?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldCreateConfig)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  if (shouldCreateConfig) {
-    const spinner = p.spinner();
-    spinner.start("Writing config...");
-    const configTemplate = getConfigTemplate(backendChoice);
-    const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
-    writeFileSync(configDestPath, configTemplate, "utf8");
-    spinner.stop(`Config written to ${configDestPath}`);
-    return true;
-  }
-
-  return false;
+function createConfigFile(backendChoice: BackendChoice): void {
+  const spinner = p.spinner();
+  spinner.start("Writing config...");
+  const configTemplate = getConfigTemplate(backendChoice);
+  const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
+  writeFileSync(configDestPath, configTemplate, "utf8");
+  spinner.stop(`Config written to ${configDestPath}`);
 }
 
 /**
- * Create example workflow with user confirmation.
+ * Create example workflow.
  */
-async function createExampleWorkflow(): Promise<void> {
-  const shouldCreateExample = await p.confirm({
-    message: "Create example hello-world workflow in ./openworkflow/?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldCreateExample)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
+function createExampleWorkflow(): void {
+  const spinner = p.spinner();
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
   }
-
-  if (shouldCreateExample) {
-    const spinner = p.spinner();
-    spinner.start("Creating example (hello-world) workflow...");
-    const workflowsDir = path.join(process.cwd(), "openworkflow");
-    if (!existsSync(workflowsDir)) {
-      mkdirSync(workflowsDir, { recursive: true });
-    }
-    const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
-    writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+  const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
+  if (existsSync(helloWorldDestPath)) {
+    spinner.start("Checking example (hello-world) workflow...");
     spinner.stop(
-      `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+      `Example (hello-world) workflow already exists at ${helloWorldDestPath}`,
     );
+    return;
   }
+
+  spinner.start("Creating example (hello-world) workflow...");
+  writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+  spinner.stop(
+    `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+  );
 }
 
 /**
- * Update .gitignore with user confirmation.
+ * Update .gitignore for SQLite.
  */
-async function updateGitignoreForSqlite(): Promise<void> {
+function updateGitignoreForSqlite(): void {
   // ensure .openworkflow directory
   const dbDir = path.join(process.cwd(), ".openworkflow");
   if (!existsSync(dbDir)) {
@@ -643,75 +635,44 @@ async function updateGitignoreForSqlite(): Promise<void> {
   }
 
   const gitignorePath = path.join(process.cwd(), ".gitignore");
-  const gitignoreExists = existsSync(gitignorePath);
-
-  const shouldUpdateGitignore = await p.confirm({
-    message: gitignoreExists
-      ? "Add .openworkflow to .gitignore?"
-      : "Create .gitignore with .openworkflow entry?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldUpdateGitignore)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  if (shouldUpdateGitignore) {
-    const spinner = p.spinner();
-    spinner.start("Updating .gitignore...");
-    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
-    spinner.stop(
-      result.added
-        ? "Added .openworkflow to .gitignore"
-        : ".openworkflow already in .gitignore",
-    );
-  }
+  const spinner = p.spinner();
+  spinner.start("Updating .gitignore...");
+  const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+  spinner.stop(
+    result.added
+      ? "Added .openworkflow to .gitignore"
+      : ".openworkflow already in .gitignore",
+  );
 }
 
 /**
- * Add worker script to package.json with user confirmation.
+ * Add worker script to package.json.
  */
-async function addWorkerScriptToPackageJson(): Promise<void> {
+function addWorkerScriptToPackageJson(): void {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return;
   }
+  const spinner = p.spinner();
+  spinner.start("Adding worker script to package.json...");
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
 
-  const shouldAddScript = await p.confirm({
-    message: 'Add "worker" script to package.json?',
-    initialValue: true,
-  });
+    packageJson.scripts ??= {};
+    packageJson.scripts["worker"] = "ow worker start";
 
-  if (p.isCancel(shouldAddScript)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
+    writeFileSync(
+      packageJsonPath,
+      JSON.stringify(packageJson, null, 2) + "\n",
+      "utf8",
+    );
 
-  if (shouldAddScript) {
-    const spinner = p.spinner();
-    spinner.start("Adding worker script to package.json...");
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-        scripts?: Record<string, string>;
-      };
-
-      packageJson.scripts ??= {};
-      packageJson.scripts["worker"] = "ow worker start";
-
-      writeFileSync(
-        packageJsonPath,
-        JSON.stringify(packageJson, null, 2) + "\n",
-        "utf8",
-      );
-
-      spinner.stop('Added "worker" script to package.json');
-    } catch {
-      spinner.stop("Failed to update package.json");
-      consola.warn("Could not add worker script to package.json");
-    }
+    spinner.stop('Added "worker" script to package.json');
+  } catch {
+    spinner.stop("Failed to update package.json");
+    consola.warn("Could not add worker script to package.json");
   }
 }
 
@@ -757,39 +718,22 @@ function ensureGitignoreEntry(
 }
 
 /**
- * Add DATABASE_URL to .env file with user confirmation.
+ * Add OPENWORKFLOW_POSTGRES_URL to .env file.
  */
-async function updateEnvForPostgres(): Promise<void> {
+function updateEnvForPostgres(): void {
   const envPath = path.join(process.cwd(), ".env");
-  const envExists = existsSync(envPath);
-
-  const shouldUpdateEnv = await p.confirm({
-    message: envExists
-      ? "Add OPENWORKFLOW_POSTGRES_URL to .env?"
-      : "Create .env with OPENWORKFLOW_POSTGRES_URL entry?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldUpdateEnv)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  if (shouldUpdateEnv) {
-    const spinner = p.spinner();
-    spinner.start("Updating .env...");
-    const result = ensureEnvEntry(
-      envPath,
-      "OPENWORKFLOW_POSTGRES_URL",
-      "postgresql://user:password@localhost:5432/openworkflow",
-    );
-    spinner.stop(
-      result.added
-        ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
-        : "OPENWORKFLOW_POSTGRES_URL already in .env",
-    );
-  }
+  const spinner = p.spinner();
+  spinner.start("Updating .env...");
+  const result = ensureEnvEntry(
+    envPath,
+    "OPENWORKFLOW_POSTGRES_URL",
+    "postgresql://user:password@localhost:5432/openworkflow",
+  );
+  spinner.stop(
+    result.added
+      ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
+      : "OPENWORKFLOW_POSTGRES_URL already in .env",
+  );
 }
 
 /**
@@ -803,6 +747,93 @@ async function loadConfigWithEnv() {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CLIError("Failed to load OpenWorkflow config.", message);
+  }
+}
+
+interface PackageJsonForDoctor {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+/**
+ * Load package.json for doctor checks.
+ * @returns Parsed package.json or null if unavailable.
+ */
+function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
+  const packageJsonPath = path.join(process.cwd(), "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(
+      readFileSync(packageJsonPath, "utf8"),
+    ) as PackageJsonForDoctor;
+  } catch {
+    consola.warn("Could not read package.json for dependency checks.");
+    return null;
+  }
+}
+
+/**
+ * Check whether a dependency is declared in package.json.
+ * @param packageJson - Parsed package.json.
+ * @param name - Dependency name to check.
+ * @returns True when the dependency is listed.
+ */
+function hasDependency(
+  packageJson: Readonly<PackageJsonForDoctor>,
+  name: string,
+): boolean {
+  return Boolean(
+    packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name],
+  );
+}
+
+/**
+ * Warn when the configured backend is missing its package.
+ * @param backendName - Configured backend name.
+ * @param packageJson - Parsed package.json.
+ */
+function warnIfMissingBackendPackage(
+  backendName: string,
+  packageJson: Readonly<PackageJsonForDoctor>,
+): void {
+  const backendNameLower = backendName.toLowerCase();
+
+  if (
+    backendNameLower.includes("postgres") &&
+    !hasDependency(packageJson, "@openworkflow/backend-postgres")
+  ) {
+    consola.warn(
+      "Backend is Postgres but @openworkflow/backend-postgres is not installed.",
+    );
+  }
+
+  if (
+    backendNameLower.includes("sqlite") &&
+    !hasDependency(packageJson, "@openworkflow/backend-sqlite")
+  ) {
+    consola.warn(
+      "Backend is SQLite but @openworkflow/backend-sqlite is not installed.",
+    );
+  }
+}
+
+/**
+ * Warn when TypeScript is installed but tsconfig.json is missing.
+ * @param packageJson - Parsed package.json.
+ */
+function warnIfMissingTsconfig(
+  packageJson: Readonly<PackageJsonForDoctor>,
+): void {
+  if (!hasDependency(packageJson, "typescript")) {
+    return;
+  }
+
+  const tsconfigPath = path.join(process.cwd(), "tsconfig.json");
+  if (!existsSync(tsconfigPath)) {
+    consola.warn("TypeScript is installed but no tsconfig.json was found.");
   }
 }
 
