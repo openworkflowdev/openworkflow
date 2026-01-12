@@ -29,11 +29,7 @@ jobs:
         with:
           node-version: 22 # previous LTS (24 becomes previous on Oct 20, 2026 - https://endoflife.date/nodejs)
       - run: npm ci
-      - run: npm run format
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm run test:coverage
+      - run: npm run ci
       - uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
