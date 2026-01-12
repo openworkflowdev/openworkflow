@@ -47,6 +47,8 @@ export const helloWorld = defineWorkflow(
       return "Hello, World!";
     });
 
+    await step.sleep("wait-a-bit", "1s");
+
     return { greeting };
   },
 );
