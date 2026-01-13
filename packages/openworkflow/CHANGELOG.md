@@ -2,8 +2,13 @@
 
 #### Upcoming / unreleased
 
-- Add CLI for easy project initialization (`ow init`) and worker management
-  (`ow worker start`)
+- Add `openworkflow` CLI (alias `ow`) for easy management:
+  - `ow init`: Initialize new projects with backend selection (SQLite or Postgres)
+  - `ow worker start`: Start a worker with automatic workflow discovery based on config
+  - `ow doctor`: Verify environment and dependencies
+- Add `openworkflow.config.ts` for declarative project configuration
+- Add `defineWorkflowSpec` for declarative workflow definitions (deprecates `declareWorkflow`)
+- Add timeout option to workflow definitions to automatically fail runs that exceed a specific duration (@Shobhit-Nagpal)
 
 ## 0.4.1
 
