@@ -1,5 +1,5 @@
 export const SQLITE_CONFIG = `import { BackendSqlite } from "@openworkflow/backend-sqlite";
-import { defineConfig } from "openworkflow";
+import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   // Use SQLite as the backend
@@ -11,7 +11,7 @@ export default defineConfig({
 `;
 
 export const POSTGRES_CONFIG = `import { BackendPostgres } from "@openworkflow/backend-postgres";
-import { defineConfig } from "openworkflow";
+import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   // Use Postgres as the backend
@@ -24,7 +24,7 @@ export default defineConfig({
 
 export const POSTGRES_PROD_SQLITE_DEV_CONFIG = `import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { BackendSqlite } from "@openworkflow/backend-sqlite";
-import { defineConfig } from "openworkflow";
+import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   // Use Postgres as the backend in production, otherwise use SQLite

@@ -1,3 +1,4 @@
+import { WorkerConfig, loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import {
   HELLO_WORLD_WORKFLOW,
@@ -20,8 +21,8 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { addDependency, detectPackageManager } from "nypm";
-import { OpenWorkflow, WorkerConfig } from "openworkflow";
-import { isWorkflow, loadConfig, Workflow } from "openworkflow/internal";
+import { OpenWorkflow } from "openworkflow";
+import { isWorkflow, Workflow } from "openworkflow/internal";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

@@ -1,12 +1,11 @@
 import { BackendPostgres } from "../backend-postgres/backend.js";
 import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
-import { createClient, OpenWorkflow } from "./client.js";
-import * as configModule from "./config.js";
+import { OpenWorkflow } from "./client.js";
 import { defineWorkflowSpec } from "./workflow.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import {
   number as yupNumber,
   object as yupObject,
@@ -425,23 +424,6 @@ describe("OpenWorkflow", () => {
       const result = await handle.result();
       expect(result).toEqual({ doubled: 42 });
     });
-  });
-});
-
-describe("createClient", () => {
-  test("creates client from project config file", async () => {
-    const mockBackend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
-      namespaceId: randomUUID(),
-    });
-
-    vi.spyOn(configModule, "loadConfig").mockResolvedValueOnce({
-      config: { backend: mockBackend },
-      configFile: "/mock/openworkflow.config.js",
-    });
-
-    const client = await createClient();
-
-    expect(client).toBeInstanceOf(OpenWorkflow);
   });
 });
 

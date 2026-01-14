@@ -1,8 +1,8 @@
-import { Backend } from "./backend.js";
-import { WorkerOptions } from "./worker.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { WorkerOptions } from "openworkflow";
+import type { Backend } from "openworkflow/internal";
 
 export interface OpenWorkflowConfig {
   backend: Backend;

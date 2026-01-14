@@ -1,9 +1,13 @@
 import greetingDefaultWorkflow from "./openworkflow/greeting-default.js";
 import { greetingWorkflow } from "./openworkflow/greeting.js";
 import { addWorkflow, multiplyWorkflow } from "./openworkflow/math.js";
-import { createClient } from "openworkflow";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { OpenWorkflow } from "openworkflow";
 
-const ow = await createClient();
+// eslint-disable-next-line sonarjs/publicly-writable-directories
+const sqliteFileName = "/tmp/openworkflow_example_workflow_discovery.db";
+const backend = BackendSqlite.connect(sqliteFileName);
+const ow = new OpenWorkflow({ backend });
 
 // Greeting Workflow
 console.log("Running greeting workflow...");
