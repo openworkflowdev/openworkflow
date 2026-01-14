@@ -14,6 +14,7 @@ import {
   CreateWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
+  GetWorkflowRunByIdempotencyKeyParams,
   ExtendWorkflowRunLeaseParams,
   ListStepAttemptsParams,
   ListWorkflowRunsParams,
@@ -83,6 +84,18 @@ export class BackendPostgres implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
+    // Check for existing run with same idempotency key (within TTL window)
+    if (params.idempotencyKey) {
+      const existing = await this.getWorkflowRunByIdempotencyKey({
+        workflowName: params.workflowName,
+        idempotencyKey: params.idempotencyKey,
+        createdAfter: params.idempotencyKeyCreatedAfter,
+      });
+      if (existing) {
+        return existing;
+      }
+    }
+
     const [workflowRun] = await this.pg<WorkflowRun[]>`
       INSERT INTO "openworkflow"."workflow_runs" (
         "namespace_id",
@@ -132,6 +145,26 @@ export class BackendPostgres implements Backend {
       FROM "openworkflow"."workflow_runs"
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
+      LIMIT 1
+    `;
+
+    return workflowRun ?? null;
+  }
+
+  async getWorkflowRunByIdempotencyKey(
+    params: GetWorkflowRunByIdempotencyKeyParams,
+  ): Promise<WorkflowRun | null> {
+    const createdAfterClause = params.createdAfter
+      ? this.pg`AND "created_at" > ${params.createdAfter}`
+      : this.pg``;
+
+    const [workflowRun] = await this.pg<WorkflowRun[]>`
+      SELECT *
+      FROM "openworkflow"."workflow_runs"
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "workflow_name" = ${params.workflowName}
+      AND "idempotency_key" = ${params.idempotencyKey}
+      ${createdAfterClause}
       LIMIT 1
     `;
 

@@ -16,6 +16,9 @@ export interface Backend {
   getWorkflowRun(
     params: Readonly<GetWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
+  getWorkflowRunByIdempotencyKey(
+    params: Readonly<GetWorkflowRunByIdempotencyKeyParams>,
+  ): Promise<WorkflowRun | null>;
   listWorkflowRuns(
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
@@ -63,6 +66,7 @@ export interface CreateWorkflowRunParams {
   workflowName: string;
   version: string | null;
   idempotencyKey: string | null;
+  idempotencyKeyCreatedAfter: Date | null; // TTL cutoff for idempotency lookup
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
@@ -72,6 +76,12 @@ export interface CreateWorkflowRunParams {
 
 export interface GetWorkflowRunParams {
   workflowRunId: string;
+}
+
+export interface GetWorkflowRunByIdempotencyKeyParams {
+  workflowName: string;
+  idempotencyKey: string;
+  createdAfter: Date | null;
 }
 
 export type ListWorkflowRunsParams = PaginationOptions;
