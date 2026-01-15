@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/cli",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     ".": {
@@ -33,6 +33,6 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "openworkflow": "^0.4.1"
+    "openworkflow": "^0.5.0"
   }
 }

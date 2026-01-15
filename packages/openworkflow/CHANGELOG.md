@@ -1,5 +1,16 @@
 # openworkflow
 
+## 0.5.0
+
+- **New Tooling:** Introduced the OpenWorkflow CLI (`@openworkflow/cli`) for
+  easier project management.
+- Added `defineWorkflowSpec` for declarative workflow definitions. This allows
+  you to define the shape of a workflow (input/output types, name, schema)
+  separately from its implementation.
+- Added `deadlineAt` option to workflow definitions. This allows workflows to
+  automatically fail if they exceed a specific duration (Thanks
+  @Shobhit-Nagpal).
+
 ## 0.4.1
 
 - Add SQLite backend (`@openworkflow/backend-sqlite`) using `node:sqlite`

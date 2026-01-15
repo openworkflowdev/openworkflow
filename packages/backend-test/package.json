@@ -21,6 +21,6 @@
     "vitest": "^4.0.15"
   },
   "peerDependencies": {
-    "openworkflow": "^0.4.1"
+    "openworkflow": "^0.5.0"
   }
 }
