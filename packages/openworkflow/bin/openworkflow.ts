@@ -27,7 +27,7 @@ const args = process.argv.slice(2);
 
 // build the command, using tsx to run local TypeScript CLI if in dev and
 // otherwise using npx to run the published CLI package
-const cliScriptFilePath = path.resolve(__dirname, "../../../cli/index.ts");
+const cliScriptFilePath = path.resolve(__dirname, "../../../cli/cli.ts");
 const isMonorepo = existsSync(cliScriptFilePath);
 
 if (isMonorepo) {
@@ -37,7 +37,7 @@ if (isMonorepo) {
 }
 
 const command = isMonorepo
-  ? // `npx tsx ../../../cli/index.ts ...args`
+  ? // `npx tsx ../../../cli/cli.ts ...args`
     ["tsx", cliScriptFilePath, ...args]
   : // `npx -y @openworkflow/cli@<version> ...args`
     // uses -y to skip the "Need to install @openworkflow/cli" prompt

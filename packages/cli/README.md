@@ -4,5 +4,5 @@ Development:
 
 ```sh
 # from repo root
-npx tsx packages/cli/index.ts
+npx tsx packages/cli/cli.ts
 ```

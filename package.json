@@ -13,7 +13,7 @@
     "knip": "knip",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "ow": "tsx ./packages/cli/index.ts",
+    "ow": "tsx ./packages/cli/cli.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
