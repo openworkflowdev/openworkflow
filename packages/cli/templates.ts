@@ -3,7 +3,7 @@ import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   // Use SQLite as the backend
-  backend: BackendSqlite.connect(".openworkflow/backend.db"),
+  backend: BackendSqlite.connect("openworkflow/backend.db"),
 
   // The directories where your workflows are defined
   dirs: "./openworkflow",
@@ -33,7 +33,7 @@ export default defineConfig({
   backend:
     process.env["NODE_ENV"] === "production"
       ? await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"])
-      : BackendSqlite.connect(".openworkflow/backend.db"),
+      : BackendSqlite.connect("openworkflow/backend.db"),
 
   // The directories where your workflows are defined
   dirs: "./openworkflow",

@@ -652,20 +652,19 @@ function createExampleWorkflow(exampleWorkflowFileName: string): void {
  * Update .gitignore for SQLite.
  */
 function updateGitignoreForSqlite(): void {
-  // ensure .openworkflow directory
-  const dbDir = path.join(process.cwd(), ".openworkflow");
-  if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true });
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
   }
 
   const gitignorePath = path.join(process.cwd(), ".gitignore");
   const spinner = p.spinner();
   spinner.start("Updating .gitignore...");
-  const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
+  const result = ensureGitignoreEntry(gitignorePath, "openworkflow/backend.db");
   spinner.stop(
     result.added
-      ? "Added .openworkflow to .gitignore"
-      : ".openworkflow already in .gitignore",
+      ? "Added openworkflow/backend.db to .gitignore"
+      : "openworkflow/backend.db already in .gitignore",
   );
 }
 
@@ -704,7 +703,7 @@ function addWorkerScriptToPackageJson(): void {
  * Ensure a specific entry exists in a .gitignore file. Creates the file if it
  * doesn't exist, appends the entry if not present.
  * @param gitignorePath - Path to the .gitignore file
- * @param entry - The entry to add (e.g. ".openworkflow")
+ * @param entry - The entry to add (e.g. "openworkflow/backend.db")
  * @returns Object indicating whether the entry was added or already existed
  */
 function ensureGitignoreEntry(
