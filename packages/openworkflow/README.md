@@ -379,8 +379,8 @@ and Yup.
 
 > These releases don't yet include a dashboard UI or CLI. For now, you can
 > inspect workflow and step state directly in PostgreSQL or SQLite
-> (workflow_runs and step_runs tables). A CLI and dashboard are planned for an
-> upcoming release to make debugging and monitoring much easier.
+> (workflow_runs and step_attempts tables). A CLI and dashboard are planned for
+> an upcoming release to make debugging and monitoring much easier.
 
 - Improved local dev experience (coming in v0.5)
 - CLI (coming in v0.5)
