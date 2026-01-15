@@ -154,7 +154,8 @@ export async function init(): Promise<void> {
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
-  createConfigFile(backendChoice);
+  const configFileName = getConfigFileName(readPackageJsonForDoctor());
+  createConfigFile(backendChoice, configFileName);
 
   // wrap up
   p.note(
@@ -590,12 +591,16 @@ function getPackagesToInstall(backendChoice: BackendChoice): string[] {
 /**
  * Create config file.
  * @param backendChoice - The selected backend choice
+ * @param configFileName - The config file name to write
  */
-function createConfigFile(backendChoice: BackendChoice): void {
+function createConfigFile(
+  backendChoice: BackendChoice,
+  configFileName: string,
+): void {
   const spinner = p.spinner();
   spinner.start("Writing config...");
   const configTemplate = getConfigTemplate(backendChoice);
-  const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
+  const configDestPath = path.join(process.cwd(), configFileName);
   writeFileSync(configDestPath, configTemplate, "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 }
@@ -774,6 +779,21 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
     consola.warn("Could not read package.json for dependency checks.");
     return null;
   }
+}
+
+/**
+ * Determine the config filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The config file name to create
+ */
+export function getConfigFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  if (packageJson && hasDependency(packageJson, "typescript")) {
+    return "openworkflow.config.ts";
+  }
+
+  return "openworkflow.config.js";
 }
 
 /**

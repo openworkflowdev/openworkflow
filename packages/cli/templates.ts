@@ -15,7 +15,9 @@ import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   // Use Postgres as the backend
-  backend: await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"]),
+  backend: await BackendPostgres.connect(
+    process.env["OPENWORKFLOW_POSTGRES_URL"],
+  ),
 
   // The directories where your workflows are defined
   dirs: "./openworkflow",
