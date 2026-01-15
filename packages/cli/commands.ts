@@ -417,7 +417,7 @@ function printDiscoveredWorkflows(
   }
 }
 
-const WORKFLOW_EXTENSIONS = ["ts", "js", "mjs", "cjs"] as const;
+const WORKFLOW_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
 
 /**
  * Discover workflow files from directories. Recursively scans directories for

@@ -37,6 +37,12 @@ describe("loadConfig", () => {
       "cjs",
     ],
     [
+      "ts",
+      `const name: string = "ts"; export default { name };`,
+      "openworkflow.config.ts",
+      "ts",
+    ],
+    [
       "js",
       `export default { name: "js-default" }`,
       "openworkflow.config.js",
