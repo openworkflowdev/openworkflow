@@ -134,10 +134,17 @@ export async function init(): Promise<void> {
   }
 
   {
-    const packages = getPackagesToInstall(backendChoice);
-    spinner.start(`Installing ${packages.join(", ")}...`);
-    await addDependency(packages, { silent: true });
-    spinner.stop(`Installed ${packages.join(", ")}`);
+    const dependencies = getDependenciesToInstall(backendChoice);
+    spinner.start(`Installing ${dependencies.join(", ")}...`);
+    await addDependency(dependencies, { silent: true });
+    spinner.stop(`Installed ${dependencies.join(", ")}`);
+  }
+
+  {
+    const devDependencies = getDevDependenciesToInstall();
+    spinner.start(`Installing ${devDependencies.join(", ")}...`);
+    await addDependency(devDependencies, { silent: true, dev: true });
+    spinner.stop(`Installed ${devDependencies.join(", ")}`);
   }
 
   createExampleWorkflow();
@@ -570,22 +577,30 @@ function getConfigTemplate(backendChoice: BackendChoice): string {
 }
 
 /**
- * Get the packages to install for a backend choice.
+ * Get the dependencies to install for a backend choice.
  * @param backendChoice - The selected backend choice
- * @returns Array of package names to install
+ * @returns Array of dependency package names to install
  */
-function getPackagesToInstall(backendChoice: BackendChoice): string[] {
-  const packages = ["openworkflow"];
+function getDependenciesToInstall(backendChoice: BackendChoice): string[] {
+  const dependencies = ["openworkflow"];
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
-    packages.push("@openworkflow/backend-sqlite");
+    dependencies.push("@openworkflow/backend-sqlite");
   }
 
   if (backendChoice === "postgres" || backendChoice === "both") {
-    packages.push("@openworkflow/backend-postgres");
+    dependencies.push("@openworkflow/backend-postgres");
   }
 
-  return packages;
+  return dependencies;
+}
+
+/**
+ * Get the dev dependencies to install.
+ * @returns Array of dev dependency package names to install
+ */
+function getDevDependenciesToInstall(): string[] {
+  return ["@openworkflow/cli"];
 }
 
 /**
