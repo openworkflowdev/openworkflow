@@ -112,9 +112,12 @@ export async function init(): Promise<void> {
   const packageManager = pm?.name ?? "your package manager";
   spinner.stop(`Using ${packageManager}`);
 
+  const packageJson = readPackageJsonForDoctor();
+  const configFileName = getConfigFileName(packageJson);
+  const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
+
   const shouldSetup = await p.confirm({
-    message:
-      "Install packages and set up project files (.env, .gitignore, package.json, openworkflow.config.js, openworkflow/hello-world.ts)?",
+    message: `Install packages and set up project files (.env, .gitignore, package.json, ${configFileName}, openworkflow/${exampleWorkflowFileName})?`,
     initialValue: true,
   });
 
@@ -147,7 +150,7 @@ export async function init(): Promise<void> {
     spinner.stop(`Installed ${devDependencies.join(", ")}`);
   }
 
-  createExampleWorkflow();
+  createExampleWorkflow(exampleWorkflowFileName);
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
     updateGitignoreForSqlite();
@@ -161,7 +164,6 @@ export async function init(): Promise<void> {
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
-  const configFileName = getConfigFileName(readPackageJsonForDoctor());
   createConfigFile(backendChoice, configFileName);
 
   // wrap up
@@ -622,14 +624,15 @@ function createConfigFile(
 
 /**
  * Create example workflow.
+ * @param exampleWorkflowFileName - The example workflow filename to write
  */
-function createExampleWorkflow(): void {
+function createExampleWorkflow(exampleWorkflowFileName: string): void {
   const spinner = p.spinner();
   const workflowsDir = path.join(process.cwd(), "openworkflow");
   if (!existsSync(workflowsDir)) {
     mkdirSync(workflowsDir, { recursive: true });
   }
-  const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
+  const helloWorldDestPath = path.join(workflowsDir, exampleWorkflowFileName);
   if (existsSync(helloWorldDestPath)) {
     spinner.start("Checking example (hello-world) workflow...");
     spinner.stop(
@@ -809,6 +812,20 @@ export function getConfigFileName(
   }
 
   return "openworkflow.config.js";
+}
+
+/**
+ * Determine the example workflow filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The example workflow file name to create
+ */
+export function getExampleWorkflowFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  const configFileName = getConfigFileName(packageJson);
+  const extension = path.extname(configFileName) || ".js";
+
+  return `hello-world${extension}`;
 }
 
 /**

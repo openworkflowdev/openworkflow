@@ -1,4 +1,4 @@
-import { getConfigFileName } from "./commands.js";
+import { getConfigFileName, getExampleWorkflowFileName } from "./commands.js";
 import { describe, expect, test } from "vitest";
 
 describe("getConfigFileName", () => {
@@ -22,5 +22,33 @@ describe("getConfigFileName", () => {
     expect(getConfigFileName({ dependencies: {}, devDependencies: {} })).toBe(
       "openworkflow.config.js",
     );
+  });
+});
+
+describe("getExampleWorkflowFileName", () => {
+  test("uses TypeScript when it is in devDependencies", () => {
+    expect(
+      getExampleWorkflowFileName({
+        devDependencies: { typescript: "^5.0.0" },
+      }),
+    ).toBe("hello-world.ts");
+  });
+
+  test("uses TypeScript when it is in dependencies", () => {
+    expect(
+      getExampleWorkflowFileName({
+        dependencies: { typescript: "^5.0.0" },
+      }),
+    ).toBe("hello-world.ts");
+  });
+
+  test("falls back to JavaScript when package.json is missing", () => {
+    expect(getExampleWorkflowFileName(null)).toBe("hello-world.js");
+  });
+
+  test("falls back to JavaScript when package.json has no TypeScript", () => {
+    expect(
+      getExampleWorkflowFileName({ dependencies: {}, devDependencies: {} }),
+    ).toBe("hello-world.js");
   });
 });
