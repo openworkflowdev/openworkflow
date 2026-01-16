@@ -113,6 +113,13 @@ export async function init(): Promise<void> {
   spinner.stop(`Using ${packageManager}`);
 
   const packageJson = readPackageJsonForDoctor();
+  if (!packageJson) {
+    throw new CLIError(
+      "No package.json found.",
+      "Please create a package.json file first by running `npm init` or `npm init -y`.",
+    );
+  }
+
   const configFileName = getConfigFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
 
@@ -684,7 +691,7 @@ function addWorkerScriptToPackageJson(): void {
     };
 
     packageJson.scripts ??= {};
-    packageJson.scripts["worker"] = "ow worker start";
+    packageJson.scripts["worker"] = "npx @openworkflow/cli worker start";
 
     writeFileSync(
       packageJsonPath,
