@@ -38,7 +38,7 @@
     "eslint-plugin-unicorn": "^62.0.0",
     "knip": "^5.81.0",
     "prettier": "^3.8.0",
-    "prettier-plugin-packagejson": "^2.5.20",
+    "prettier-plugin-packagejson": "^2.5.21",
     "tsx": "^4.21.0",
     "turbo": "^2.7.4",
     "typescript": "^5.9.3",
