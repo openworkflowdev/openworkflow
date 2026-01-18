@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/backend-postgres",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     ".": {
@@ -21,15 +21,15 @@
     "squawk": "tsx ./scripts/squawk.ts"
   },
   "dependencies": {
-    "openworkflow": "^0.4.1",
+    "openworkflow": "^0.5.0",
     "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@openworkflow/backend-test": "file:../backend-test",
-    "squawk-cli": "^2.33.2",
+    "squawk-cli": "^2.35.0",
     "vitest": "^4.0.15"
   },
   "peerDependencies": {
-    "openworkflow": "^0.4.1"
+    "openworkflow": "^0.5.0"
   }
 }

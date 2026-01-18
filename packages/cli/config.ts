@@ -1,8 +1,9 @@
-import { Backend } from "./backend.js";
-import { WorkerOptions } from "./worker.js";
+import { createJiti } from "jiti";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { WorkerOptions } from "openworkflow";
+import type { Backend } from "openworkflow/internal";
 
 export interface OpenWorkflowConfig {
   backend: Backend;
@@ -34,10 +35,11 @@ interface LoadedConfig {
 }
 
 const CONFIG_NAME = "openworkflow.config";
-const CONFIG_EXTENSIONS = ["js", "mjs", "cjs"] as const;
+const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
+const jiti = createJiti(import.meta.url);
 
 /**
- * Load the OpenWorkflow config at openworkflow.config.{js,mjs,cjs}.
+ * Load the OpenWorkflow config at openworkflow.config.{ts,mts,cts,js,mjs,cjs}.
  * @param rootDir - Optional root directory to search from (defaults to
  * process.cwd())
  * @returns The loaded configuration and metadata
@@ -53,12 +55,9 @@ export async function loadConfig(rootDir?: string): Promise<LoadedConfig> {
       try {
         const fileUrl = pathToFileURL(filePath).href;
 
-        const mod = (await import(fileUrl)) as
-          | { default?: OpenWorkflowConfig }
-          | OpenWorkflowConfig;
-        const config =
-          (mod as { default?: OpenWorkflowConfig }).default ??
-          (mod as OpenWorkflowConfig);
+        const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
+          default: true,
+        });
 
         return {
           config,

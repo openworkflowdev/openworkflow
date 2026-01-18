@@ -1,18 +1,13 @@
-import { BackendPostgres } from "../backend-postgres/backend.js";
-import { DEFAULT_POSTGRES_URL } from "../backend-postgres/postgres.js";
 import { defineConfig, loadConfig } from "./config.js";
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Backend } from "openworkflow/internal";
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
-describe("defineConfig", async () => {
-  const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
-    namespaceId: randomUUID(),
-  });
-
+describe("defineConfig", () => {
   test("returns the same config", () => {
+    const backend = {} as Backend; // Mock backend for testing
     const config = { backend };
     const result = defineConfig(config);
     expect(result).toBe(config);
@@ -40,6 +35,12 @@ describe("loadConfig", () => {
       `module.exports = { name: "cjs" };`,
       "openworkflow.config.cjs",
       "cjs",
+    ],
+    [
+      "ts",
+      `const name: string = "ts"; export default { name };`,
+      "openworkflow.config.ts",
+      "ts",
     ],
     [
       "js",

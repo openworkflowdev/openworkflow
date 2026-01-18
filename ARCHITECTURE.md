@@ -32,6 +32,8 @@ durable execution with minimal operational complexity.
 - **Backend**: A pluggable persistence layer (e.g., a Postgres or SQLite
   database) that stores all state for workflow runs and step attempts. It serves
   as the queue and the durable state log.
+- **Config**: `openworkflow.config.*` defines backend settings and workflow
+  discovery paths for CLI commands.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.
@@ -108,6 +110,9 @@ of coordination. There is no separate orchestrator server.
   defined workflow code. It continuously polls the `workflow_runs` table for
   available work, executes the workflow logic, and updates the Backend with the
   results.
+- **CLI**: The dev tooling that scaffolds projects, writes
+  `openworkflow.config.ts`, and runs workers via `ow worker start` with
+  auto-discovery of workflow files.
 - **Backend**: The source of truth. It stores workflow runs and step attempts.
   The `workflow_runs` table serves as the job queue for the workers, while the
   `step_attempts` table serves as a record of started and completed work,
@@ -116,8 +121,9 @@ of coordination. There is no separate orchestrator server.
 ### 2.3. Basic Execution Flow
 
 1.  **Workflow Registration**: A developer defines workflows in their code. When
-    a Worker process starts, it automatically discovers and registers this code
-    in an in-memory map. There is no sync process with an external server.
+    a Worker process starts, it automatically discovers and registers the
+    workflow code based on `openworkflow.config.ts` (default `openworkflow/`
+    directory). There is no sync process with an external server.
 2.  **Workflow Invocation**: The application code uses the **Client** to start a
     new workflow run. The Client creates a new entry in the `workflow_runs`
     table with a `pending` status.

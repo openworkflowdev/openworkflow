@@ -1,3 +1,4 @@
+import { WorkerConfig, loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import {
   HELLO_WORLD_WORKFLOW,
@@ -18,25 +19,47 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { addDependency, detectPackageManager } from "nypm";
-import { OpenWorkflow, WorkerConfig } from "openworkflow";
-import {
-  isWorkflow,
-  loadConfig,
-  Workflow,
-  type JsonValue,
-  type StepAttempt,
-  type WorkflowRun,
-} from "openworkflow/internal";
+import { OpenWorkflow } from "openworkflow";
+import { isWorkflow, Workflow } from "openworkflow/internal";
 
-export type BackendChoice = "sqlite" | "postgres" | "both";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Initialize OpenWorkflow in the current project. */
+type BackendChoice = "sqlite" | "postgres" | "both";
+
+/**
+ * openworkflow -V | --version
+ * @returns the version string, or "-" if it cannot be determined
+ */
+export function getVersion(): string {
+  const paths = [
+    path.join(__dirname, "package.json"), // dev: package.json
+    path.join(__dirname, "..", "package.json"), // prod: dist/../package.json
+  ];
+
+  for (const pkgPath of paths) {
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+          version?: string;
+        };
+        if (pkg.version) return pkg.version;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return "-";
+}
+
+/** openworkflow init */
 export async function init(): Promise<void> {
   p.intro("Initializing OpenWorkflow...");
 
   const { configFile } = await loadConfigWithEnv();
+  let configFileToDelete: string | null = null;
 
   if (configFile) {
     const shouldOverride = await p.confirm({
@@ -50,8 +73,7 @@ export async function init(): Promise<void> {
       process.exit(0);
     }
 
-    // delete the existing config file
-    unlinkSync(configFile);
+    configFileToDelete = configFile;
   }
 
   const backendChoice = await p.select<BackendChoice>({
@@ -90,39 +112,59 @@ export async function init(): Promise<void> {
   const packageManager = pm?.name ?? "your package manager";
   spinner.stop(`Using ${packageManager}`);
 
-  const shouldInstall = await p.confirm({
-    message: `Install OpenWorkflow?`,
+  const packageJson = readPackageJsonForDoctor();
+  const configFileName = getConfigFileName(packageJson);
+  const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
+
+  const shouldSetup = await p.confirm({
+    message: `Install packages and set up project files (.env, .gitignore, package.json, ${configFileName}, openworkflow/${exampleWorkflowFileName})?`,
     initialValue: true,
   });
 
-  if (p.isCancel(shouldInstall)) {
+  if (p.isCancel(shouldSetup)) {
     p.cancel("Setup canceled.");
     // eslint-disable-next-line unicorn/no-process-exit
     process.exit(0);
   }
 
-  if (shouldInstall) {
-    const packages = getPackagesToInstall(backendChoice);
-    spinner.start(`Installing ${packages.join(", ")}...`);
-    await addDependency(packages, { silent: true });
-    spinner.stop(`Installed ${packages.join(", ")}`);
+  if (!shouldSetup) {
+    p.outro("Setup skipped.");
+    return;
   }
 
-  await createExampleWorkflow();
+  if (configFileToDelete) {
+    unlinkSync(configFileToDelete);
+  }
+
+  {
+    const dependencies = getDependenciesToInstall(backendChoice);
+    spinner.start(`Installing ${dependencies.join(", ")}...`);
+    await addDependency(dependencies, { silent: true });
+    spinner.stop(`Installed ${dependencies.join(", ")}`);
+  }
+
+  {
+    const devDependencies = getDevDependenciesToInstall();
+    spinner.start(`Installing ${devDependencies.join(", ")}...`);
+    await addDependency(devDependencies, { silent: true, dev: true });
+    spinner.stop(`Installed ${devDependencies.join(", ")}`);
+  }
+
+  createExampleWorkflow(exampleWorkflowFileName);
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
-    await updateGitignoreForSqlite();
+    updateGitignoreForSqlite();
   }
 
   if (backendChoice === "postgres" || backendChoice === "both") {
-    await updateEnvForPostgres();
+    updateEnvForPostgres();
   }
 
-  await addWorkerScriptToPackageJson();
+  addWorkerScriptToPackageJson();
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
-  await createConfigFile(backendChoice);
+  createConfigFile(backendChoice, configFileName);
 
   // wrap up
   p.note(
@@ -132,10 +174,7 @@ export async function init(): Promise<void> {
   p.outro("✅ Setup complete!");
 }
 
-/**
- * Check configuration and list discovered workflows.
- * Used for debugging discovery issues.
- */
+/** openworkflow doctor */
 export async function doctor(): Promise<void> {
   consola.start("Running OpenWorkflow doctor...");
 
@@ -155,9 +194,16 @@ export async function doctor(): Promise<void> {
     const backendName = backend.constructor.name.replace("Backend", "");
     consola.log(`  • Backend: ${backendName}`);
 
+    const packageJson = readPackageJsonForDoctor();
+    if (packageJson) {
+      warnIfMissingBackendPackage(backendName, packageJson);
+      warnIfMissingTsconfig(packageJson);
+    }
+
     // discover directories
     const dirs = getWorkflowDirectories(config);
     consola.log(`  • Workflow directories: ${dirs.join(", ")}`);
+
     // discover files
     const configFileDir = path.dirname(configFile);
     const { files, workflows } = await discoverWorkflowsInDirs(
@@ -179,6 +225,83 @@ export async function doctor(): Promise<void> {
     await backend.stop();
   }
 }
+
+/**
+ * openworkflow worker start
+ * @param cliOptions - Worker config overrides
+ */
+export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
+  consola.start("Starting worker...");
+
+  const { config, configFile } = await loadConfigWithEnv();
+  if (!configFile) {
+    throw new CLIError(
+      "No config file found.",
+      "Run `ow init` to create a config file.",
+    );
+  }
+  const backend = config.backend;
+  const ow = new OpenWorkflow({ backend });
+
+  let worker: ReturnType<typeof ow.newWorker> | null = null;
+  let shuttingDown = false;
+
+  /** Stop the worker on process shutdown. */
+  async function gracefulShutdown(): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    consola.warn("Shutting down worker...");
+    try {
+      await worker?.stop();
+    } finally {
+      await backend.stop();
+    }
+    consola.success("Worker stopped");
+  }
+
+  try {
+    // discover and import workflows
+    const dirs = getWorkflowDirectories(config);
+    consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
+
+    const configFileDir = path.dirname(configFile);
+    const { files, workflows } = await discoverWorkflowsInDirs(
+      dirs,
+      configFileDir,
+    );
+    consola.info(`Found ${String(files.length)} workflow file(s)`);
+
+    consola.success(
+      `Loaded ${String(workflows.length)} workflow(s): ${workflows.map((w) => w.spec.name).join(", ")}`,
+    );
+
+    assertNoDuplicateWorkflows(workflows);
+
+    const workerOptions = mergeDefinedOptions(config.worker, cliOptions);
+    if (workerOptions.concurrency !== undefined) {
+      assertPositiveInteger("concurrency", workerOptions.concurrency);
+    }
+
+    // register discovered workflows
+    for (const workflow of workflows) {
+      ow.implementWorkflow(workflow.spec, workflow.fn);
+    }
+
+    worker = ow.newWorker(workerOptions);
+
+    process.on("SIGINT", () => void gracefulShutdown());
+    process.on("SIGTERM", () => void gracefulShutdown());
+
+    await worker.start();
+    consola.success("Worker started.");
+  } catch (error) {
+    await gracefulShutdown();
+    throw error;
+  }
+}
+
+// -----------------------------------------------------------------------------
 
 /**
  * Get workflow directories from config.
@@ -304,7 +427,7 @@ function printDiscoveredWorkflows(
   }
 }
 
-const WORKFLOW_EXTENSIONS = ["ts", "js", "mjs", "cjs"] as const;
+const WORKFLOW_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
 
 /**
  * Discover workflow files from directories. Recursively scans directories for
@@ -313,10 +436,7 @@ const WORKFLOW_EXTENSIONS = ["ts", "js", "mjs", "cjs"] as const;
  * @param baseDir - Base directory to resolve relative paths from
  * @returns Array of absolute file paths
  */
-export function discoverWorkflowFiles(
-  dirs: string[],
-  baseDir: string,
-): string[] {
+function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
   const discoveredFiles: string[] = [];
 
   /**
@@ -365,7 +485,7 @@ export function discoverWorkflowFiles(
  * @param files - Array of absolute file paths to import
  * @returns Array of discovered workflows
  */
-export async function importWorkflows(
+async function importWorkflows(
   files: string[],
 ): Promise<Workflow<unknown, unknown, unknown>[]> {
   const workflows: Workflow<unknown, unknown, unknown>[] = [];
@@ -444,7 +564,7 @@ async function discoverWorkflowsInDirs(
  * @param backendChoice - The selected backend choice
  * @returns The config template string
  */
-export function getConfigTemplate(backendChoice: BackendChoice): string {
+function getConfigTemplate(backendChoice: BackendChoice): string {
   switch (backendChoice) {
     case "sqlite": {
       return SQLITE_CONFIG;
@@ -459,166 +579,123 @@ export function getConfigTemplate(backendChoice: BackendChoice): string {
 }
 
 /**
- * Get the packages to install for a backend choice.
+ * Get the dependencies to install for a backend choice.
  * @param backendChoice - The selected backend choice
- * @returns Array of package names to install
+ * @returns Array of dependency package names to install
  */
-export function getPackagesToInstall(backendChoice: BackendChoice): string[] {
-  const packages = ["openworkflow"];
+function getDependenciesToInstall(backendChoice: BackendChoice): string[] {
+  const dependencies = ["openworkflow"];
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
-    packages.push("@openworkflow/backend-sqlite");
+    dependencies.push("@openworkflow/backend-sqlite");
   }
 
   if (backendChoice === "postgres" || backendChoice === "both") {
-    packages.push("@openworkflow/backend-postgres");
+    dependencies.push("@openworkflow/backend-postgres");
   }
 
-  return packages;
+  return dependencies;
 }
 
 /**
- * Create config file with user confirmation.
+ * Get the dev dependencies to install.
+ * @returns Array of dev dependency package names to install
+ */
+function getDevDependenciesToInstall(): string[] {
+  return ["@openworkflow/cli"];
+}
+
+/**
+ * Create config file.
  * @param backendChoice - The selected backend choice
- * @returns True if config was created, false otherwise
+ * @param configFileName - The config file name to write
  */
-async function createConfigFile(
+function createConfigFile(
   backendChoice: BackendChoice,
-): Promise<boolean> {
-  const shouldCreateConfig = await p.confirm({
-    message: "Create openworkflow.config.js?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldCreateConfig)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  if (shouldCreateConfig) {
-    const spinner = p.spinner();
-    spinner.start("Writing config...");
-    const configTemplate = getConfigTemplate(backendChoice);
-    const configDestPath = path.join(process.cwd(), "openworkflow.config.js");
-    writeFileSync(configDestPath, configTemplate, "utf8");
-    spinner.stop(`Config written to ${configDestPath}`);
-    return true;
-  }
-
-  return false;
+  configFileName: string,
+): void {
+  const spinner = p.spinner();
+  spinner.start("Writing config...");
+  const configTemplate = getConfigTemplate(backendChoice);
+  const configDestPath = path.join(process.cwd(), configFileName);
+  writeFileSync(configDestPath, configTemplate, "utf8");
+  spinner.stop(`Config written to ${configDestPath}`);
 }
 
 /**
- * Create example workflow with user confirmation.
+ * Create example workflow.
+ * @param exampleWorkflowFileName - The example workflow filename to write
  */
-async function createExampleWorkflow(): Promise<void> {
-  const shouldCreateExample = await p.confirm({
-    message: "Create example hello-world workflow in ./openworkflow/?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldCreateExample)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
+function createExampleWorkflow(exampleWorkflowFileName: string): void {
+  const spinner = p.spinner();
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
   }
-
-  if (shouldCreateExample) {
-    const spinner = p.spinner();
-    spinner.start("Creating example (hello-world) workflow...");
-    const workflowsDir = path.join(process.cwd(), "openworkflow");
-    if (!existsSync(workflowsDir)) {
-      mkdirSync(workflowsDir, { recursive: true });
-    }
-    const helloWorldDestPath = path.join(workflowsDir, "hello-world.ts");
-    writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+  const helloWorldDestPath = path.join(workflowsDir, exampleWorkflowFileName);
+  if (existsSync(helloWorldDestPath)) {
+    spinner.start("Checking example (hello-world) workflow...");
     spinner.stop(
-      `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+      `Example (hello-world) workflow already exists at ${helloWorldDestPath}`,
     );
+    return;
   }
+
+  spinner.start("Creating example (hello-world) workflow...");
+  writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
+  spinner.stop(
+    `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+  );
 }
 
 /**
- * Update .gitignore with user confirmation.
+ * Update .gitignore for SQLite.
  */
-async function updateGitignoreForSqlite(): Promise<void> {
-  // ensure .openworkflow directory
-  const dbDir = path.join(process.cwd(), ".openworkflow");
-  if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true });
+function updateGitignoreForSqlite(): void {
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
   }
 
   const gitignorePath = path.join(process.cwd(), ".gitignore");
-  const gitignoreExists = existsSync(gitignorePath);
-
-  const shouldUpdateGitignore = await p.confirm({
-    message: gitignoreExists
-      ? "Add .openworkflow to .gitignore?"
-      : "Create .gitignore with .openworkflow entry?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(shouldUpdateGitignore)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  if (shouldUpdateGitignore) {
-    const spinner = p.spinner();
-    spinner.start("Updating .gitignore...");
-    const result = ensureGitignoreEntry(gitignorePath, ".openworkflow");
-    spinner.stop(
-      result.added
-        ? "Added .openworkflow to .gitignore"
-        : ".openworkflow already in .gitignore",
-    );
-  }
+  const spinner = p.spinner();
+  spinner.start("Updating .gitignore...");
+  const result = ensureGitignoreEntry(gitignorePath, "openworkflow/backend.db");
+  spinner.stop(
+    result.added
+      ? "Added openworkflow/backend.db to .gitignore"
+      : "openworkflow/backend.db already in .gitignore",
+  );
 }
 
 /**
- * Add worker script to package.json with user confirmation.
+ * Add worker script to package.json.
  */
-async function addWorkerScriptToPackageJson(): Promise<void> {
+function addWorkerScriptToPackageJson(): void {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return;
   }
+  const spinner = p.spinner();
+  spinner.start("Adding worker script to package.json...");
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
 
-  const shouldAddScript = await p.confirm({
-    message: 'Add "worker" script to package.json?',
-    initialValue: true,
-  });
+    packageJson.scripts ??= {};
+    packageJson.scripts["worker"] = "ow worker start";
 
-  if (p.isCancel(shouldAddScript)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
+    writeFileSync(
+      packageJsonPath,
+      JSON.stringify(packageJson, null, 2) + "\n",
+      "utf8",
+    );
 
-  if (shouldAddScript) {
-    const spinner = p.spinner();
-    spinner.start("Adding worker script to package.json...");
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-        scripts?: Record<string, string>;
-      };
-
-      packageJson.scripts ??= {};
-      packageJson.scripts["worker"] = "ow worker start";
-
-      writeFileSync(
-        packageJsonPath,
-        JSON.stringify(packageJson, null, 2) + "\n",
-        "utf8",
-      );
-
-      spinner.stop('Added "worker" script to package.json');
-    } catch {
-      spinner.stop("Failed to update package.json");
-      consola.warn("Could not add worker script to package.json");
-    }
+    spinner.stop('Added "worker" script to package.json');
+  } catch {
+    spinner.stop("Failed to update package.json");
+    consola.warn("Could not add worker script to package.json");
   }
 }
 
@@ -626,10 +703,10 @@ async function addWorkerScriptToPackageJson(): Promise<void> {
  * Ensure a specific entry exists in a .gitignore file. Creates the file if it
  * doesn't exist, appends the entry if not present.
  * @param gitignorePath - Path to the .gitignore file
- * @param entry - The entry to add (e.g. ".openworkflow")
+ * @param entry - The entry to add (e.g. "openworkflow/backend.db")
  * @returns Object indicating whether the entry was added or already existed
  */
-export function ensureGitignoreEntry(
+function ensureGitignoreEntry(
   gitignorePath: string,
   entry: string,
 ): { added: boolean; created: boolean } {
@@ -664,38 +741,151 @@ export function ensureGitignoreEntry(
 }
 
 /**
- * Add DATABASE_URL to .env file with user confirmation.
+ * Add OPENWORKFLOW_POSTGRES_URL to .env file.
  */
-async function updateEnvForPostgres(): Promise<void> {
+function updateEnvForPostgres(): void {
   const envPath = path.join(process.cwd(), ".env");
-  const envExists = existsSync(envPath);
+  const spinner = p.spinner();
+  spinner.start("Updating .env...");
+  const result = ensureEnvEntry(
+    envPath,
+    "OPENWORKFLOW_POSTGRES_URL",
+    "postgresql://user:password@localhost:5432/openworkflow",
+  );
+  spinner.stop(
+    result.added
+      ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
+      : "OPENWORKFLOW_POSTGRES_URL already in .env",
+  );
+}
 
-  const shouldUpdateEnv = await p.confirm({
-    message: envExists
-      ? "Add OPENWORKFLOW_POSTGRES_URL to .env?"
-      : "Create .env with OPENWORKFLOW_POSTGRES_URL entry?",
-    initialValue: true,
-  });
+/**
+ * Load CLI config after loading .env, and wrap errors for user-facing output.
+ * @returns Loaded config and metadata.
+ */
+async function loadConfigWithEnv() {
+  loadDotenv({ quiet: true });
+  try {
+    return await loadConfig();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CLIError("Failed to load OpenWorkflow config.", message);
+  }
+}
 
-  if (p.isCancel(shouldUpdateEnv)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
+interface PackageJsonForDoctor {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+/**
+ * Load package.json for doctor checks.
+ * @returns Parsed package.json or null if unavailable.
+ */
+function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
+  const packageJsonPath = path.join(process.cwd(), "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return null;
   }
 
-  if (shouldUpdateEnv) {
-    const spinner = p.spinner();
-    spinner.start("Updating .env...");
-    const result = ensureEnvEntry(
-      envPath,
-      "OPENWORKFLOW_POSTGRES_URL",
-      "postgresql://user:password@localhost:5432/openworkflow",
+  try {
+    return JSON.parse(
+      readFileSync(packageJsonPath, "utf8"),
+    ) as PackageJsonForDoctor;
+  } catch {
+    consola.warn("Could not read package.json for dependency checks.");
+    return null;
+  }
+}
+
+/**
+ * Determine the config filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The config file name to create
+ */
+export function getConfigFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  if (packageJson && hasDependency(packageJson, "typescript")) {
+    return "openworkflow.config.ts";
+  }
+
+  return "openworkflow.config.js";
+}
+
+/**
+ * Determine the example workflow filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The example workflow file name to create
+ */
+export function getExampleWorkflowFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  const configFileName = getConfigFileName(packageJson);
+  const extension = path.extname(configFileName) || ".js";
+
+  return `hello-world${extension}`;
+}
+
+/**
+ * Check whether a dependency is declared in package.json.
+ * @param packageJson - Parsed package.json.
+ * @param name - Dependency name to check.
+ * @returns True when the dependency is listed.
+ */
+function hasDependency(
+  packageJson: Readonly<PackageJsonForDoctor>,
+  name: string,
+): boolean {
+  return Boolean(
+    packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name],
+  );
+}
+
+/**
+ * Warn when the configured backend is missing its package.
+ * @param backendName - Configured backend name.
+ * @param packageJson - Parsed package.json.
+ */
+function warnIfMissingBackendPackage(
+  backendName: string,
+  packageJson: Readonly<PackageJsonForDoctor>,
+): void {
+  const backendNameLower = backendName.toLowerCase();
+
+  if (
+    backendNameLower.includes("postgres") &&
+    !hasDependency(packageJson, "@openworkflow/backend-postgres")
+  ) {
+    consola.warn(
+      "Backend is Postgres but @openworkflow/backend-postgres is not installed.",
     );
-    spinner.stop(
-      result.added
-        ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
-        : "OPENWORKFLOW_POSTGRES_URL already in .env",
+  }
+
+  if (
+    backendNameLower.includes("sqlite") &&
+    !hasDependency(packageJson, "@openworkflow/backend-sqlite")
+  ) {
+    consola.warn(
+      "Backend is SQLite but @openworkflow/backend-sqlite is not installed.",
     );
+  }
+}
+
+/**
+ * Warn when TypeScript is installed but tsconfig.json is missing.
+ * @param packageJson - Parsed package.json.
+ */
+function warnIfMissingTsconfig(
+  packageJson: Readonly<PackageJsonForDoctor>,
+): void {
+  if (!hasDependency(packageJson, "typescript")) {
+    return;
+  }
+
+  const tsconfigPath = path.join(process.cwd(), "tsconfig.json");
+  if (!existsSync(tsconfigPath)) {
+    consola.warn("TypeScript is installed but no tsconfig.json was found.");
   }
 }
 
@@ -707,7 +897,7 @@ async function updateEnvForPostgres(): Promise<void> {
  * @param value - The default value for the environment variable
  * @returns Object indicating whether the entry was added or already existed
  */
-export function ensureEnvEntry(
+function ensureEnvEntry(
   envPath: string,
   key: string,
   value: string,
@@ -747,486 +937,6 @@ export function ensureEnvEntry(
 }
 
 /**
- * Create a workflow run from the CLI.
- * @param workflowName - Optional workflow name. If not provided, user will be prompted to select one.
- * @param options - Run options including input data
- */
-export async function createRun(
-  workflowName: string | undefined,
-  options: CreateRunOptions,
-): Promise<void> {
-  const { config, configFile } = await loadConfigWithEnv();
-
-  if (!configFile) {
-    throw new CLIError(
-      "No config file found.",
-      "Run `ow init` to create a config file.",
-    );
-  }
-  const backend = config.backend;
-
-  try {
-    // Parse input from --input or --file
-    const input = parseInput(options);
-
-    // Discover workflows
-    const workflows = await discoverAllWorkflows(config, configFile);
-
-    // Select workflow (interactively if not provided)
-    const workflow = await selectWorkflow(workflows, workflowName);
-
-    consola.start(`Creating workflow run for "${workflow.spec.name}"...`);
-
-    // Create the workflow run
-    const ow = new OpenWorkflow({ backend });
-    const run = await ow.runWorkflow(workflow.spec, input);
-
-    consola.success(`Workflow run created!`);
-    consola.info(`Run ID: ${run.workflowRun.id}`);
-    consola.info(`Status: ${run.workflowRun.status}`);
-    consola.box(
-      `Describe this run with:\n$ ow runs describe ${run.workflowRun.id}`,
-    );
-  } finally {
-    await backend.stop();
-  }
-}
-
-/**
- * Start a worker using the project config.
- * @param cliOptions - Worker config overrides
- */
-export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
-  consola.start("Starting worker...");
-
-  const { config, configFile } = await loadConfigWithEnv();
-  if (!configFile) {
-    throw new CLIError(
-      "No config file found.",
-      "Run `ow init` to create a config file.",
-    );
-  }
-  const backend = config.backend;
-  const ow = new OpenWorkflow({ backend });
-
-  let worker: ReturnType<typeof ow.newWorker> | null = null;
-  let shuttingDown = false;
-
-  /** Stop the worker on process shutdown. */
-  async function gracefulShutdown(): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
-
-    consola.warn("Shutting down worker...");
-    try {
-      await worker?.stop();
-    } finally {
-      await backend.stop();
-    }
-    consola.success("Worker stopped");
-  }
-
-  try {
-    // discover and import workflows
-    const dirs = getWorkflowDirectories(config);
-    consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
-
-    const configFileDir = path.dirname(configFile);
-    const { files, workflows } = await discoverWorkflowsInDirs(
-      dirs,
-      configFileDir,
-    );
-    consola.info(`Found ${String(files.length)} workflow file(s)`);
-
-    consola.success(
-      `Loaded ${String(workflows.length)} workflow(s): ${workflows.map((w) => w.spec.name).join(", ")}`,
-    );
-
-    assertNoDuplicateWorkflows(workflows);
-
-    const workerOptions = mergeDefinedOptions(config.worker, cliOptions);
-    if (workerOptions.concurrency !== undefined) {
-      assertPositiveInteger("concurrency", workerOptions.concurrency);
-    }
-
-    // register discovered workflows
-    for (const workflow of workflows) {
-      ow.implementWorkflow(workflow.spec, workflow.fn);
-    }
-
-    worker = ow.newWorker(workerOptions);
-
-    process.on("SIGINT", () => void gracefulShutdown());
-    process.on("SIGTERM", () => void gracefulShutdown());
-
-    await worker.start();
-    consola.success("Worker started.");
-  } catch (error) {
-    await gracefulShutdown();
-    throw error;
-  }
-}
-
-export interface ListRunsOptions {
-  /** Maximum number of runs to display. */
-  limit?: number;
-  /** Cursor for pagination (next page). */
-  after?: string;
-  /** Cursor for pagination (previous page). */
-  before?: string;
-}
-
-/**
- * List workflow runs.
- * @param options - Pagination options
- */
-export async function listRuns(options: ListRunsOptions): Promise<void> {
-  const { config, configFile } = await loadConfigWithEnv();
-
-  if (!configFile) {
-    throw new CLIError(
-      "No config file found.",
-      "Run `ow init` to create a config file.",
-    );
-  }
-
-  const backend = config.backend;
-
-  if (options.limit !== undefined) {
-    assertPositiveInteger("limit", options.limit);
-  }
-
-  try {
-    const params: { limit: number; after?: string; before?: string } = {
-      limit: options.limit ?? 20,
-    };
-    if (options.after) {
-      params.after = options.after;
-    }
-    if (options.before) {
-      params.before = options.before;
-    }
-
-    const result = await backend.listWorkflowRuns(params);
-
-    if (result.data.length === 0) {
-      consola.info("No workflow runs found.");
-      return;
-    }
-
-    consola.info(`Showing ${String(result.data.length)} workflow run(s):\n`);
-
-    // Print header
-    const header = formatRunRow("ID", "Workflow", "Status", "Created At");
-    consola.log(header);
-    consola.log("-".repeat(header.length));
-
-    // Print rows
-    for (const run of result.data) {
-      const row = formatRunRow(
-        run.id,
-        formatWorkflowName(run),
-        formatStatus(run.status),
-        formatDate(run.createdAt),
-      );
-      consola.log(row);
-    }
-
-    // Pagination info
-    if (result.pagination.next || result.pagination.prev) {
-      consola.log("");
-      if (result.pagination.next) {
-        consola.info(
-          `Next page: ow runs list --after ${result.pagination.next}`,
-        );
-      }
-      if (result.pagination.prev) {
-        consola.info(
-          `Previous page: ow runs list --before ${result.pagination.prev}`,
-        );
-      }
-    }
-  } finally {
-    await backend.stop();
-  }
-}
-
-/**
- * Describe a specific workflow run.
- * @param runId - The workflow run ID to describe
- */
-export async function describeRun(runId: string): Promise<void> {
-  const { config, configFile } = await loadConfigWithEnv();
-
-  if (!configFile) {
-    throw new CLIError(
-      "No config file found.",
-      "Run `ow init` to create a config file.",
-    );
-  }
-  const backend = config.backend;
-
-  try {
-    // Fetch run details
-    const run = await backend.getWorkflowRun({ workflowRunId: runId });
-
-    if (!run) {
-      throw new CLIError(
-        `Workflow run not found: ${runId}`,
-        "Make sure the run ID is correct.",
-      );
-    }
-
-    // Fetch step attempts
-    const steps = await listAllStepAttempts(backend, runId);
-
-    // Display run details
-    printRunDetails(run);
-
-    // Display input/output
-    if (run.input !== null) {
-      consola.log("\n📥 Input:");
-      consola.log(formatJson(run.input));
-    }
-
-    if (run.output !== null) {
-      consola.log("\n📤 Output:");
-      consola.log(formatJson(run.output));
-    }
-
-    if (run.error) {
-      consola.log("\n❌ Error:");
-      consola.log(formatJson(run.error));
-    }
-
-    // Display steps timeline
-    if (steps.length > 0) {
-      consola.log("\n📋 Steps Timeline:");
-      printStepsTimeline(steps);
-    }
-  } finally {
-    await backend.stop();
-  }
-}
-
-/**
- * Load CLI config after loading .env, and wrap errors for user-facing output.
- * @returns Loaded config and metadata.
- */
-async function loadConfigWithEnv() {
-  loadDotenv({ quiet: true });
-  try {
-    return await loadConfig();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new CLIError("Failed to load OpenWorkflow config.", message);
-  }
-}
-
-/**
- * Fetch all step attempts for a run using pagination.
- * @param backend - Backend instance from config
- * @param workflowRunId - Workflow run ID
- * @returns Full list of step attempts
- */
-async function listAllStepAttempts(
-  backend: Awaited<ReturnType<typeof loadConfig>>["config"]["backend"],
-  workflowRunId: string,
-): Promise<StepAttempt[]> {
-  const steps: StepAttempt[] = [];
-  let cursor: string | null = null;
-
-  do {
-    const params: { workflowRunId: string; limit: number; after?: string } = {
-      workflowRunId,
-      limit: 100,
-    };
-    if (cursor !== null) {
-      params.after = cursor;
-    }
-
-    const result = await backend.listStepAttempts(params);
-
-    steps.push(...result.data);
-    cursor = result.pagination.next;
-  } while (cursor);
-
-  return steps;
-}
-
-/**
- * Print run details in a formatted box.
- * @param run - The workflow run
- */
-function printRunDetails(run: WorkflowRun): void {
-  const lines = [
-    `🔖 Run ID: ${run.id}`,
-    `📦 Workflow: ${formatWorkflowName(run)}`,
-    `📊 Status: ${formatStatus(run.status)}`,
-    `🕐 Created: ${formatDate(run.createdAt)}`,
-  ];
-
-  if (run.startedAt) {
-    lines.push(`▶️  Started: ${formatDate(run.startedAt)}`);
-  }
-
-  if (run.finishedAt) {
-    lines.push(`🏁 Finished: ${formatDate(run.finishedAt)}`);
-    if (run.startedAt) {
-      const durationMs = run.finishedAt.getTime() - run.startedAt.getTime();
-      lines.push(`⏱️  Duration: ${formatDuration(durationMs)}`);
-    }
-  }
-
-  if (run.workerId) {
-    lines.push(`🔧 Worker: ${run.workerId}`);
-  }
-
-  consola.box(lines.join("\n"));
-}
-
-/**
- * Print steps timeline.
- * @param steps - Array of step attempts
- */
-function printStepsTimeline(steps: StepAttempt[]): void {
-  // Sort steps by creation time
-  const sortedSteps = steps.toSorted(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-  );
-
-  const header = formatStepRow("Step", "Kind", "Status", "Duration");
-  consola.log(header);
-  consola.log("-".repeat(header.length));
-
-  for (const step of sortedSteps) {
-    const duration =
-      step.startedAt && step.finishedAt
-        ? formatDuration(step.finishedAt.getTime() - step.startedAt.getTime())
-        : "-";
-
-    const row = formatStepRow(
-      step.stepName,
-      step.kind,
-      formatStatus(step.status),
-      duration,
-    );
-    consola.log(row);
-  }
-}
-
-/**
- * Format a workflow name with version.
- * @param run - The workflow run
- * @returns Formatted workflow name
- */
-function formatWorkflowName(run: WorkflowRun): string {
-  return run.version ? `${run.workflowName}@${run.version}` : run.workflowName;
-}
-
-/**
- * Format a date for display.
- * @param date - The date to format
- * @returns Formatted date string
- */
-function formatDate(date: Date): string {
-  return date.toLocaleString();
-}
-
-/**
- * Format a duration in milliseconds to human-readable string.
- * @param ms - Duration in milliseconds
- * @returns Formatted duration string
- */
-function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${String(ms)}ms`;
-  }
-
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) {
-    return `${String(seconds)}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) {
-    return `${String(minutes)}m ${String(remainingSeconds)}s`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return `${String(hours)}h ${String(remainingMinutes)}m`;
-}
-
-/**
- * Format status with emoji indicator.
- * @param status - The status string
- * @returns Status with emoji
- */
-function formatStatus(status: string): string {
-  const statusEmoji: Record<string, string> = {
-    pending: "⏳ pending",
-    running: "🔄 running",
-    sleeping: "💤 sleeping",
-    succeeded: "✅ succeeded",
-    completed: "✅ completed",
-    failed: "❌ failed",
-    canceled: "🚫 canceled",
-  };
-  return statusEmoji[status] ?? status;
-}
-
-/**
- * Format a JSON value for display.
- * @param value - The JSON value
- * @returns Formatted JSON string
- */
-function formatJson(value: unknown): string {
-  return JSON.stringify(value, null, 2);
-}
-
-/**
- * Format a run row for the table.
- * @param id - Run ID
- * @param workflow - Workflow name
- * @param status - Status string
- * @param createdAt - Creation date
- * @returns Formatted row string
- */
-function formatRunRow(
-  id: string,
-  workflow: string,
-  status: string,
-  createdAt: string,
-): string {
-  const idCol = id.padEnd(24);
-  const workflowCol = workflow.padEnd(24);
-  const statusCol = status.padEnd(16);
-  return `${idCol} ${workflowCol} ${statusCol} ${createdAt}`;
-}
-
-/**
- * Format a step row for the table.
- * @param name - Step name
- * @param kind - Step kind
- * @param status - Status string
- * @param duration - Duration string
- * @returns Formatted row string
- */
-function formatStepRow(
-  name: string,
-  kind: string,
-  status: string,
-  duration: string,
-): string {
-  const nameCol = name.padEnd(24);
-  const kindCol = kind.padEnd(12);
-  const statusCol = status.padEnd(16);
-  return `${nameCol} ${kindCol} ${statusCol} ${duration}`;
-}
-
-/**
  * Validate a numeric option is a positive integer.
  * @param name - Option name
  * @param value - Option value
@@ -1260,147 +970,4 @@ function mergeDefinedOptions<T extends Record<string, unknown>>(
   }
 
   return merged;
-}
-
-export interface CreateRunOptions {
-  /** JSON input string. */
-  input?: string;
-  /** Path to a JSON file containing input. */
-  file?: string;
-}
-
-/**
- * Parse input from CLI options.
- * @param options - CLI options with input or file
- * @returns Parsed JSON input or undefined
- * @throws {CLIError} If both --input and --file are specified
- * @throws {CLIError} If --input contains invalid JSON
- * @throws {CLIError} If --file does not exist or contains invalid JSON
- */
-function parseInput(options: CreateRunOptions): JsonValue | undefined {
-  if (options.input && options.file) {
-    throw new CLIError(
-      "Cannot specify both --input and --file.",
-      "Use one or the other to provide workflow input.",
-    );
-  }
-
-  if (options.input) {
-    try {
-      return JSON.parse(options.input) as JsonValue;
-    } catch {
-      throw new CLIError(
-        "Invalid JSON in --input.",
-        "Make sure the input is valid JSON.",
-      );
-    }
-  }
-
-  if (options.file) {
-    const filePath = path.resolve(options.file);
-    if (!existsSync(filePath)) {
-      throw new CLIError(
-        `File not found: ${options.file}`,
-        "Make sure the file exists and the path is correct.",
-      );
-    }
-
-    try {
-      const content = readFileSync(filePath, "utf8");
-      return JSON.parse(content) as JsonValue;
-    } catch {
-      throw new CLIError(
-        `Failed to parse JSON from file: ${options.file}`,
-        "Make sure the file contains valid JSON.",
-      );
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Discover all workflows from the config.
- * @param config - The loaded config
- * @param configFile - Path to the config file
- * @returns Array of discovered workflows
- * @throws {CLIError} If no workflow files or exports are found
- */
-async function discoverAllWorkflows(
-  config: Awaited<ReturnType<typeof loadConfig>>["config"],
-  configFile: string,
-): Promise<Workflow<unknown, unknown, unknown>[]> {
-  const dirs = getWorkflowDirectories(config);
-  const { workflows } = await discoverWorkflowsInDirs(
-    dirs,
-    path.dirname(configFile),
-  );
-
-  assertNoDuplicateWorkflows(workflows);
-
-  return workflows;
-}
-
-/**
- * Select a workflow, either by name or interactively.
- * @param workflows - Available workflows
- * @param workflowName - Optional workflow name
- * @returns Selected workflow
- */
-async function selectWorkflow(
-  workflows: Workflow<unknown, unknown, unknown>[],
-  workflowName: string | undefined,
-): Promise<Workflow<unknown, unknown, unknown>> {
-  if (workflowName) {
-    // Find by exact name or name@version
-    const workflow = workflows.find((w) => {
-      const name = w.spec.name;
-      const version = w.spec.version;
-      const key = version ? `${name}@${version}` : name;
-      return name === workflowName || key === workflowName;
-    });
-
-    if (!workflow) {
-      const availableNames = workflows
-        .map((w) =>
-          w.spec.version ? `${w.spec.name}@${w.spec.version}` : w.spec.name,
-        )
-        .join(", ");
-      throw new CLIError(
-        `Workflow not found: "${workflowName}"`,
-        `Available workflows: ${availableNames}`,
-      );
-    }
-
-    return workflow;
-  }
-
-  // Interactive selection
-  const options = workflows.map((w) => {
-    const name = w.spec.name;
-    const version = w.spec.version;
-    const label = version ? `${name}@${version}` : name;
-    const option: {
-      value: Workflow<unknown, unknown, unknown>;
-      label: string;
-      hint?: string;
-    } = { value: w, label };
-    if (version) {
-      option.hint = `version: ${version}`;
-    }
-    return option;
-  });
-
-  const selected = await p.select({
-    message: "Select a workflow to run:",
-    options,
-  });
-
-  if (p.isCancel(selected)) {
-    p.cancel("Run canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
-
-  return selected;
 }

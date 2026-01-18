@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/backend-sqlite",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "type": "module",
   "exports": {
     ".": {
@@ -17,14 +17,14 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "openworkflow": "^0.4.1"
+    "openworkflow": "^0.5.0"
   },
   "devDependencies": {
     "@openworkflow/backend-test": "file:../backend-test",
     "vitest": "^4.0.15"
   },
   "peerDependencies": {
-    "openworkflow": "^0.4.1"
+    "openworkflow": "^0.5.0"
   },
   "engines": {
     "node": ">=22.5.0"

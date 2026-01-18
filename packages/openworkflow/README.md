@@ -8,37 +8,13 @@ OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
 exactly where they left off - all without extra servers to manage.
 
-> OpenWorkflow is in active development and moving quickly. Check out the
-> [Roadmap](#roadmap) for what’s coming next.
-
-## Quick Start
-
-Prerequisites:
-
-- Node.js
-- PostgreSQL (and/or SQLite)
-
-### 1. Install
-
-```bash
-npm install openworkflow @openworkflow/backend-postgres @openworkflow/backend-sqlite
-```
-
-You only need to install the backend package(s) for the database you plan to
-use.
-
-### 2. Define a workflow
+Define a workflow in a few lines:
 
 ```ts
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { OpenWorkflow } from "openworkflow";
 
-// use Postgres if OPENWORKFLOW_POSTGRES_URL is set, otherwise use SQLite
-const backend = process.env["OPENWORKFLOW_POSTGRES_URL"]
-  ? await BackendPostgres.connect(process.env["OPENWORKFLOW_POSTGRES_URL"])
-  : BackendSqlite.connect(); // optionally provide SQLite file path
-
+const backend = BackendSqlite.connect("openworkflow/backend.db");
 const ow = new OpenWorkflow({ backend });
 
 const sendWelcomeEmail = ow.defineWorkflow(
@@ -67,28 +43,43 @@ const sendWelcomeEmail = ow.defineWorkflow(
 );
 ```
 
-### 3. Start a worker
+> OpenWorkflow is in active development and moving quickly. Check out the
+> [Roadmap](#roadmap) for what’s coming next.
 
-Workers are background processes that execute your workflows. Start one in a
-separate process or the same one as your app:
+## Quick Start
 
-```ts
-const worker = ow.newWorker();
-await worker.start();
+Prerequisites:
+
+- Node.js
+- PostgreSQL (and/or SQLite)
+
+### 1. Install
+
+Install and set up OpenWorkflow with:
+
+```bash
+npx @openworkflow/cli init
 ```
 
-### 4. Run workflows from your app
+The CLI will prompt for your backend, installs dependencies, and generates:
+`openworkflow.config.ts`, `openworkflow/hello-world.ts`, `.env`, `.gitignore`,
+and a `worker` script.
 
-Trigger workflows from your web server, API, or any application code:
+### 2. Start a worker
 
-```ts
-// In your API route handler
-app.post("/users/:id/welcome", async (req, res) => {
-  // Run the workflow async and do not wait for the result
-  const runHandle = await sendWelcomeEmail.run({ userId: req.params.id });
-  res.json({ runId: runHandle.workflowRun.id });
-});
+```bash
+npm run worker
+# or
+npx @openworkflow/cli worker start
 ```
+
+This runs the worker using `openworkflow.config.ts` and auto-loads workflows
+from the configured directories (default: `openworkflow/`).
+
+### 3. Run workflows from your app
+
+Edit the generated workflow file and run it from your application code using the
+OpenWorkflow client APIs (see examples below).
 
 That's it. Your workflow is now durable, resumable, and fault-tolerant.
 
@@ -133,9 +124,24 @@ the email.
 ### Workers
 
 Workers are long-running processes that poll your database for pending workflows
-and execute them. You can run multiple workers for high availability and scale.
+and execute them. Run workers via the CLI so workflow discovery stays in sync
+with your `openworkflow.config.ts`:
+
+```bash
+npm run worker
+# or
+npx @openworkflow/cli worker start
+```
+
+Or, for more control, you can write your own workers:
 
 ```ts
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = BackendSqlite.connect("openworkflow/backend.db");
+const ow = new OpenWorkflow({ backend });
+
 const worker = ow.newWorker({ concurrency: 20 });
 await worker.start();
 
@@ -367,6 +373,7 @@ and Yup.
 **Live in current `npm` release:**
 
 - ✅ PostgreSQL and SQLite backends
+- ✅ CLI (`npx @openworkflow/cli`)
 - ✅ Worker with concurrency control
 - ✅ Step memoization & retries
 - ✅ Graceful shutdown
@@ -377,13 +384,11 @@ and Yup.
 
 **Coming Soon:**
 
-> These releases don't yet include a dashboard UI or CLI. For now, you can
-> inspect workflow and step state directly in PostgreSQL or SQLite
-> (workflow_runs and step_runs tables). A CLI and dashboard are planned for an
-> upcoming release to make debugging and monitoring much easier.
+> These releases don't yet include a dashboard UI. For now, you can inspect
+> workflow and step state directly in PostgreSQL or SQLite (workflow_runs and
+> step_attempts tables). A dashboard is planned for an upcoming release to make
+> debugging and monitoring much easier.
 
-- Improved local dev experience (coming in v0.5)
-- CLI (coming in v0.5)
 - Dashboard UI
 - Idempotency keys
 - Rollback / compensation functions

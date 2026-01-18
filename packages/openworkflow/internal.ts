@@ -1,6 +1,3 @@
-// config
-export { loadConfig } from "./config.js";
-
 // workflow
 export type { Workflow } from "./workflow.js";
 export { isWorkflow } from "./workflow.js";

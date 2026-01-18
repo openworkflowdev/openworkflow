@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx index.ts",
-    "worker": "tsx ../../packages/cli/index.ts worker start"
+    "worker": "tsx ../../packages/cli/cli.ts worker start"
   },
   "dependencies": {
     "@openworkflow/backend-sqlite": "file:../../packages/backend-sqlite",
