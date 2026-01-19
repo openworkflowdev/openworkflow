@@ -8,8 +8,8 @@
   "scripts": {
     "build": "turbo build",
     "ci": "npm run format && npm run lint && npm run typecheck && npm run build && npm run test:coverage",
-    "format": "prettier --check . --ignore-path .gitignore",
-    "format:fix": "prettier --write . --ignore-path .gitignore",
+    "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
+    "format:fix": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "knip": "knip",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
