@@ -190,7 +190,9 @@ export const processPaymentRuns: Array<WorkflowRun> = Array.from(
       total: Math.floor(Math.random() * 10 + 3),
       completed: Math.floor(Math.random() * 8 + 1),
     },
-    triggeredBy: ["Manual", "Schedule", "Api"][Math.floor(Math.random() * 3)],
+    triggeredBy: (["Manual", "Schedule", "Api"] as const)[
+      Math.floor(Math.random() * 3)
+    ] as string,
   }),
 );
 
@@ -244,7 +246,9 @@ export function getRunsByWorkflowId(workflowId: string): Array<WorkflowRun> {
       total: Math.floor(Math.random() * 8 + 2),
       completed: Math.floor(Math.random() * 6 + 1),
     },
-    triggeredBy: ["Manual", "Schedule", "Api"][Math.floor(Math.random() * 3)],
+    triggeredBy: (["Manual", "Schedule", "Api"] as const)[
+      Math.floor(Math.random() * 3)
+    ] as string,
   }));
 }
 

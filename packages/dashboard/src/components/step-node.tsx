@@ -8,16 +8,17 @@ import {
   Clock,
   XCircle,
 } from "@phosphor-icons/react";
-import type { NodeProps } from "@xyflow/react";
 import { Handle, Position } from "@xyflow/react";
 
 export function StepNode({
   data,
-}: NodeProps<{
-  step: StepAttempt;
-  onToggle: () => void;
-  isExpanded: boolean;
-}>) {
+}: {
+  data: {
+    step: StepAttempt;
+    onToggle: () => void;
+    isExpanded: boolean;
+  };
+}) {
   const { step, onToggle, isExpanded } = data;
 
   const StatusIcon =

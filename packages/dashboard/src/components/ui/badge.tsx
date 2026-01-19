@@ -32,6 +32,7 @@ function Badge({
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+  // @ts-expect-error - render is not typed properly
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(

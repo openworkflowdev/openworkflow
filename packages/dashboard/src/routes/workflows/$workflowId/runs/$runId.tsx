@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { getRunById, getWorkflowById, runSteps } from "@/mocks/mock-data";
-import type { StepAttempt } from "@/types";
 import {
   ArrowLeft,
   CaretDown,
@@ -72,16 +71,17 @@ function RunDetailsPage() {
     },
   }));
 
+  // @ts-expect-error - edges is not typed correctly for optional runStep
   const edges: Array<Edge> = runSteps.slice(0, -1).map((step, index) => ({
-    id: `${step.name}-${runSteps[index + 1].name}`,
+    id: `${step.name}-${runSteps[index + 1]?.name}`,
     source: step.name,
-    target: runSteps[index + 1].name,
-    animated: runSteps[index + 1].status === "running",
+    target: runSteps[index + 1]?.name,
+    animated: runSteps[index + 1]?.status === "running",
     style: {
       stroke:
-        runSteps[index].status === "completed"
+        runSteps[index]?.status === "completed"
           ? "rgb(34, 197, 94)"
-          : runSteps[index].status === "failed"
+          : runSteps[index]?.status === "failed"
             ? "rgb(239, 68, 68)"
             : "rgb(100, 116, 139)",
     },

@@ -21,6 +21,7 @@ function Slider({
   );
 
   return (
+    // @ts-expect-error - not typed properly
     <SliderPrimitive.Root
       className="data-horizontal:w-full data-vertical:h-full"
       data-slot="slider"

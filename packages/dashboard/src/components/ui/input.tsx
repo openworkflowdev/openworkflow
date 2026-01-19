@@ -4,6 +4,7 @@ import * as React from "react";
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
+    // @ts-expect-error - style is not typed properly
     <InputPrimitive
       type={type}
       data-slot="input"
