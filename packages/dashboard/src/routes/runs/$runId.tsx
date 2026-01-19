@@ -1,9 +1,7 @@
 import { AppLayout } from "@/components/app-layout";
-import { StepNode } from "@/components/step-node";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getWorkflowRunServerFn, listStepAttemptsServerFn } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
@@ -13,17 +11,11 @@ import {
   CheckCircle,
   CircleNotch,
   XCircle,
+  ListDashes,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { Edge, Node } from "@xyflow/react";
-import { Background, Controls, ReactFlow } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 import type { StepAttempt, StepAttemptStatus } from "openworkflow/internal";
 import { useState } from "react";
-
-const nodeTypes = {
-  stepNode: StepNode,
-};
 
 export const Route = createFileRoute("/runs/$runId")({
   loader: async ({ params }) => {
@@ -76,7 +68,6 @@ function getStatusBadgeClass(status: string): string {
 function RunDetailsPage() {
   const { run, steps } = Route.useLoaderData();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"list" | "graph">("graph");
 
   const toggleStep = (stepId: string) => {
     setExpandedSteps((prev) => {
@@ -105,37 +96,6 @@ function RunDetailsPage() {
       </AppLayout>
     );
   }
-
-  const nodes: Node[] = steps.map((step: StepAttempt, index: number) => ({
-    id: step.id,
-    type: "stepNode",
-    position: { x: 50 + index * 300, y: 100 },
-    data: {
-      step,
-      onToggle: () => toggleStep(step.id),
-      isExpanded: expandedSteps.has(step.id),
-    },
-  }));
-
-  const edges: Edge[] = steps
-    .slice(0, -1)
-    .map((step: StepAttempt, index: number) => {
-      const nextStep = steps[index + 1];
-      return {
-        id: `${step.id}-${nextStep?.id}`,
-        source: step.id,
-        target: nextStep?.id ?? "",
-        animated: nextStep?.status === "running",
-        style: {
-          stroke:
-            step.status === "completed" || step.status === "succeeded"
-              ? "rgb(34, 197, 94)"
-              : step.status === "failed"
-                ? "rgb(239, 68, 68)"
-                : "rgb(100, 116, 139)",
-        },
-      };
-    });
 
   const duration = computeDuration(run.startedAt, run.finishedAt);
   const startedAt = formatRelativeTime(run.startedAt);
@@ -174,125 +134,105 @@ function RunDetailsPage() {
         </div>
 
         <div className="flex gap-6">
-          {/* Left side - Tabs and content */}
+          {/* Left side - Steps list */}
           <div className="flex-1">
-            <Tabs
-              value={viewMode}
-              onValueChange={(v) => setViewMode(v as "list" | "graph")}
-            >
-              <TabsList className="mb-4" variant="line">
-                <TabsTrigger value="graph">Graph</TabsTrigger>
-                <TabsTrigger value="list">List</TabsTrigger>
-              </TabsList>
+            <Card className="bg-card border-border overflow-hidden py-0">
+              {steps.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+                  <ListDashes className="text-muted-foreground mb-4 size-16" />
+                  <h3 className="mb-2 text-lg font-semibold">No steps yet</h3>
+                  <p className="text-muted-foreground max-w-md text-sm">
+                    This workflow run hasn't executed any steps yet. Steps will
+                    appear here as they are processed.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-border divide-y">
+                  {steps.map((step: StepAttempt, index: number) => {
+                    const isExpanded = expandedSteps.has(step.id);
+                    const config = stepStatusConfig[step.status];
+                    const StatusIcon = config?.icon ?? CircleNotch;
+                    const iconColor = config?.color ?? "text-gray-500";
+                    const stepDuration = computeDuration(
+                      step.startedAt,
+                      step.finishedAt,
+                    );
+                    const stepStartedAt = formatRelativeTime(step.startedAt);
 
-              <TabsContent value="graph">
-                <Card className="bg-card border-border h-[600px] overflow-hidden py-0">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    fitView
-                    minZoom={0.5}
-                    maxZoom={1.5}
-                    defaultEdgeOptions={{
-                      type: "smoothstep",
-                    }}
-                  >
-                    <Background />
-                    <Controls />
-                  </ReactFlow>
-                </Card>
-              </TabsContent>
+                    return (
+                      <div key={step.id}>
+                        <button
+                          onClick={() => toggleStep(step.id)}
+                          className="hover:bg-muted/50 flex w-full items-center gap-4 px-6 py-4 text-left transition-colors"
+                        >
+                          <div className="flex flex-1 items-center gap-3">
+                            <div className="flex flex-col items-center gap-2">
+                              <StatusIcon
+                                className={`size-5 ${iconColor} ${
+                                  step.status === "running"
+                                    ? "animate-spin"
+                                    : ""
+                                }`}
+                              />
+                              {index < steps.length - 1 && (
+                                <div className="bg-border h-8 w-0.5" />
+                              )}
+                            </div>
 
-              <TabsContent value="list">
-                <Card className="bg-card border-border overflow-hidden py-0">
-                  <div className="divide-border divide-y">
-                    {steps.map((step: StepAttempt, index: number) => {
-                      const isExpanded = expandedSteps.has(step.id);
-                      const config = stepStatusConfig[step.status];
-                      const StatusIcon = config?.icon ?? CircleNotch;
-                      const iconColor = config?.color ?? "text-gray-500";
-                      const stepDuration = computeDuration(
-                        step.startedAt,
-                        step.finishedAt,
-                      );
-                      const stepStartedAt = formatRelativeTime(step.startedAt);
-
-                      return (
-                        <div key={step.id}>
-                          <button
-                            onClick={() => toggleStep(step.id)}
-                            className="hover:bg-muted/50 flex w-full items-center gap-4 px-6 py-4 text-left transition-colors"
-                          >
-                            <div className="flex flex-1 items-center gap-3">
-                              <div className="flex flex-col items-center gap-2">
-                                <StatusIcon
-                                  className={`size-5 ${iconColor} ${
-                                    step.status === "running"
-                                      ? "animate-spin"
-                                      : ""
-                                  }`}
-                                />
-                                {index < steps.length - 1 && (
-                                  <div className="bg-border h-8 w-0.5" />
-                                )}
-                              </div>
-
-                              <div className="flex-1">
-                                <div className="mb-1 flex items-center gap-3">
-                                  <span className="font-medium">
-                                    {step.stepName}
-                                  </span>
+                            <div className="flex-1">
+                              <div className="mb-1 flex items-center gap-3">
+                                <span className="font-medium">
+                                  {step.stepName}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={`border-border text-xs capitalize ${getStatusBadgeClass(step.status)}`}
+                                >
+                                  {step.status}
+                                </Badge>
+                                {step.kind === "sleep" && (
                                   <Badge
                                     variant="outline"
-                                    className={`border-border text-xs capitalize ${getStatusBadgeClass(step.status)}`}
+                                    className="border-border text-xs"
                                   >
-                                    {step.status}
+                                    sleep
                                   </Badge>
-                                  {step.kind === "sleep" && (
-                                    <Badge
-                                      variant="outline"
-                                      className="border-border text-xs"
-                                    >
-                                      sleep
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="text-muted-foreground flex items-center gap-4 text-sm">
-                                  <span>Started {stepStartedAt}</span>
-                                  <span>Duration: {stepDuration}</span>
-                                </div>
+                                )}
+                              </div>
+                              <div className="text-muted-foreground flex items-center gap-4 text-sm">
+                                <span>Started {stepStartedAt}</span>
+                                <span>Duration: {stepDuration}</span>
                               </div>
                             </div>
+                          </div>
 
-                            <CaretDown
-                              className={`text-muted-foreground size-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                            />
-                          </button>
+                          <CaretDown
+                            className={`text-muted-foreground size-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                          />
+                        </button>
 
-                          {isExpanded && (
-                            <div className="px-6 pb-4 pl-20">
-                              <div className="bg-muted/50 rounded-lg p-4">
-                                <p className="text-muted-foreground mb-2 text-sm font-medium">
-                                  {step.error ? "Error" : "Output"}
-                                </p>
-                                <pre className="font-mono text-sm whitespace-pre-wrap">
-                                  {JSON.stringify(
-                                    step.error || step.output,
-                                    null,
-                                    2,
-                                  )}
-                                </pre>
-                              </div>
+                        {isExpanded && (
+                          <div className="px-6 pb-4 pl-20">
+                            <div className="bg-muted/50 rounded-lg p-4">
+                              <p className="text-muted-foreground mb-2 text-sm font-medium">
+                                {step.error ? "Error" : "Output"}
+                              </p>
+                              <pre className="font-mono text-sm whitespace-pre-wrap">
+                                {JSON.stringify(
+                                  step.error || step.output,
+                                  null,
+                                  2,
+                                )}
+                              </pre>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
           </div>
 
           {/* Right side - Sidebar */}
