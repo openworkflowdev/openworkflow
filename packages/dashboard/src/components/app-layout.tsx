@@ -13,11 +13,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex size-8 items-center justify-center rounded bg-blue-500/20">
-                <span className="font-mono text-sm font-bold text-blue-500">
-                  OW
-                </span>
-              </div>
+              <div className="size-8 bg-black"></div>
               <h1 className="text-xl font-semibold">OpenWorkflow</h1>
             </div>
             <nav className="flex items-center gap-6 text-sm">
