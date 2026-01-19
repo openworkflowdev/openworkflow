@@ -15,7 +15,7 @@ export function computeDuration(
   const durationMs = finishedAt.getTime() - startedAt.getTime();
 
   if (durationMs < 0) {
-    return "-";
+    return "< 1ms";
   }
 
   if (durationMs < 1000) {
