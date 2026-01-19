@@ -2,7 +2,7 @@ import { createJiti } from "jiti";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { WorkerOptions } from "openworkflow";
+import type { WorkerOptions } from "openworkflow";
 import type { Backend } from "openworkflow/internal";
 
 export interface OpenWorkflowConfig {
