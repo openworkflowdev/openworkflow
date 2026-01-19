@@ -4,13 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  getWorkflowRunServerFn,
-  listStepAttemptsServerFn,
-  type SerializedStepAttempt,
-} from "@/lib/api";
+import { getWorkflowRunServerFn, listStepAttemptsServerFn } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { computeDuration, formatRelativeTime } from "@/types";
+import { computeDuration, formatRelativeTime } from "@/utils";
 import {
   ArrowLeft,
   CaretDown,
@@ -22,6 +18,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { Edge, Node } from "@xyflow/react";
 import { Background, Controls, ReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { StepAttempt, StepAttemptStatus } from "openworkflow/internal";
 import { useState } from "react";
 
 const nodeTypes = {
@@ -38,8 +35,6 @@ export const Route = createFileRoute("/runs/$runId")({
   },
   component: RunDetailsPage,
 });
-
-type StepAttemptStatus = SerializedStepAttempt["status"];
 
 // Step attempts have fewer statuses than workflow runs
 const stepStatusConfig: Record<
@@ -111,22 +106,20 @@ function RunDetailsPage() {
     );
   }
 
-  const nodes: Node[] = steps.map(
-    (step: SerializedStepAttempt, index: number) => ({
-      id: step.id,
-      type: "stepNode",
-      position: { x: 50 + index * 300, y: 100 },
-      data: {
-        step,
-        onToggle: () => toggleStep(step.id),
-        isExpanded: expandedSteps.has(step.id),
-      },
-    }),
-  );
+  const nodes: Node[] = steps.map((step: StepAttempt, index: number) => ({
+    id: step.id,
+    type: "stepNode",
+    position: { x: 50 + index * 300, y: 100 },
+    data: {
+      step,
+      onToggle: () => toggleStep(step.id),
+      isExpanded: expandedSteps.has(step.id),
+    },
+  }));
 
   const edges: Edge[] = steps
     .slice(0, -1)
-    .map((step: SerializedStepAttempt, index: number) => {
+    .map((step: StepAttempt, index: number) => {
       const nextStep = steps[index + 1];
       return {
         id: `${step.id}-${nextStep?.id}`,
@@ -147,8 +140,7 @@ function RunDetailsPage() {
   const duration = computeDuration(run.startedAt, run.finishedAt);
   const startedAt = formatRelativeTime(run.startedAt);
   const completedSteps = steps.filter(
-    (s: SerializedStepAttempt) =>
-      s.status === "completed" || s.status === "succeeded",
+    (s: StepAttempt) => s.status === "completed" || s.status === "succeeded",
   ).length;
 
   return (
@@ -215,10 +207,11 @@ function RunDetailsPage() {
               <TabsContent value="list">
                 <Card className="bg-card border-border overflow-hidden py-0">
                   <div className="divide-border divide-y">
-                    {steps.map((step: SerializedStepAttempt, index: number) => {
+                    {steps.map((step: StepAttempt, index: number) => {
                       const isExpanded = expandedSteps.has(step.id);
                       const config = stepStatusConfig[step.status];
-                      const StatusIcon = config.icon;
+                      const StatusIcon = config?.icon ?? CircleNotch;
+                      const iconColor = config?.color ?? "text-gray-500";
                       const stepDuration = computeDuration(
                         step.startedAt,
                         step.finishedAt,
@@ -234,7 +227,7 @@ function RunDetailsPage() {
                             <div className="flex flex-1 items-center gap-3">
                               <div className="flex flex-col items-center gap-2">
                                 <StatusIcon
-                                  className={`size-5 ${config.color} ${
+                                  className={`size-5 ${iconColor} ${
                                     step.status === "running"
                                       ? "animate-spin"
                                       : ""

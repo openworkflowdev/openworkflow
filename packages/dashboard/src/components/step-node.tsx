@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { SerializedStepAttempt } from "@/lib/api";
-import { computeDuration, formatRelativeTime } from "@/types";
+import { computeDuration, formatRelativeTime } from "@/utils";
 import {
   CaretDown,
   CheckCircle,
@@ -9,8 +8,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
-
-type StepAttemptStatus = SerializedStepAttempt["status"];
+import type { StepAttempt, StepAttemptStatus } from "openworkflow/internal";
 
 const statusConfig: Record<
   StepAttemptStatus,
@@ -42,7 +40,7 @@ export function StepNode({
   data,
 }: {
   data: {
-    step: SerializedStepAttempt;
+    step: StepAttempt;
     onToggle: () => void;
     isExpanded: boolean;
   };

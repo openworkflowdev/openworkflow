@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { SerializedWorkflowRun, WorkflowRunStatus } from "@/types";
-import { computeDuration, formatRelativeTime } from "@/types";
+import { computeDuration, formatRelativeTime } from "@/utils";
 import {
   CaretRight,
   CheckCircle,
@@ -12,9 +11,10 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
+import type { WorkflowRun, WorkflowRunStatus } from "openworkflow/internal";
 
 export interface RunListProps {
-  runs: SerializedWorkflowRun[];
+  runs: WorkflowRun[];
   title?: string;
 }
 

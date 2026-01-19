@@ -1,6 +1,6 @@
 import { Badge } from "./ui/badge";
-import type { WorkflowRunStatus } from "@/types";
 import { CheckCircle, Circle, Clock, XCircle } from "@phosphor-icons/react";
+import type { WorkflowRunStatus } from "openworkflow/internal";
 
 interface StatusBadgeProps {
   status: WorkflowRunStatus;

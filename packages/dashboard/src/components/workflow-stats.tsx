@@ -1,5 +1,4 @@
 import { Card } from "@/components/ui/card";
-import type { SerializedWorkflowRun } from "@/types";
 import {
   CheckCircle,
   Clock,
@@ -7,9 +6,10 @@ import {
   Pulse,
   XCircle,
 } from "@phosphor-icons/react";
+import type { WorkflowRun } from "openworkflow/internal";
 
 export interface WorkflowStatsProps {
-  runs: SerializedWorkflowRun[];
+  runs: WorkflowRun[];
 }
 
 export function WorkflowStats({ runs }: WorkflowStatsProps) {
