@@ -1,17 +1,16 @@
+import { Card } from "./ui/card";
 import {
   CheckCircleIcon,
   CircleIcon,
   PulseIcon,
   XCircleIcon,
-} from '@phosphor-icons/react'
-
-import { Card } from './ui/card'
+} from "@phosphor-icons/react";
 
 interface StatsCardProps {
-  title: string
-  value: number
-  trend: string
-  type: 'total' | 'completed' | 'running' | 'failed'
+  title: string;
+  value: number;
+  trend: string;
+  type: "total" | "completed" | "running" | "failed";
 }
 
 export function StatsCard({ title, value, trend, type }: StatsCardProps) {
@@ -20,11 +19,11 @@ export function StatsCard({ title, value, trend, type }: StatsCardProps) {
     completed: CheckCircleIcon,
     running: CircleIcon,
     failed: XCircleIcon,
-  }
+  };
 
-  const Icon = icons[type]
-  const isPositive = trend.startsWith('+')
-  const isNegative = trend.startsWith('-')
+  const Icon = icons[type];
+  const isPositive = trend.startsWith("+");
+  const isNegative = trend.startsWith("-");
 
   return (
     <Card className="p-6 bg-card border-border">
@@ -36,11 +35,11 @@ export function StatsCard({ title, value, trend, type }: StatsCardProps) {
       <div className="flex items-center text-sm">
         <span
           className={
-            isPositive && type !== 'failed'
-              ? 'text-green-500'
-              : isNegative && type === 'failed'
-                ? 'text-green-500'
-                : 'text-muted-foreground'
+            isPositive && type !== "failed"
+              ? "text-green-500"
+              : isNegative && type === "failed"
+                ? "text-green-500"
+                : "text-muted-foreground"
           }
         >
           {trend}
@@ -48,5 +47,5 @@ export function StatsCard({ title, value, trend, type }: StatsCardProps) {
         <span className="text-muted-foreground ml-2">vs last 24h</span>
       </div>
     </Card>
-  )
+  );
 }

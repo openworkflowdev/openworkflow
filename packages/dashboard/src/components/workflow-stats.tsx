@@ -1,43 +1,42 @@
-import { CheckCircle, Clock, Pulse, XCircle } from '@phosphor-icons/react'
-
-import { Card } from '@/components/ui/card'
+import { Card } from "@/components/ui/card";
+import { CheckCircle, Clock, Pulse, XCircle } from "@phosphor-icons/react";
 
 export function WorkflowStats() {
   const stats = [
     {
-      label: 'Total Runs',
-      value: '1,247',
+      label: "Total Runs",
+      value: "1,247",
       icon: Pulse,
-      change: '+12%',
+      change: "+12%",
       positive: true,
     },
     {
-      label: 'Completed',
-      value: '1,189',
+      label: "Completed",
+      value: "1,189",
       icon: CheckCircle,
-      change: '+8%',
+      change: "+8%",
       positive: true,
     },
     {
-      label: 'Running',
-      value: '23',
+      label: "Running",
+      value: "23",
       icon: Clock,
-      change: '+3',
+      change: "+3",
       positive: false,
     },
     {
-      label: 'Failed',
-      value: '35',
+      label: "Failed",
+      value: "35",
       icon: XCircle,
-      change: '-5%',
+      change: "-5%",
       positive: true,
     },
-  ]
+  ];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {stats.map((stat) => {
-        const Icon = stat.icon
+        const Icon = stat.icon;
         return (
           <Card
             key={stat.label}
@@ -52,7 +51,7 @@ export function WorkflowStats() {
             </div>
             <div className="mt-3">
               <span
-                className={`text-sm font-medium ${stat.positive ? 'text-green-500' : 'text-muted-foreground'}`}
+                className={`text-sm font-medium ${stat.positive ? "text-green-500" : "text-muted-foreground"}`}
               >
                 {stat.change}
               </span>
@@ -61,8 +60,8 @@ export function WorkflowStats() {
               </span>
             </div>
           </Card>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

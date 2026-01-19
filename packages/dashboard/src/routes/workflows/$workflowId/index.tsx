@@ -1,3 +1,9 @@
+import { AppLayout } from "@/components/app-layout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { getRunsByWorkflowId, getWorkflowById } from "@/mocks/mock-data";
+import type { WorkflowStatus } from "@/types";
 import {
   ArrowLeft,
   CaretLeft,
@@ -6,39 +12,32 @@ import {
   CircleNotch,
   Clock,
   XCircle,
-} from '@phosphor-icons/react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+} from "@phosphor-icons/react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 
-import { AppLayout } from '@/components/app-layout'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { getRunsByWorkflowId, getWorkflowById } from '@/mocks/mock-data'
-import type { WorkflowStatus } from '@/types'
-
-export const Route = createFileRoute('/workflows/$workflowId/')({
+export const Route = createFileRoute("/workflows/$workflowId/")({
   component: WorkflowRunsPage,
-})
+});
 
-type FilterTab = 'all' | WorkflowStatus
+type FilterTab = "all" | WorkflowStatus;
 
 const statusConfig: Record<
   WorkflowStatus,
   { icon: typeof CheckCircle; color: string; label: string }
 > = {
-  completed: { icon: CheckCircle, color: 'text-green-500', label: 'Completed' },
-  running: { icon: CircleNotch, color: 'text-blue-500', label: 'Running' },
-  failed: { icon: XCircle, color: 'text-red-500', label: 'Failed' },
-  pending: { icon: Clock, color: 'text-yellow-500', label: 'Pending' },
-}
+  completed: { icon: CheckCircle, color: "text-green-500", label: "Completed" },
+  running: { icon: CircleNotch, color: "text-blue-500", label: "Running" },
+  failed: { icon: XCircle, color: "text-red-500", label: "Failed" },
+  pending: { icon: Clock, color: "text-yellow-500", label: "Pending" },
+};
 
 function WorkflowRunsPage() {
-  const { workflowId } = Route.useParams()
-  const workflow = getWorkflowById(workflowId)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [filter, setFilter] = useState<FilterTab>('all')
-  const pageSize = 10
+  const { workflowId } = Route.useParams();
+  const workflow = getWorkflowById(workflowId);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filter, setFilter] = useState<FilterTab>("all");
+  const pageSize = 10;
 
   if (!workflow) {
     return (
@@ -50,16 +49,16 @@ function WorkflowRunsPage() {
           </p>
         </div>
       </AppLayout>
-    )
+    );
   }
 
-  const allRuns = getRunsByWorkflowId(workflowId)
+  const allRuns = getRunsByWorkflowId(workflowId);
   const filteredRuns =
-    filter === 'all' ? allRuns : allRuns.filter((r) => r.status === filter)
-  const totalPages = Math.ceil(filteredRuns.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const endIndex = startIndex + pageSize
-  const currentRuns = filteredRuns.slice(startIndex, endIndex)
+    filter === "all" ? allRuns : allRuns.filter((r) => r.status === filter);
+  const totalPages = Math.ceil(filteredRuns.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const currentRuns = filteredRuns.slice(startIndex, endIndex);
 
   return (
     <AppLayout>
@@ -85,15 +84,15 @@ function WorkflowRunsPage() {
 
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-            {(['all', 'running', 'completed', 'failed'] as const).map(
+            {(["all", "running", "completed", "failed"] as const).map(
               (status) => (
                 <Button
                   key={status}
-                  variant={filter === status ? 'default' : 'ghost'}
+                  variant={filter === status ? "default" : "ghost"}
                   size="sm"
                   onClick={() => {
-                    setFilter(status)
-                    setCurrentPage(1)
+                    setFilter(status);
+                    setCurrentPage(1);
                   }}
                   className="capitalize"
                 >
@@ -103,7 +102,7 @@ function WorkflowRunsPage() {
             )}
           </div>
           <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(endIndex, filteredRuns.length)}{' '}
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredRuns.length)}{" "}
             of {filteredRuns.length} runs
           </div>
         </div>
@@ -111,8 +110,8 @@ function WorkflowRunsPage() {
         <Card className="bg-card border-border overflow-hidden py-0">
           <div className="divide-y divide-border">
             {currentRuns.map((run) => {
-              const config = statusConfig[run.status]
-              const StatusIcon = config.icon
+              const config = statusConfig[run.status];
+              const StatusIcon = config.icon;
 
               return (
                 <Link
@@ -124,7 +123,7 @@ function WorkflowRunsPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 flex-1">
                       <StatusIcon
-                        className={`size-5 ${config.color} ${run.status === 'running' ? 'animate-spin' : ''}`}
+                        className={`size-5 ${config.color} ${run.status === "running" ? "animate-spin" : ""}`}
                       />
 
                       <div className="flex-1 min-w-0">
@@ -133,13 +132,13 @@ function WorkflowRunsPage() {
                           <Badge
                             variant="outline"
                             className={`text-xs capitalize border-border ${
-                              run.status === 'completed'
-                                ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                                : run.status === 'running'
-                                  ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                                  : run.status === 'failed'
-                                    ? 'bg-red-500/10 text-red-500 border-red-500/20'
-                                    : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                              run.status === "completed"
+                                ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                : run.status === "running"
+                                  ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                  : run.status === "failed"
+                                    ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                    : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
                             }`}
                           >
                             {config.label}
@@ -178,7 +177,7 @@ function WorkflowRunsPage() {
                     <CaretRight className="size-5 text-muted-foreground ml-4" />
                   </div>
                 </Link>
-              )
+              );
             })}
           </div>
         </Card>
@@ -195,28 +194,28 @@ function WorkflowRunsPage() {
             </Button>
             <div className="flex items-center gap-1">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let pageNum: number
+                let pageNum: number;
                 if (totalPages <= 5) {
-                  pageNum = i + 1
+                  pageNum = i + 1;
                 } else if (currentPage <= 3) {
-                  pageNum = i + 1
+                  pageNum = i + 1;
                 } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i
+                  pageNum = totalPages - 4 + i;
                 } else {
-                  pageNum = currentPage - 2 + i
+                  pageNum = currentPage - 2 + i;
                 }
 
                 return (
                   <Button
                     key={pageNum}
-                    variant={currentPage === pageNum ? 'default' : 'ghost'}
+                    variant={currentPage === pageNum ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setCurrentPage(pageNum)}
                     className="w-10"
                   >
                     {pageNum}
                   </Button>
-                )
+                );
               })}
             </div>
             <Button
@@ -231,5 +230,5 @@ function WorkflowRunsPage() {
         )}
       </div>
     </AppLayout>
-  )
+  );
 }

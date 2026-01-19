@@ -1,43 +1,42 @@
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import type { StepAttempt } from "@/types";
 import {
   CaretDown,
   CheckCircle,
   CircleNotch,
   Clock,
   XCircle,
-} from '@phosphor-icons/react'
-import type { NodeProps } from '@xyflow/react'
-import { Handle, Position } from '@xyflow/react'
-
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import type { StepAttempt } from '@/types'
+} from "@phosphor-icons/react";
+import type { NodeProps } from "@xyflow/react";
+import { Handle, Position } from "@xyflow/react";
 
 export function StepNode({
   data,
 }: NodeProps<{
-  step: StepAttempt
-  onToggle: () => void
-  isExpanded: boolean
+  step: StepAttempt;
+  onToggle: () => void;
+  isExpanded: boolean;
 }>) {
-  const { step, onToggle, isExpanded } = data
+  const { step, onToggle, isExpanded } = data;
 
   const StatusIcon =
-    step.status === 'completed'
+    step.status === "completed"
       ? CheckCircle
-      : step.status === 'running'
+      : step.status === "running"
         ? CircleNotch
-        : step.status === 'failed'
+        : step.status === "failed"
           ? XCircle
-          : Clock
+          : Clock;
 
   const statusColor =
-    step.status === 'completed'
-      ? 'text-green-500 border-green-500/20 bg-green-500/10'
-      : step.status === 'running'
-        ? 'text-blue-500 border-blue-500/20 bg-blue-500/10'
-        : step.status === 'failed'
-          ? 'text-red-500 border-red-500/20 bg-red-500/10'
-          : 'text-yellow-500 border-yellow-500/20 bg-yellow-500/10'
+    step.status === "completed"
+      ? "text-green-500 border-green-500/20 bg-green-500/10"
+      : step.status === "running"
+        ? "text-blue-500 border-blue-500/20 bg-blue-500/10"
+        : step.status === "failed"
+          ? "text-red-500 border-red-500/20 bg-red-500/10"
+          : "text-yellow-500 border-yellow-500/20 bg-yellow-500/10";
 
   return (
     <>
@@ -55,13 +54,13 @@ export function StepNode({
           <div className="flex items-start gap-3 mb-3">
             <StatusIcon
               className={`size-5 flex-shrink-0 ${
-                step.status === 'completed'
-                  ? 'text-green-500'
-                  : step.status === 'running'
-                    ? 'text-blue-500 animate-spin'
-                    : step.status === 'failed'
-                      ? 'text-red-500'
-                      : 'text-yellow-500'
+                step.status === "completed"
+                  ? "text-green-500"
+                  : step.status === "running"
+                    ? "text-blue-500 animate-spin"
+                    : step.status === "failed"
+                      ? "text-red-500"
+                      : "text-yellow-500"
               }`}
             />
             <div className="flex-1 min-w-0">
@@ -77,7 +76,7 @@ export function StepNode({
             </div>
             <CaretDown
               className={`size-4 text-muted-foreground transition-transform flex-shrink-0 ${
-                isExpanded ? 'rotate-180' : ''
+                isExpanded ? "rotate-180" : ""
               }`}
             />
           </div>
@@ -90,7 +89,7 @@ export function StepNode({
           {isExpanded && (
             <div className="mt-3 bg-muted/50 rounded p-2 max-w-[240px]">
               <p className="text-xs font-medium text-muted-foreground mb-1">
-                {step.error ? 'Error' : 'Result'}
+                {step.error ? "Error" : "Result"}
               </p>
               <pre className="text-xs font-mono overflow-x-auto max-h-[200px] overflow-y-auto">
                 {JSON.stringify(step.error || step.result, null, 2)}
@@ -106,5 +105,5 @@ export function StepNode({
         className="!bg-border !w-3 !h-3"
       />
     </>
-  )
+  );
 }

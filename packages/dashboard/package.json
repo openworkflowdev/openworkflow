@@ -3,16 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
     "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint",
-    "lint:fix": "eslint --fix",
+    "check": "prettier --write . && eslint --fix",
+    "dev": "vite dev --port 3000",
     "format": "prettier",
     "format:fix": "prettier --write .",
-    "check": "prettier --write . && eslint --fix"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
@@ -48,7 +48,6 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.39.2",
-    "eslint-plugin-simple-import-sort": "^12.1.1",
     "jsdom": "^27.0.0",
     "prettier": "^3.5.3",
     "typescript": "^5.7.2",

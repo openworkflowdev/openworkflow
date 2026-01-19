@@ -1,18 +1,16 @@
-import { CaretRightIcon, ClockIcon } from '@phosphor-icons/react'
-import { Link } from '@tanstack/react-router'
-
-import type { Workflow } from '@/types'
-
-import { Badge } from './ui/badge'
-import { Card } from './ui/card'
+import { Badge } from "./ui/badge";
+import { Card } from "./ui/card";
+import type { Workflow } from "@/types";
+import { CaretRightIcon, ClockIcon } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
 
 interface WorkflowCardProps {
-  workflow: Workflow
+  workflow: Workflow;
   stats: {
-    completed: number
-    running: number
-    failed: number
-  }
+    completed: number;
+    running: number;
+    failed: number;
+  };
 }
 
 export function WorkflowCard({ workflow, stats }: WorkflowCardProps) {
@@ -51,5 +49,5 @@ export function WorkflowCard({ workflow, stats }: WorkflowCardProps) {
         )}
       </Card>
     </Link>
-  )
+  );
 }

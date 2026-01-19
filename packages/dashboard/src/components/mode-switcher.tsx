@@ -1,17 +1,17 @@
-import { useTheme } from '@/components/providers/theme-provider'
-import { Button } from '@/components/ui/button'
+import { useTheme } from "@/components/providers/theme-provider";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
+} from "@/components/ui/tooltip";
 
 export function ModeSwitcher() {
-  const { setTheme, theme } = useTheme()
+  const { setTheme, theme } = useTheme();
 
   const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
-  }
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   return (
     <Tooltip>
@@ -48,5 +48,5 @@ export function ModeSwitcher() {
       />
       <TooltipContent>Toggle Mode</TooltipContent>
     </Tooltip>
-  )
+  );
 }

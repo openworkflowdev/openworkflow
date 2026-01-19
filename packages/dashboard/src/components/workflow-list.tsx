@@ -1,10 +1,9 @@
-import { CaretRight, Clock, MagnifyingGlass } from '@phosphor-icons/react'
-import { Link } from '@tanstack/react-router'
-
-import { Badge } from '@/components/ui/badge'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { workflows } from '@/mocks/mock-data'
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { workflows } from "@/mocks/mock-data";
+import { CaretRight, Clock, MagnifyingGlass } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
 
 export function WorkflowList() {
   return (
@@ -88,5 +87,5 @@ export function WorkflowList() {
         </div>
       </Card>
     </div>
-  )
+  );
 }

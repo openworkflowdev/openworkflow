@@ -1,10 +1,9 @@
-import { Link } from '@tanstack/react-router'
-
-import { ModeSwitcher } from './mode-switcher'
-import { Separator } from './ui/separator'
+import { ModeSwitcher } from "./mode-switcher";
+import { Separator } from "./ui/separator";
+import { Link } from "@tanstack/react-router";
 
 interface AppLayoutProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -26,10 +25,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                 to="/"
                 className="transition-colors"
                 activeProps={{
-                  className: 'text-foreground hover:text-primary',
+                  className: "text-foreground hover:text-primary",
                 }}
                 inactiveProps={{
-                  className: 'text-muted-foreground hover:text-foreground',
+                  className: "text-muted-foreground hover:text-foreground",
                 }}
               >
                 Workflows
@@ -61,5 +60,5 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       <main className="container mx-auto px-6 py-8">{children}</main>
     </div>
-  )
+  );
 }

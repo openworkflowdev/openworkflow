@@ -1,11 +1,9 @@
-import { TanStackDevtools } from '@tanstack/react-devtools'
-import { createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-
-import { ThemeProvider } from '@/components/providers/theme-provider'
-import { getThemeServerFn } from '@/lib/theme'
-
-import appCss from '../styles.css?url'
+import appCss from "../styles.css?url";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { getThemeServerFn } from "@/lib/theme";
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 function NotFound() {
   return (
@@ -15,26 +13,26 @@ function NotFound() {
         The page you're looking for doesn't exist.
       </p>
     </div>
-  )
+  );
 }
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       {
-        charSet: 'utf-8',
+        charSet: "utf-8",
       },
       {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
+        name: "viewport",
+        content: "width=device-width, initial-scale=1",
       },
       {
-        title: 'OpenWorkflow Dash',
+        title: "OpenWorkflow Dash",
       },
     ],
     links: [
       {
-        rel: 'stylesheet',
+        rel: "stylesheet",
         href: appCss,
       },
     ],
@@ -42,10 +40,10 @@ export const Route = createRootRoute({
   loader: () => getThemeServerFn(),
   shellComponent: RootDocument,
   notFoundComponent: NotFound,
-})
+});
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const theme = Route.useLoaderData()
+  const theme = Route.useLoaderData();
   return (
     <html className={theme} lang="en" suppressHydrationWarning>
       <head>
@@ -56,11 +54,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 
         <TanStackDevtools
           config={{
-            position: 'bottom-right',
+            position: "bottom-right",
           }}
           plugins={[
             {
-              name: 'Tanstack Router',
+              name: "Tanstack Router",
               render: <TanStackRouterDevtoolsPanel />,
             },
           ]}
@@ -68,5 +66,5 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  )
+  );
 }

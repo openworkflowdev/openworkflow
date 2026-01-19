@@ -1,10 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { AppLayout } from "@/components/app-layout";
+import { WorkflowList } from "@/components/workflow-list";
+import { WorkflowStats } from "@/components/workflow-stats";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { AppLayout } from '@/components/app-layout'
-import { WorkflowList } from '@/components/workflow-list'
-import { WorkflowStats } from '@/components/workflow-stats'
-
-export const Route = createFileRoute('/')({ component: HomePage })
+export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
   return (
@@ -14,5 +13,5 @@ function HomePage() {
         <WorkflowList />
       </div>
     </AppLayout>
-  )
+  );
 }
