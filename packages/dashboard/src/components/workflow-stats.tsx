@@ -1,41 +1,94 @@
 import { Card } from "@/components/ui/card";
-import { CheckCircle, Clock, Pulse, XCircle } from "@phosphor-icons/react";
+import type { SerializedWorkflowRun } from "@/types";
+import {
+  CheckCircle,
+  Clock,
+  Hourglass,
+  Pulse,
+  XCircle,
+} from "@phosphor-icons/react";
 
-export function WorkflowStats() {
+export interface WorkflowStatsProps {
+  runs: SerializedWorkflowRun[];
+}
+
+export function WorkflowStats({ runs }: WorkflowStatsProps) {
+  // this computes stats from real run data as a placeholder until the backend
+  // is updated to provide aggregated stats
+  const completed = runs.filter(
+    (r) => r.status === "completed" || r.status === "succeeded",
+  ).length;
+  const running = runs.filter((r) => r.status === "running").length;
+  const failed = runs.filter((r) => r.status === "failed").length;
+  const pending = runs.filter((r) => r.status === "pending").length;
+  const sleeping = runs.filter((r) => r.status === "sleeping").length;
+  const canceled = runs.filter((r) => r.status === "canceled").length;
+
   const stats = [
     {
       label: "Total Runs",
-      value: "1,247",
+      value: runs.length.toLocaleString(),
       icon: Pulse,
-      change: "+12%",
-      positive: true,
+      change: "-",
+      positive: false,
     },
     {
       label: "Completed",
-      value: "1,189",
+      value: completed.toLocaleString(),
       icon: CheckCircle,
-      change: "+8%",
-      positive: true,
+      change: "-",
+      positive: false,
     },
     {
       label: "Running",
-      value: "23",
+      value: running.toLocaleString(),
       icon: Clock,
-      change: "+3",
+      change: "-",
       positive: false,
     },
     {
       label: "Failed",
-      value: "35",
+      value: failed.toLocaleString(),
       icon: XCircle,
-      change: "-5%",
-      positive: true,
+      change: "-",
+      positive: false,
     },
   ];
 
+  const additionalStats = [];
+  if (sleeping > 0) {
+    additionalStats.push({
+      label: "Sleeping",
+      value: sleeping.toLocaleString(),
+      icon: Hourglass,
+      change: "-",
+      positive: false,
+    });
+  }
+  if (pending > 0) {
+    additionalStats.push({
+      label: "Pending",
+      value: pending.toLocaleString(),
+      icon: Clock,
+      change: "-",
+      positive: false,
+    });
+  }
+  if (canceled > 0) {
+    additionalStats.push({
+      label: "Canceled",
+      value: canceled.toLocaleString(),
+      icon: XCircle,
+      change: "-",
+      positive: false,
+    });
+  }
+
+  const allStats = [...stats, ...additionalStats];
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      {stats.map((stat) => {
+      {allStats.map((stat) => {
         const Icon = stat.icon;
         return (
           <Card

@@ -1,32 +1,50 @@
 import { Badge } from "./ui/badge";
-import type { WorkflowStatus } from "@/types";
+import type { WorkflowRunStatus } from "@/types";
 import { CheckCircle, Circle, Clock, XCircle } from "@phosphor-icons/react";
 
 interface StatusBadgeProps {
-  status: WorkflowStatus;
+  status: WorkflowRunStatus;
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const config = {
-    completed: {
-      label: "Completed",
-      icon: CheckCircle,
-      className: "bg-green-500/10 text-green-500 border-green-500/20",
+  const config: Record<
+    WorkflowRunStatus,
+    { label: string; icon: typeof CheckCircle; className: string }
+  > = {
+    pending: {
+      label: "Pending",
+      icon: Clock,
+      className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
     },
     running: {
       label: "Running",
       icon: Circle,
       className: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     },
+    sleeping: {
+      label: "Sleeping",
+      icon: Clock,
+      className: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    },
+    succeeded: {
+      label: "Succeeded",
+      icon: CheckCircle,
+      className: "bg-green-500/10 text-green-500 border-green-500/20",
+    },
+    completed: {
+      label: "Completed",
+      icon: CheckCircle,
+      className: "bg-green-500/10 text-green-500 border-green-500/20",
+    },
     failed: {
       label: "Failed",
       icon: XCircle,
       className: "bg-red-500/10 text-red-500 border-red-500/20",
     },
-    pending: {
-      label: "Pending",
-      icon: Clock,
-      className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    canceled: {
+      label: "Canceled",
+      icon: XCircle,
+      className: "bg-gray-500/10 text-gray-500 border-gray-500/20",
     },
   };
 

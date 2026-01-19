@@ -1,43 +1,59 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import type { StepAttempt } from "@/types";
+import type { SerializedStepAttempt } from "@/lib/api";
+import { computeDuration, formatRelativeTime } from "@/types";
 import {
   CaretDown,
   CheckCircle,
   CircleNotch,
-  Clock,
   XCircle,
 } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
+
+type StepAttemptStatus = SerializedStepAttempt["status"];
+
+const statusConfig: Record<
+  StepAttemptStatus,
+  { icon: typeof CheckCircle; color: string; bgColor: string }
+> = {
+  completed: {
+    icon: CheckCircle,
+    color: "text-green-500",
+    bgColor: "border-green-500/20 bg-green-500/10",
+  },
+  succeeded: {
+    icon: CheckCircle,
+    color: "text-green-500",
+    bgColor: "border-green-500/20 bg-green-500/10",
+  },
+  running: {
+    icon: CircleNotch,
+    color: "text-blue-500",
+    bgColor: "border-blue-500/20 bg-blue-500/10",
+  },
+  failed: {
+    icon: XCircle,
+    color: "text-red-500",
+    bgColor: "border-red-500/20 bg-red-500/10",
+  },
+};
 
 export function StepNode({
   data,
 }: {
   data: {
-    step: StepAttempt;
+    step: SerializedStepAttempt;
     onToggle: () => void;
     isExpanded: boolean;
   };
 }) {
   const { step, onToggle, isExpanded } = data;
 
-  const StatusIcon =
-    step.status === "completed"
-      ? CheckCircle
-      : step.status === "running"
-        ? CircleNotch
-        : step.status === "failed"
-          ? XCircle
-          : Clock;
+  const config = statusConfig[step.status];
+  const StatusIcon = config.icon;
 
-  const statusColor =
-    step.status === "completed"
-      ? "text-green-500 border-green-500/20 bg-green-500/10"
-      : step.status === "running"
-        ? "text-blue-500 border-blue-500/20 bg-blue-500/10"
-        : step.status === "failed"
-          ? "text-red-500 border-red-500/20 bg-red-500/10"
-          : "text-yellow-500 border-yellow-500/20 bg-yellow-500/10";
+  const duration = computeDuration(step.startedAt, step.finishedAt);
+  const startedAt = formatRelativeTime(step.startedAt);
 
   return (
     <>
@@ -48,32 +64,33 @@ export function StepNode({
       />
 
       <Card
-        className={`bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${statusColor}`}
+        className={`bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${config.bgColor}`}
         onClick={onToggle}
       >
         <div className="p-4 min-w-[240px]">
           <div className="flex items-start gap-3 mb-3">
             <StatusIcon
-              className={`size-5 flex-shrink-0 ${
-                step.status === "completed"
-                  ? "text-green-500"
-                  : step.status === "running"
-                    ? "text-blue-500 animate-spin"
-                    : step.status === "failed"
-                      ? "text-red-500"
-                      : "text-yellow-500"
+              className={`size-5 flex-shrink-0 ${config.color} ${
+                step.status === "running" ? "animate-spin" : ""
               }`}
             />
             <div className="flex-1 min-w-0">
               <h4 className="font-semibold text-sm mb-1 break-words">
-                {step.name}
+                {step.stepName}
               </h4>
-              <Badge
-                variant="outline"
-                className="text-xs capitalize border-border"
-              >
-                {step.status}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="text-xs capitalize border-border"
+                >
+                  {step.status}
+                </Badge>
+                {step.kind === "sleep" && (
+                  <Badge variant="outline" className="text-xs border-border">
+                    sleep
+                  </Badge>
+                )}
+              </div>
             </div>
             <CaretDown
               className={`size-4 text-muted-foreground transition-transform flex-shrink-0 ${
@@ -83,17 +100,17 @@ export function StepNode({
           </div>
 
           <div className="space-y-1 text-xs text-muted-foreground">
-            <div>Started {step.startedAt}</div>
-            {step.duration && <div>Duration: {step.duration}</div>}
+            <div>Started {startedAt}</div>
+            <div>Duration: {duration}</div>
           </div>
 
           {isExpanded && (
             <div className="mt-3 bg-muted/50 rounded p-2 max-w-[240px]">
               <p className="text-xs font-medium text-muted-foreground mb-1">
-                {step.error ? "Error" : "Result"}
+                {step.error ? "Error" : "Output"}
               </p>
               <pre className="text-xs font-mono overflow-x-auto max-h-[200px] overflow-y-auto">
-                {JSON.stringify(step.error || step.result, null, 2)}
+                {JSON.stringify(step.error || step.output, null, 2)}
               </pre>
             </div>
           )}
