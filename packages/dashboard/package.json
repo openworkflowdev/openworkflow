@@ -6,7 +6,8 @@
     "build": "vite build",
     "dev": "vite dev --port 3000",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
