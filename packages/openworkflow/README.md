@@ -62,8 +62,8 @@ npx @openworkflow/cli init
 ```
 
 The CLI will prompt for your backend, installs dependencies, and generates:
-`openworkflow.config.ts`, `openworkflow/hello-world.ts`, `.env`, `.gitignore`,
-and a `worker` script.
+`openworkflow.config.{ts,js}`, `openworkflow/hello-world.{ts,js}`, `.env`,
+`.gitignore`, and a `worker` script.
 
 ### 2. Start a worker
 
@@ -73,13 +73,29 @@ npm run worker
 npx @openworkflow/cli worker start
 ```
 
-This runs the worker using `openworkflow.config.ts` and auto-loads workflows
-from the configured directories (default: `openworkflow/`).
+This runs the worker using `openworkflow.config.{ts,js}` and auto-loads
+workflows from the configured directories (default: `openworkflow/`).
 
 ### 3. Run workflows from your app
 
-Edit the generated workflow file and run it from your application code using the
-OpenWorkflow client APIs (see examples below).
+Create a file to trigger your workflow:
+
+```ts
+// trigger.ts
+import { helloWorld } from "./openworkflow/hello-world.js";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = BackendSqlite.connect("openworkflow/backend.db");
+const ow = new OpenWorkflow({ backend });
+
+// Run the workflow
+const handle = await ow.runWorkflow(helloWorld.spec, {});
+
+// Wait for the result
+const result = await handle.result();
+console.log(result); // { greeting: "Hello, World!" }
+```
 
 That's it. Your workflow is now durable, resumable, and fault-tolerant.
 
@@ -125,7 +141,7 @@ the email.
 
 Workers are long-running processes that poll your database for pending workflows
 and execute them. Run workers via the CLI so workflow discovery stays in sync
-with your `openworkflow.config.ts`:
+with your `openworkflow.config.{ts,js}`:
 
 ```bash
 npm run worker
