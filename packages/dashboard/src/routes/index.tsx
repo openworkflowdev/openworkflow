@@ -1,4 +1,5 @@
 import { AppLayout } from "@/components/app-layout";
+import { ErrorDisplay } from "@/components/error-display";
 import { RunList } from "@/components/run-list";
 import { WorkflowStats } from "@/components/workflow-stats";
 import { listWorkflowRunsServerFn } from "@/lib/api";
@@ -6,6 +7,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
+  errorComponent: ({ error, reset }) => (
+    <ErrorDisplay error={error} onRetry={reset} />
+  ),
   loader: async () => {
     const result = await listWorkflowRunsServerFn({ data: { limit: 100 } });
     return result;
