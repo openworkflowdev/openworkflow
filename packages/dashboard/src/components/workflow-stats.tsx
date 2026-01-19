@@ -29,29 +29,21 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
       label: "Total Runs",
       value: runs.length.toLocaleString(),
       icon: Pulse,
-      change: "-",
-      positive: false,
     },
     {
       label: "Completed",
       value: completed.toLocaleString(),
       icon: CheckCircle,
-      change: "-",
-      positive: false,
     },
     {
       label: "Running",
       value: running.toLocaleString(),
       icon: Clock,
-      change: "-",
-      positive: false,
     },
     {
       label: "Failed",
       value: failed.toLocaleString(),
       icon: XCircle,
-      change: "-",
-      positive: false,
     },
   ];
 
@@ -61,8 +53,6 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
       label: "Sleeping",
       value: sleeping.toLocaleString(),
       icon: Hourglass,
-      change: "-",
-      positive: false,
     });
   }
   if (pending > 0) {
@@ -70,8 +60,6 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
       label: "Pending",
       value: pending.toLocaleString(),
       icon: Clock,
-      change: "-",
-      positive: false,
     });
   }
   if (canceled > 0) {
@@ -79,8 +67,6 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
       label: "Canceled",
       value: canceled.toLocaleString(),
       icon: XCircle,
-      change: "-",
-      positive: false,
     });
   }
 
@@ -101,16 +87,6 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
                 <p className="font-mono text-3xl font-semibold">{stat.value}</p>
               </div>
               <Icon className="text-muted-foreground size-5" />
-            </div>
-            <div className="mt-3">
-              <span
-                className={`text-sm font-medium ${stat.positive ? "text-green-500" : "text-muted-foreground"}`}
-              >
-                {stat.change}
-              </span>
-              <span className="text-muted-foreground ml-2 text-sm">
-                vs last 24h
-              </span>
             </div>
           </Card>
         );
