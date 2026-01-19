@@ -29,24 +29,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               >
                 Workflows
               </Link>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Workers
-              </a>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Logs
-              </a>
-              <a
-                href="#"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Settings
-              </a>
               <Separator orientation="vertical" />
               <ModeSwitcher />
             </nav>
