@@ -1,35 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { STATUS_CONFIG } from "@/lib/status";
 import { computeDuration, formatRelativeTime } from "@/utils";
-import {
-  CaretRight,
-  CheckCircle,
-  CircleNotch,
-  Clock,
-  Hourglass,
-  Prohibit,
-  XCircle,
-} from "@phosphor-icons/react";
+import { CaretRight } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
-import type { WorkflowRun, WorkflowRunStatus } from "openworkflow/internal";
+import type { WorkflowRun } from "openworkflow/internal";
 
 export interface RunListProps {
   runs: WorkflowRun[];
   title?: string;
 }
-
-const statusConfig: Record<
-  WorkflowRunStatus,
-  { icon: typeof CheckCircle; color: string; label: string }
-> = {
-  completed: { icon: CheckCircle, color: "text-green-500", label: "Completed" },
-  succeeded: { icon: CheckCircle, color: "text-green-500", label: "Completed" },
-  running: { icon: CircleNotch, color: "text-blue-500", label: "Running" },
-  failed: { icon: XCircle, color: "text-red-500", label: "Failed" },
-  pending: { icon: Clock, color: "text-yellow-500", label: "Pending" },
-  sleeping: { icon: Hourglass, color: "text-purple-500", label: "Sleeping" },
-  canceled: { icon: Prohibit, color: "text-gray-500", label: "Canceled" },
-};
 
 export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
   if (runs.length === 0) {
@@ -62,7 +42,7 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
       <Card className="bg-card border-border overflow-hidden py-0">
         <div className="divide-border divide-y">
           {runs.map((run) => {
-            const config = statusConfig[run.status];
+            const config = STATUS_CONFIG[run.status];
             const StatusIcon = config.icon;
             const duration = computeDuration(run.startedAt, run.finishedAt);
             const startedAt = formatRelativeTime(run.startedAt);

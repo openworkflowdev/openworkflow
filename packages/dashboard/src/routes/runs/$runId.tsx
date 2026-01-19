@@ -3,18 +3,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getWorkflowRunServerFn, listStepAttemptsServerFn } from "@/lib/api";
+import {
+  STEP_STATUS_CONFIG,
+  getStatusColor,
+  getStatusBadgeClass,
+} from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
 import {
   ArrowLeft,
   CaretDown,
-  CheckCircle,
   CircleNotch,
-  XCircle,
   ListDashes,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import type { StepAttempt, StepAttemptStatus } from "openworkflow/internal";
+import type { StepAttempt } from "openworkflow/internal";
 import { useState } from "react";
 
 export const Route = createFileRoute("/runs/$runId")({
@@ -27,43 +30,6 @@ export const Route = createFileRoute("/runs/$runId")({
   },
   component: RunDetailsPage,
 });
-
-// Step attempts have fewer statuses than workflow runs
-const stepStatusConfig: Record<
-  StepAttemptStatus,
-  { icon: typeof CheckCircle; color: string }
-> = {
-  completed: { icon: CheckCircle, color: "text-green-500" },
-  succeeded: { icon: CheckCircle, color: "text-green-500" },
-  running: { icon: CircleNotch, color: "text-blue-500" },
-  failed: { icon: XCircle, color: "text-red-500" },
-};
-
-function getStatusColor(status: string): string {
-  const colors: Record<string, string> = {
-    completed: "text-green-500",
-    succeeded: "text-green-500",
-    running: "text-blue-500",
-    failed: "text-red-500",
-    sleeping: "text-purple-500",
-    canceled: "text-gray-500",
-  };
-  return colors[status] ?? "text-yellow-500";
-}
-
-function getStatusBadgeClass(status: string): string {
-  const classes: Record<string, string> = {
-    completed: "bg-green-500/10 text-green-500 border-green-500/20",
-    succeeded: "bg-green-500/10 text-green-500 border-green-500/20",
-    running: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    failed: "bg-red-500/10 text-red-500 border-red-500/20",
-    sleeping: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-    canceled: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  };
-  return (
-    classes[status] ?? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-  );
-}
 
 function RunDetailsPage() {
   const { run, steps } = Route.useLoaderData();
@@ -150,7 +116,7 @@ function RunDetailsPage() {
                 <div className="divide-border divide-y">
                   {steps.map((step: StepAttempt, index: number) => {
                     const isExpanded = expandedSteps.has(step.id);
-                    const config = stepStatusConfig[step.status];
+                    const config = STEP_STATUS_CONFIG[step.status];
                     const StatusIcon = config?.icon ?? CircleNotch;
                     const iconColor = config?.color ?? "text-gray-500";
                     const stepDuration = computeDuration(
