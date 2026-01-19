@@ -87,20 +87,20 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
   const allStats = [...stats, ...additionalStats];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       {allStats.map((stat) => {
         const Icon = stat.icon;
         return (
           <Card
             key={stat.label}
-            className="p-5 bg-card border-border hover:border-primary/50 transition-colors"
+            className="bg-card border-border hover:border-primary/50 p-5 transition-colors"
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-                <p className="text-3xl font-semibold font-mono">{stat.value}</p>
+                <p className="text-muted-foreground text-sm">{stat.label}</p>
+                <p className="font-mono text-3xl font-semibold">{stat.value}</p>
               </div>
-              <Icon className="size-5 text-muted-foreground" />
+              <Icon className="text-muted-foreground size-5" />
             </div>
             <div className="mt-3">
               <span
@@ -108,7 +108,7 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
               >
                 {stat.change}
               </span>
-              <span className="text-sm text-muted-foreground ml-2">
+              <span className="text-muted-foreground ml-2 text-sm">
                 vs last 24h
               </span>
             </div>

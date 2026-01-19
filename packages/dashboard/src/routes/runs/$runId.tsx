@@ -98,8 +98,8 @@ function RunDetailsPage() {
   if (!run) {
     return (
       <AppLayout>
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold mb-2">Run Not Found</h2>
+        <div className="py-12 text-center">
+          <h2 className="mb-2 text-2xl font-bold">Run Not Found</h2>
           <p className="text-muted-foreground">
             The workflow run you're looking for doesn't exist.
           </p>
@@ -164,18 +164,18 @@ function RunDetailsPage() {
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-semibold">{run.workflowName}</h2>
               {run.version && (
-                <Badge variant="outline" className="font-mono border-border">
+                <Badge variant="outline" className="border-border font-mono">
                   {run.version}
                 </Badge>
               )}
               <Badge
                 variant="outline"
-                className={`capitalize border-border ${getStatusBadgeClass(run.status)}`}
+                className={`border-border capitalize ${getStatusBadgeClass(run.status)}`}
               >
                 {run.status}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-muted-foreground mt-1 text-sm">
               Run ID: <span className="font-mono">{run.id}</span>
             </p>
           </div>
@@ -194,7 +194,7 @@ function RunDetailsPage() {
               </TabsList>
 
               <TabsContent value="graph">
-                <Card className="bg-card border-border overflow-hidden h-[600px] py-0">
+                <Card className="bg-card border-border h-[600px] overflow-hidden py-0">
                   <ReactFlow
                     nodes={nodes}
                     edges={edges}
@@ -214,7 +214,7 @@ function RunDetailsPage() {
 
               <TabsContent value="list">
                 <Card className="bg-card border-border overflow-hidden py-0">
-                  <div className="divide-y divide-border">
+                  <div className="divide-border divide-y">
                     {steps.map((step: SerializedStepAttempt, index: number) => {
                       const isExpanded = expandedSteps.has(step.id);
                       const config = stepStatusConfig[step.status];
@@ -229,9 +229,9 @@ function RunDetailsPage() {
                         <div key={step.id}>
                           <button
                             onClick={() => toggleStep(step.id)}
-                            className="w-full px-6 py-4 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left"
+                            className="hover:bg-muted/50 flex w-full items-center gap-4 px-6 py-4 text-left transition-colors"
                           >
-                            <div className="flex items-center gap-3 flex-1">
+                            <div className="flex flex-1 items-center gap-3">
                               <div className="flex flex-col items-center gap-2">
                                 <StatusIcon
                                   className={`size-5 ${config.color} ${
@@ -241,31 +241,31 @@ function RunDetailsPage() {
                                   }`}
                                 />
                                 {index < steps.length - 1 && (
-                                  <div className="w-0.5 h-8 bg-border" />
+                                  <div className="bg-border h-8 w-0.5" />
                                 )}
                               </div>
 
                               <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-1">
+                                <div className="mb-1 flex items-center gap-3">
                                   <span className="font-medium">
                                     {step.stepName}
                                   </span>
                                   <Badge
                                     variant="outline"
-                                    className={`text-xs capitalize border-border ${getStatusBadgeClass(step.status)}`}
+                                    className={`border-border text-xs capitalize ${getStatusBadgeClass(step.status)}`}
                                   >
                                     {step.status}
                                   </Badge>
                                   {step.kind === "sleep" && (
                                     <Badge
                                       variant="outline"
-                                      className="text-xs border-border"
+                                      className="border-border text-xs"
                                     >
                                       sleep
                                     </Badge>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="text-muted-foreground flex items-center gap-4 text-sm">
                                   <span>Started {stepStartedAt}</span>
                                   <span>Duration: {stepDuration}</span>
                                 </div>
@@ -273,17 +273,17 @@ function RunDetailsPage() {
                             </div>
 
                             <CaretDown
-                              className={`size-5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              className={`text-muted-foreground size-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                             />
                           </button>
 
                           {isExpanded && (
                             <div className="px-6 pb-4 pl-20">
                               <div className="bg-muted/50 rounded-lg p-4">
-                                <p className="text-sm font-medium text-muted-foreground mb-2">
+                                <p className="text-muted-foreground mb-2 text-sm font-medium">
                                   {step.error ? "Error" : "Output"}
                                 </p>
-                                <pre className="text-sm font-mono whitespace-pre-wrap">
+                                <pre className="font-mono text-sm whitespace-pre-wrap">
                                   {JSON.stringify(
                                     step.error || step.output,
                                     null,
@@ -305,8 +305,8 @@ function RunDetailsPage() {
           {/* Right side - Sidebar */}
           <div className="w-64 shrink-0 pt-14">
             <div className="grid grid-cols-1 gap-3">
-              <Card className="p-3 bg-card border-border gap-2">
-                <p className="text-xs text-muted-foreground">Status</p>
+              <Card className="bg-card border-border gap-2 p-3">
+                <p className="text-muted-foreground text-xs">Status</p>
                 <p
                   className={cn(
                     "text-base font-semibold capitalize",
@@ -316,17 +316,17 @@ function RunDetailsPage() {
                   {run.status}
                 </p>
               </Card>
-              <Card className="p-3 bg-card border-border gap-2">
-                <p className="text-xs text-muted-foreground">Started</p>
+              <Card className="bg-card border-border gap-2 p-3">
+                <p className="text-muted-foreground text-xs">Started</p>
                 <p className="text-base font-semibold">{startedAt}</p>
               </Card>
-              <Card className="p-3 bg-card border-border gap-2">
-                <p className="text-xs text-muted-foreground">Duration</p>
-                <p className="text-base font-semibold font-mono">{duration}</p>
+              <Card className="bg-card border-border gap-2 p-3">
+                <p className="text-muted-foreground text-xs">Duration</p>
+                <p className="font-mono text-base font-semibold">{duration}</p>
               </Card>
-              <Card className="p-3 bg-card border-border gap-2">
-                <p className="text-xs text-muted-foreground">Steps</p>
-                <p className="text-base font-semibold font-mono">
+              <Card className="bg-card border-border gap-2 p-3">
+                <p className="text-muted-foreground text-xs">Steps</p>
+                <p className="font-mono text-base font-semibold">
                   {completedSteps}/{steps.length}
                 </p>
               </Card>

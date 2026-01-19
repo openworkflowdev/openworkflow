@@ -60,56 +60,56 @@ export function StepNode({
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-border !w-3 !h-3"
+        className="!bg-border !h-3 !w-3"
       />
 
       <Card
-        className={`bg-card border-2 transition-all cursor-pointer hover:shadow-lg ${config.bgColor}`}
+        className={`bg-card cursor-pointer border-2 transition-all hover:shadow-lg ${config.bgColor}`}
         onClick={onToggle}
       >
-        <div className="p-4 min-w-[240px]">
-          <div className="flex items-start gap-3 mb-3">
+        <div className="min-w-[240px] p-4">
+          <div className="mb-3 flex items-start gap-3">
             <StatusIcon
               className={`size-5 flex-shrink-0 ${config.color} ${
                 step.status === "running" ? "animate-spin" : ""
               }`}
             />
-            <div className="flex-1 min-w-0">
-              <h4 className="font-semibold text-sm mb-1 break-words">
+            <div className="min-w-0 flex-1">
+              <h4 className="mb-1 text-sm font-semibold break-words">
                 {step.stepName}
               </h4>
               <div className="flex items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="text-xs capitalize border-border"
+                  className="border-border text-xs capitalize"
                 >
                   {step.status}
                 </Badge>
                 {step.kind === "sleep" && (
-                  <Badge variant="outline" className="text-xs border-border">
+                  <Badge variant="outline" className="border-border text-xs">
                     sleep
                   </Badge>
                 )}
               </div>
             </div>
             <CaretDown
-              className={`size-4 text-muted-foreground transition-transform flex-shrink-0 ${
+              className={`text-muted-foreground size-4 flex-shrink-0 transition-transform ${
                 isExpanded ? "rotate-180" : ""
               }`}
             />
           </div>
 
-          <div className="space-y-1 text-xs text-muted-foreground">
+          <div className="text-muted-foreground space-y-1 text-xs">
             <div>Started {startedAt}</div>
             <div>Duration: {duration}</div>
           </div>
 
           {isExpanded && (
-            <div className="mt-3 bg-muted/50 rounded p-2 max-w-[240px]">
-              <p className="text-xs font-medium text-muted-foreground mb-1">
+            <div className="bg-muted/50 mt-3 max-w-[240px] rounded p-2">
+              <p className="text-muted-foreground mb-1 text-xs font-medium">
                 {step.error ? "Error" : "Output"}
               </p>
-              <pre className="text-xs font-mono overflow-x-auto max-h-[200px] overflow-y-auto">
+              <pre className="max-h-[200px] overflow-x-auto overflow-y-auto font-mono text-xs">
                 {JSON.stringify(step.error || step.output, null, 2)}
               </pre>
             </div>
@@ -120,7 +120,7 @@ export function StepNode({
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-border !w-3 !h-3"
+        className="!bg-border !h-3 !w-3"
       />
     </>
   );

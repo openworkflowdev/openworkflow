@@ -8,13 +8,13 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border">
+    <div className="bg-background text-foreground min-h-screen">
+      <header className="border-border border-b">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="size-8 rounded bg-blue-500/20 flex items-center justify-center">
-                <span className="text-blue-500 font-mono font-bold text-sm">
+              <div className="flex size-8 items-center justify-center rounded bg-blue-500/20">
+                <span className="font-mono text-sm font-bold text-blue-500">
                   OW
                 </span>
               </div>

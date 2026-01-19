@@ -26,12 +26,12 @@ export function StatsCard({ title, value, trend, type }: StatsCardProps) {
   const isNegative = trend.startsWith("-");
 
   return (
-    <Card className="p-6 bg-card border-border">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-muted-foreground">{title}</span>
-        <Icon className="h-5 w-5 text-muted-foreground" />
+    <Card className="bg-card border-border p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <span className="text-muted-foreground text-sm">{title}</span>
+        <Icon className="text-muted-foreground h-5 w-5" />
       </div>
-      <div className="text-3xl font-bold mb-2">{value.toLocaleString()}</div>
+      <div className="mb-2 text-3xl font-bold">{value.toLocaleString()}</div>
       <div className="flex items-center text-sm">
         <span
           className={

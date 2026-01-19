@@ -37,11 +37,11 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
       <div className="space-y-4">
         <div>
           <h2 className="text-2xl font-semibold">{title}</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-sm">
             No workflow runs found
           </p>
         </div>
-        <Card className="p-8 bg-card border-border text-center">
+        <Card className="bg-card border-border p-8 text-center">
           <p className="text-muted-foreground">
             No workflow runs have been created yet.
           </p>
@@ -54,13 +54,13 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-semibold">{title}</h2>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-muted-foreground mt-1 text-sm">
           {runs.length} workflow run{runs.length === 1 ? "" : "s"}
         </p>
       </div>
 
       <Card className="bg-card border-border overflow-hidden py-0">
-        <div className="divide-y divide-border">
+        <div className="divide-border divide-y">
           {runs.map((run) => {
             const config = statusConfig[run.status];
             const StatusIcon = config.icon;
@@ -72,45 +72,45 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                 key={run.id}
                 to="/runs/$runId"
                 params={{ runId: run.id }}
-                className="block px-6 py-4 hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/50 block px-6 py-4 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4 flex-1">
+                  <div className="flex flex-1 items-center gap-4">
                     <StatusIcon
                       className={`size-5 ${config.color} ${run.status === "running" ? "animate-spin" : ""}`}
                     />
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-1">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-3">
                         <span className="font-medium">{run.workflowName}</span>
                         {run.version && (
                           <Badge
                             variant="outline"
-                            className="text-xs font-mono border-border"
+                            className="border-border font-mono text-xs"
                           >
                             {run.version}
                           </Badge>
                         )}
-                        <span className="font-mono text-sm text-muted-foreground">
+                        <span className="text-muted-foreground font-mono text-sm">
                           {run.id}
                         </span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="text-muted-foreground flex items-center gap-4 text-xs">
                         <Badge
                           variant="outline"
-                          className={`text-xs capitalize border-border ${
+                          className={`border-border text-xs capitalize ${
                             run.status === "completed" ||
                             run.status === "succeeded"
-                              ? "bg-green-500/10 text-green-500 border-green-500/20"
+                              ? "border-green-500/20 bg-green-500/10 text-green-500"
                               : run.status === "running"
-                                ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                ? "border-blue-500/20 bg-blue-500/10 text-blue-500"
                                 : run.status === "failed"
-                                  ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                  ? "border-red-500/20 bg-red-500/10 text-red-500"
                                   : run.status === "sleeping"
-                                    ? "bg-purple-500/10 text-purple-500 border-purple-500/20"
+                                    ? "border-purple-500/20 bg-purple-500/10 text-purple-500"
                                     : run.status === "canceled"
-                                      ? "bg-gray-500/10 text-gray-500 border-gray-500/20"
-                                      : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                                      ? "border-gray-500/20 bg-gray-500/10 text-gray-500"
+                                      : "border-yellow-500/20 bg-yellow-500/10 text-yellow-500"
                           }`}
                         >
                           {config.label}
@@ -124,14 +124,14 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                         <p className="font-mono">{duration}</p>
                       </div>
 
-                      <div className="text-right min-w-24">
+                      <div className="min-w-24 text-right">
                         <p className="text-muted-foreground">Started</p>
                         <p>{startedAt}</p>
                       </div>
                     </div>
                   </div>
 
-                  <CaretRight className="size-5 text-muted-foreground ml-4" />
+                  <CaretRight className="text-muted-foreground ml-4 size-5" />
                 </div>
               </Link>
             );
