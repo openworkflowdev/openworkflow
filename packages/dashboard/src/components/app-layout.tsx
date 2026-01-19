@@ -1,5 +1,4 @@
 import { ModeSwitcher } from "./mode-switcher";
-import { Separator } from "./ui/separator";
 import { Link } from "@tanstack/react-router";
 
 interface AppLayoutProps {
@@ -13,23 +12,16 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="size-8 bg-black"></div>
-              <h1 className="text-xl font-semibold">OpenWorkflow</h1>
-            </div>
-            <nav className="flex items-center gap-6 text-sm">
               <Link
                 to="/"
-                className="transition-colors"
-                activeProps={{
-                  className: "text-foreground hover:text-primary",
-                }}
-                inactiveProps={{
-                  className: "text-muted-foreground hover:text-foreground",
-                }}
+                className="text-foreground hover:text-primary flex items-center gap-3 transition-colors"
+                aria-label="OpenWorkflow home"
               >
-                Workflows
+                <div className="size-8 bg-black" />
+                <h1 className="text-xl font-semibold">OpenWorkflow</h1>
               </Link>
-              <Separator orientation="vertical" />
+            </div>
+            <nav className="flex items-center gap-4 text-sm">
               <ModeSwitcher />
             </nav>
           </div>
