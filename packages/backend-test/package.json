@@ -17,7 +17,7 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "openworkflow": "file:../openworkflow",
+    "openworkflow": "*",
     "vitest": "^4.0.17"
   },
   "peerDependencies": {

@@ -9,9 +9,9 @@
     "zod": "tsx zod.ts"
   },
   "dependencies": {
-    "@openworkflow/backend-postgres": "file:../../packages/backend-postgres",
+    "@openworkflow/backend-postgres": "*",
     "arktype": "^2.1.27",
-    "openworkflow": "file:../../packages/openworkflow",
+    "openworkflow": "*",
     "valibot": "^1.2.0",
     "yup": "^1.7.1",
     "zod": "^4.1.13"

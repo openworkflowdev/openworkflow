@@ -7,8 +7,8 @@
     "worker": "tsx ../../packages/cli/cli.ts worker start"
   },
   "dependencies": {
-    "@openworkflow/backend-sqlite": "file:../../packages/backend-sqlite",
-    "openworkflow": "file:../../packages/openworkflow"
+    "@openworkflow/backend-sqlite": "*",
+    "openworkflow": "*"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

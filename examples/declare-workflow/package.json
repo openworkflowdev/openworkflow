@@ -6,8 +6,8 @@
     "start": "tsx index.ts"
   },
   "dependencies": {
-    "@openworkflow/backend-postgres": "file:../../packages/backend-postgres",
-    "openworkflow": "file:../../packages/openworkflow"
+    "@openworkflow/backend-postgres": "*",
+    "openworkflow": "*"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

@@ -25,7 +25,7 @@
     "postgres": "^3.4.8"
   },
   "devDependencies": {
-    "@openworkflow/backend-test": "file:../backend-test",
+    "@openworkflow/backend-test": "*",
     "squawk-cli": "^2.36.0",
     "vitest": "^4.0.17"
   },

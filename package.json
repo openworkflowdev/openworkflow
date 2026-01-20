@@ -22,13 +22,13 @@
     "worker": "ow worker start"
   },
   "dependencies": {
-    "@openworkflow/backend-postgres": "file:packages/backend-postgres",
-    "openworkflow": "file:packages/openworkflow"
+    "@openworkflow/backend-postgres": "*",
+    "openworkflow": "*"
   },
   "devDependencies": {
     "@cspell/eslint-plugin": "^9.6.0",
     "@eslint/js": "^9.39.2",
-    "@openworkflow/cli": "file:packages/cli",
+    "@openworkflow/cli": "*",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
