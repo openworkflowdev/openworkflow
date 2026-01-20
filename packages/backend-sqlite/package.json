@@ -15,11 +15,9 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "dependencies": {
-    "openworkflow": "^0.5.0"
-  },
   "devDependencies": {
     "@openworkflow/backend-test": "*",
+    "openworkflow": "*",
     "vitest": "^4.0.17"
   },
   "peerDependencies": {
