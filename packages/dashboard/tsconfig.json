@@ -5,6 +5,7 @@
   ],
   "compilerOptions": {
     "noEmit": false, // TS6310
+    "allowImportingTsExtensions": false, // TS5096, caused by disabling noEmit
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]
