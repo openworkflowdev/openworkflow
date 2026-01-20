@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "ci": "npm run format && npm run lint && npm run typecheck && npm run build && npm run test:coverage",
+    "ci": "npm run format && npm run build && npm run lint && npm run typecheck && npm run test:coverage",
     "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
     "format:fix": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "knip": "knip",
