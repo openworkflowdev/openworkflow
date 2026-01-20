@@ -16,7 +16,7 @@
   ],
 
   // project-wide settings for configs, workflows, etc.
-  "extends": "./tsconfig.base.json",
+  "extends": ["./tsconfig.base.json"],
   "compilerOptions": {
     "outDir": "dist"
   },
