@@ -1,6 +1,11 @@
 {
   "files": [],
   "references": [
+    { "path": "./benchmarks/basic" },
+    { "path": "./examples/basic" },
+    { "path": "./examples/declare-workflow" },
+    { "path": "./examples/with-schema-validation" },
+    { "path": "./examples/workflow-discovery" },
     { "path": "./packages/openworkflow" },
     { "path": "./packages/backend-postgres" },
     { "path": "./packages/backend-sqlite" },
