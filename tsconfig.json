@@ -1,21 +1,11 @@
 {
-  "extends": [
-    "@tsconfig/strictest/tsconfig.json", // https://www.npmjs.com/package/@tsconfig/strictest
-    "@tsconfig/node22/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/node22
-  ],
-  "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "dist",
-    "customConditions": ["development"],
-
-    "composite": true,
-    "declaration": true,
-    "sourceMap": true,
-    "declarationMap": true
-  },
-  "include": ["**/*.ts"],
-
-  // temporary - run `npm run typecheck` from the package root until we migrate
-  // our typechecks over to turbo
-  "exclude": ["packages/dashboard", "dist"]
+  "files": [],
+  "references": [
+    { "path": "./packages/openworkflow" },
+    { "path": "./packages/backend-postgres" },
+    { "path": "./packages/backend-sqlite" },
+    { "path": "./packages/backend-test" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/dashboard" }
+  ]
 }

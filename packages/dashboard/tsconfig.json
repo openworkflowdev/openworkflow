@@ -1,6 +1,6 @@
 {
   "extends": [
-    "../../tsconfig.json",
+    "../../tsconfig.base.json",
     "@tsconfig/vite-react/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/vite-react
   ],
   "compilerOptions": {
@@ -9,6 +9,7 @@
       "@/*": ["./src/*"]
     }
   },
+  "references": [{ "path": "../cli" }, { "path": "../openworkflow" }],
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["dist"]
 }

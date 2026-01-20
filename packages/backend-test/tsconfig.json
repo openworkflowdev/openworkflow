@@ -1,9 +1,10 @@
 {
-  "extends": ["../../tsconfig.json"],
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist"
   },
+  "references": [{ "path": "../openworkflow" }],
   "include": ["**/*.ts"],
   "exclude": ["dist"]
 }
