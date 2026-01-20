@@ -7,6 +7,7 @@ export default defineConfig({
     coverage: {
       include: ["packages/**/*.ts"],
       exclude: [
+        "**/*.testsuite.ts",
         "**/dist/**",
         "**/scripts/*.ts",
         "vitest.global-setup.ts",
