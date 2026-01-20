@@ -4,5 +4,8 @@
     "outDir": "dist"
   },
   "include": ["**/*.ts"],
-  "exclude": ["dist"]
+  "exclude": [
+    "dist",
+    "**/*.test.ts" // see note in ./tsconfig.test.json
+  ]
 }

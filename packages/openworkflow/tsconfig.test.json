@@ -1,0 +1,11 @@
+// this config is a workaround to add backend-postgres as a reference for our
+// test files without a circular reference in the main tsconfig.json
+{
+  "extends": ["./tsconfig.json"],
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "references": [{ "path": "." }, { "path": "../backend-postgres" }],
+  "include": ["**/*.test.ts"],
+  "exclude": ["dist"]
+}
