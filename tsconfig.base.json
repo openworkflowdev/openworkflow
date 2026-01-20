@@ -6,7 +6,6 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
-    "customConditions": ["development"],
 
     "composite": true,
     "declaration": true,

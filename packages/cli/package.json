@@ -5,12 +5,10 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "development": "./index.ts",
       "default": "./dist/index.js"
     },
     "./internal": {
       "types": "./dist/internal.d.ts",
-      "development": "./internal.ts",
       "default": "./dist/internal.js"
     }
   },
