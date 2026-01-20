@@ -1,4 +1,5 @@
 {
+  // https://www.typescriptlang.org/docs/handbook/project-references.html#overall-structure
   "files": [],
   "references": [
     { "path": "./benchmarks/basic" },
