@@ -13,5 +13,9 @@
     { "path": "./packages/backend-test" },
     { "path": "./packages/cli" },
     { "path": "./packages/dashboard" }
-  ]
+  ],
+
+  // project-wide settings for configs, workflows, etc.
+  "extends": "./tsconfig.base.json",
+  "include": ["openworkflow/**/*.ts", "*.config.ts"]
 }
