@@ -20,6 +20,10 @@
   "compilerOptions": {
     "outDir": "dist"
   },
-  "include": ["openworkflow/**/*.ts", "*.config.ts"],
+  "include": [
+    "openworkflow/**/*.ts",
+    "*.config.ts",
+    "packages/openworkflow/**/*.test.ts" // needed to work with packages/openworkflow/tsconfig.test.json
+  ],
   "exclude": ["dist"]
 }
