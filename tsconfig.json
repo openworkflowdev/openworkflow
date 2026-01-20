@@ -17,5 +17,5 @@
 
   // temporary - run `npm run typecheck` from the package root until we migrate
   // our typechecks over to turbo
-  "exclude": ["packages/dashboard"]
+  "exclude": ["packages/dashboard", "dist"]
 }
