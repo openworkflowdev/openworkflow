@@ -8,8 +8,8 @@
   "scripts": {
     "build": "turbo build",
     "ci": "npm run format && npm run lint && npm run typecheck && npm run build && npm run test:coverage",
-    "format": "prettier --check . --ignore-path .gitignore",
-    "format:fix": "prettier --write . --ignore-path .gitignore",
+    "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
+    "format:fix": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "knip": "knip",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -18,11 +18,17 @@
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worker": "ow worker start"
+  },
+  "dependencies": {
+    "@openworkflow/backend-postgres": "file:packages/backend-postgres",
+    "openworkflow": "file:packages/openworkflow"
   },
   "devDependencies": {
     "@cspell/eslint-plugin": "^9.6.0",
     "@eslint/js": "^9.39.2",
+    "@openworkflow/cli": "file:packages/cli",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
@@ -39,6 +45,7 @@
     "knip": "^5.81.0",
     "prettier": "^3.8.0",
     "prettier-plugin-packagejson": "^2.5.21",
+    "prettier-plugin-tailwindcss": "^0.7.2",
     "tsx": "^4.21.0",
     "turbo": "^2.7.4",
     "typescript": "^5.9.3",

@@ -1,0 +1,17 @@
+{
+  "extends": [
+    "../../tsconfig.json",
+    "@tsconfig/vite-react/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/vite-react
+  ],
+  "compilerOptions": {
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+
+  // temporary - overriding the dashboard ignore in the root tsconfig until the
+  // typechecks are migrated over to turbo. see root tsconfig.json for details
+  "exclude": []
+}

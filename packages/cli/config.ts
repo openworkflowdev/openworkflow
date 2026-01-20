@@ -2,7 +2,7 @@ import { createJiti } from "jiti";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { WorkerOptions } from "openworkflow";
+import type { WorkerOptions } from "openworkflow";
 import type { Backend } from "openworkflow/internal";
 
 export interface OpenWorkflowConfig {
@@ -40,35 +40,49 @@ const jiti = createJiti(import.meta.url);
 
 /**
  * Load the OpenWorkflow config at openworkflow.config.{ts,mts,cts,js,mjs,cjs}.
- * @param rootDir - Optional root directory to search from (defaults to
- * process.cwd())
+ * Searches up the directory tree from the starting directory to find the
+ * nearest config file.
+ * @param startDir - Optional starting directory to search from (defaults to
+ * process.cwd()). Will search this directory and all parent directories.
  * @returns The loaded configuration and metadata
  */
-export async function loadConfig(rootDir?: string): Promise<LoadedConfig> {
-  const cwd = rootDir ?? process.cwd();
+export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
+  let currentDir = path.resolve(startDir ?? process.cwd());
 
-  for (const ext of CONFIG_EXTENSIONS) {
-    const fileName = `${CONFIG_NAME}.${ext}`;
-    const filePath = path.join(cwd, fileName);
+  // search up the directory tree
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  while (true) {
+    for (const ext of CONFIG_EXTENSIONS) {
+      const fileName = `${CONFIG_NAME}.${ext}`;
+      const filePath = path.join(currentDir, fileName);
 
-    if (existsSync(filePath)) {
-      try {
-        const fileUrl = pathToFileURL(filePath).href;
+      if (existsSync(filePath)) {
+        try {
+          const fileUrl = pathToFileURL(filePath).href;
 
-        const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
-          default: true,
-        });
+          const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
+            default: true,
+          });
 
-        return {
-          config,
-          configFile: filePath,
-        };
-      } catch (error: unknown) {
-        throw new Error(
-          `Failed to load config file ${filePath}: ${String(error)}`,
-        );
+          return {
+            config,
+            configFile: filePath,
+          };
+        } catch (error: unknown) {
+          throw new Error(
+            `Failed to load config file ${filePath}: ${String(error)}`,
+          );
+        }
       }
     }
+
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      // reached filesystem root without finding config
+      break;
+    }
+
+    currentDir = parentDir;
   }
 
   return {
