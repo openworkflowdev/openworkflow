@@ -202,7 +202,7 @@ function RunDetailsPage() {
           </div>
 
           {/* Right side - Sidebar */}
-          <div className="w-64 shrink-0 pt-14">
+          <div className="w-64 shrink-0">
             <div className="grid grid-cols-1 gap-3">
               <Card className="bg-card border-border gap-2 p-3">
                 <p className="text-muted-foreground text-xs">Status</p>
