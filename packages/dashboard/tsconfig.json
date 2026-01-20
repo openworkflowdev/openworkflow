@@ -4,6 +4,7 @@
     "@tsconfig/vite-react/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/vite-react
   ],
   "compilerOptions": {
+    "noEmit": false, // TS6310
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]
