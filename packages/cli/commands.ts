@@ -328,7 +328,6 @@ export async function dashboard(): Promise<void> {
   // eslint-disable-next-line sonarjs/no-os-command-from-path
   const child = spawn("npx", ["@openworkflow/dashboard"], {
     stdio: "inherit",
-    shell: true,
   });
 
   await new Promise<void>((resolve, reject) => {

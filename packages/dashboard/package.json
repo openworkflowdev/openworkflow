@@ -2,8 +2,10 @@
   "name": "@openworkflow/dashboard",
   "private": true,
   "type": "module",
+  "bin": "./bin.mjs",
   "files": [
-    ".output"
+    ".output",
+    "bin.mjs"
   ],
   "scripts": {
     "build": "vite build",
