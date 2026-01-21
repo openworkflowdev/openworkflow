@@ -350,7 +350,7 @@ export async function dashboard(): Promise<void> {
 
     child.on("exit", (code) => {
       cleanupSignalHandlers();
-      if (code === 0) {
+      if (code === 0 || code === null) {
         resolve();
       } else {
         reject(
