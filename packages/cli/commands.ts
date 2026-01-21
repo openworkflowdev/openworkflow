@@ -329,7 +329,6 @@ export async function dashboard(): Promise<void> {
   const child = spawn("npx", ["@openworkflow/dashboard"], {
     stdio: "inherit",
     shell: true,
-    env: { ...process.env },
   });
 
   await new Promise<void>((resolve, reject) => {
