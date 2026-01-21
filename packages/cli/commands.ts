@@ -333,7 +333,14 @@ export async function dashboard(): Promise<void> {
   });
 
   await new Promise<void>((resolve, reject) => {
+    /** remove signal handlers after the child exits */
+    function cleanupSignalHandlers(): void {
+      process.off("SIGINT", signalHandler);
+      process.off("SIGTERM", signalHandler);
+    }
+
     child.on("error", (error) => {
+      cleanupSignalHandlers();
       reject(
         new CLIError(
           "Failed to start dashboard.",
@@ -343,6 +350,7 @@ export async function dashboard(): Promise<void> {
     });
 
     child.on("exit", (code) => {
+      cleanupSignalHandlers();
       if (code === 0) {
         resolve();
       } else {
