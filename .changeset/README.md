@@ -5,5 +5,7 @@
 4. Make sure the README is updated to reflect any changes, since updates after
    publishing will not be shown on npm.
 5. Commit the version bump
-6. `npx @changesets/cli publish` to publish the new version to npm
-7. `git push --tags`
+6. `npm login` to refresh the auth token
+7. `npx @changesets/cli publish` to publish the new version to npm, which also
+   creates git tags
+8. `git push --tags`
