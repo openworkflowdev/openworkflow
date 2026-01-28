@@ -8,5 +8,10 @@
   "favicon": "./favicon.ico",
   "navigation": {
     "pages": ["index", "github", "npm"]
+  },
+  "integrations": {
+    "posthog": {
+      "apiKey": "phc_C1Cm1NAKHDFA3eKLVqcYzR5wUk8WhSbMMXltk5Qj1Ye"
+    }
   }
 }
