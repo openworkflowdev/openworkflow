@@ -1,0 +1,61 @@
+---
+title: Quick Start
+description: Get up and running with OpenWorkflow
+---
+
+## Prerequisites
+
+- Node.js
+- PostgreSQL (and/or SQLite)
+
+## 1. Install
+
+Install and set up OpenWorkflow with:
+
+```bash
+npx @openworkflow/cli init
+```
+
+The CLI will prompt for your backend, install dependencies, and generate several
+files.
+
+## 2. Start a worker
+
+```bash
+npx @openworkflow/cli worker start
+```
+
+This runs the worker using `openworkflow.config.{ts,js}` and auto-loads
+workflows from the configured directories (default: `openworkflow/`).
+
+## 3. Run workflows from your app
+
+Run a workflow from anywhere:
+
+```ts
+// trigger.ts
+import { helloWorld } from "./openworkflow/hello-world.js";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = BackendSqlite.connect("openworkflow/backend.db");
+const ow = new OpenWorkflow({ backend });
+
+// Run the workflow
+const handle = await ow.runWorkflow(helloWorld.spec, {});
+
+// Wait for the result
+const result = await handle.result();
+console.log(result); // { greeting: "Hello, World!" }
+```
+
+## 4. View workflows in the dashboard
+
+View your workflows using the built-in dashboard:
+
+```bash
+npx @openworkflow/cli dashboard
+```
+
+The dashboard provides a UI for monitoring workflow runs, viewing step details,
+and inspecting workflow state.

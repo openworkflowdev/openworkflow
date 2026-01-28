@@ -1,0 +1,198 @@
+---
+title: Advanced Patterns
+description: Parallel steps, retries, sleeping, type safety, and more
+---
+
+Once you understand the core concepts, you can use these advanced patterns to
+build more sophisticated workflows.
+
+## Parallel Steps
+
+Run multiple steps concurrently using `Promise.all`:
+
+```ts
+const [user, subscription, settings] = await Promise.all([
+  step.run({ name: "fetch-user" }, async () => {
+    await db.users.findOne({ id: input.userId });
+  }),
+  step.run({ name: "fetch-subscription" }, async () => {
+    await stripe.subscriptions.retrieve(input.subId);
+  }),
+  step.run({ name: "fetch-settings" }, async () => {
+    await db.settings.findOne({ userId: input.userId });
+  }),
+]);
+```
+
+Each step is still memoized individually. If the workflow crashes mid-execution,
+completed steps return instantly on resume.
+
+## Automatic Retries
+
+Steps automatically retry on failure with exponential backoff:
+
+```ts
+const data = await step.run({ name: "fetch-external-api" }, async () => {
+  // If this throws, the step retries automatically
+  return await externalAPI.getData();
+});
+```
+
+The default retry behavior works well for most cases. Configure retry behavior
+at the workflow or step level (coming soon) or handle errors explicitly in your
+step functions for custom logic.
+
+## Sleeping (Pausing) Workflows
+
+Pause a workflow until a future time. Because sleeping releases the worker slot,
+you can pause thousands of workflows without tying up compute:
+
+```ts
+// Pause for 1 hour (durable, non-blocking)
+await step.sleep("wait-one-hour", "1h");
+```
+
+The sleep step is memoized after it completes. If the workflow is replayed again
+(e.g. due to a later retry), the completed sleep is not re-applied.
+
+<Warning>
+  Use sleep for long delays (minutes, hours, days). For short delays under a few
+  seconds, regular `await` is more efficient.
+</Warning>
+
+### Duration Formats
+
+Durations accept a number followed by a unit:
+
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
+
+See more examples in the [duration
+tests](https://github.com/openworkflowdev/openworkflow/blob/main/packages/openworkflow/core/duration.test.ts).
+
+## Type Safety
+
+Workflows are fully typed. Define input and output types for compile-time
+safety:
+
+```ts
+interface ProcessOrderInput {
+  orderId: string;
+  userId: string;
+}
+
+interface ProcessOrderOutput {
+  paymentId: string;
+  shipmentId: string;
+}
+
+const processOrder = defineWorkflow<ProcessOrderInput, ProcessOrderOutput>(
+  { name: "process-order" },
+  async ({ input, step }) => {
+    // input is typed as ProcessOrderInput
+    // return type must match ProcessOrderOutput
+    return { paymentId: "...", shipmentId: "..." };
+  },
+);
+```
+
+TypeScript will catch type errors at compile time, preventing runtime issues.
+
+## Waiting for Results
+
+Wait for a workflow to complete and get its result:
+
+```ts
+const run = await myWorkflow.run({ data: "..." });
+
+// Wait for the workflow to finish (polls the database)
+const result = await run.result();
+```
+
+<Note>
+  `result()` polls the database periodically. Use this pattern for workflows
+  that complete quickly (seconds to minutes). For long-running workflows,
+  consider using events or callbacks instead.
+</Note>
+
+## Canceling Workflows
+
+Cancel a workflow that is pending, running, or sleeping to prevent it from
+continuing:
+
+```ts
+const handle = await myWorkflow.run({ data: "..." });
+
+// Cancel the workflow
+await handle.cancel();
+```
+
+Canceled workflows won't execute any remaining steps. Currently executing steps
+will complete, but no new steps will start.
+
+## Workflow Versioning
+
+When you need to change workflow logic, use versioning for backwards
+compatibility:
+
+```ts
+const workflow = defineWorkflow(
+  { name: "my-workflow", version: "v2" },
+  async ({ input, step, version }) => {
+    if (version === "v2") {
+      // v2 runs go here
+      await step.run({ name: "new-step" }, async () => {
+        // new logic
+      });
+    } else {
+      // v1 runs go here
+      await step.run({ name: "old-step" }, async () => {
+        // legacy logic
+      });
+    }
+  },
+);
+```
+
+This allows in-flight workflows to continue using old logic while new workflows
+use the updated version.
+
+<Tip>
+  Use versioning when you need to support multiple workflow implementations
+  simultaneously. For simple changes, deploy the new logic directly.
+</Tip>
+
+## Validating Workflow Inputs
+
+Require callers to provide specific inputs by supplying a `schema`. The schema
+is evaluated before the run is enqueued, so invalid requests fail immediately:
+
+```ts
+import { z } from "zod";
+
+const summarizeDoc = defineWorkflow(
+  {
+    name: "summarize",
+    schema: z.object({
+      docUrl: z.string().url(),
+    }),
+  },
+  async ({ input, step }) => {
+    // `input` has type { docUrl: string }
+  },
+);
+
+// Throws before enqueueing the workflow because the input isn't a URL
+await summarizeDoc.run({ docUrl: "not-a-url" });
+```
+
+Any validator function works as long as it throws on invalid data. This supports
+libraries like Zod, ArkType, Valibot, and Yup, or custom validation logic.

@@ -1,0 +1,52 @@
+---
+title: Production Checklist
+description: Prepare your OpenWorkflow application for production
+---
+
+Before deploying OpenWorkflow to production, review this checklist to ensure
+your workflows are reliable, observable, and scalable.
+
+### Database
+
+- **Use a production-ready Postgres instance**: SQLite is great for development
+  but Postgres is recommended for production workloads due to better concurrency
+  handling and scalability.
+- **Configure connection pooling**: Ensure your Postgres connection pool is
+  appropriately sized for your worker concurrency.
+- **Set up backups**: Regular database backups are critical since your workflow
+  state lives in the database.
+
+### Workers
+
+- **Run at least one worker process**: Deploy workers as separate long-running
+  processes. They can run on the same servers as your application or separately.
+- **Concurrency**: Start with `concurrency: 10` per worker and tune based on
+  your workload.
+- **High availability**: Run multiple worker instances for redundancy. Workers
+  are stateless and can be scaled horizontally.
+
+### Error Handling
+
+- Review your step functions to ensure proper error handling
+- Configure appropriate retry policies for your use case
+- Set up alerting for persistently failing workflows
+
+### Debugging
+
+- Use the dashboard to inspect workflow runs: `npx @openworkflow/cli dashboard`
+- Review step attempts and errors for failed workflows
+- Check database state for workflow runs that appear stuck
+
+### Namespaces (Optional)
+
+Use `namespaceId` in your backend configuration to isolate workflows per
+environment:
+
+```ts
+const backend = await BackendPostgres.connect(postgresUrl, {
+  namespaceId: "production",
+});
+```
+
+This allows you to run multiple environments (staging, production) against the
+same database safely.

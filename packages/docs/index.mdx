@@ -1,11 +1,77 @@
 ---
 title: The open source workflow engine
 description: OpenWorkflow is a TypeScript framework for building durable, resumable workflows.
-sidebarTitle: Home
+sidebarTitle: Introduction
+mode: wide
 ---
 
 ```sh
 npx @openworkflow/cli init
 ```
 
-[Read the docs ↗](https://npmjs.com/package/openworkflow)
+## What is OpenWorkflow?
+
+OpenWorkflow is a TypeScript framework for building durable, resumable workflows
+that can pause for seconds or months, survive crashes and deploys, and resume
+exactly where they left off - all without extra servers to manage.
+
+Initialize a workflow in a few lines:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const sendWelcomeEmail = defineWorkflow(
+  { name: "send-welcome-email" },
+  async ({ input, step }) => {
+    const user = await step.run({ name: "fetch-user" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    });
+
+    await step.run({ name: "send-email" }, async () => {
+      return await resend.emails.send({
+        from: "me@example.com",
+        to: user.email,
+        replyTo: "me@example.com",
+        subject: "Welcome!",
+        html: "<h1>Welcome to our app!</h1>",
+      });
+    });
+
+    await step.run({ name: "mark-welcome-email-sent" }, async () => {
+      await db.users.update(input.userId, { welcomeEmailSent: true });
+    });
+
+    return { user };
+  },
+);
+```
+
+## Features
+
+<div className="flex flex-col gap-2">
+  <div>
+    <Icon icon="shield-check" /> **Durable** - Workflows survive process
+    restarts and server crashes.
+  </div>
+  <div>
+    <Icon icon="rotate-right" /> **Resumable** - Workflows resume execution from
+    the last completed step.
+  </div>
+  <div>
+    <Icon icon="code" /> **Type Safe** - First-class TypeScript support for
+    inputs and outputs.
+  </div>
+</div>
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="bolt" href="/docs/quickstart">
+    Build your first workflow in 5 minutes.
+  </Card>
+</CardGroup>
+
+<Note>
+  OpenWorkflow is in active development and moving quickly. Check out the
+  [Roadmap](/docs/roadmap) for what's coming next.
+</Note>

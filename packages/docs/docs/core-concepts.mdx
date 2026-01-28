@@ -1,0 +1,101 @@
+---
+title: Core Concepts
+description: Learn about Workflows, Steps, and Workers
+---
+
+Understanding these core concepts is essential to building with OpenWorkflow.
+
+## Workflows
+
+Workflows are durable functions that can contain multiple steps, make external
+API calls, query databases, and perform complex logic. If a workflow is
+interrupted (crash, deploy, server restart), it resumes from its last completed
+step.
+
+```ts
+const workflow = defineWorkflow(
+  { name: "my-workflow" },
+  async ({ input, step }) => {
+    // Your workflow logic here
+    return result;
+  },
+);
+```
+
+## Steps
+
+Steps are the building blocks of workflows. Each step is executed exactly once
+and its result is memoized. Steps let you break workflows into checkpoints.
+
+```ts
+const result = await step.run({ name: "step-name" }, async () => {
+  // This function runs once. If the workflow restarts,
+  // this returns the cached result instead of re-running.
+  return await someAsyncWork();
+});
+```
+
+**Why steps matter**: Imagine a workflow that charges a credit card, then sends
+an email. Without steps, if your server crashes after charging the card, the
+workflow would retry from the beginning and charge the customer twice. With
+steps, the charge is memoized. The retry skips it and goes straight to sending
+the email.
+
+<Tip>
+  Each step should be a meaningful unit of work that makes sense to retry or
+  skip independently.
+</Tip>
+
+## Workers
+
+Workers are long-running processes that poll your database for pending workflows
+and execute them.
+
+Workers are stateless and can be started, stopped, and deployed independently.
+Your database is the source of truth.
+
+We recommend running workers via the CLI so workflow discovery stays in sync
+with your `openworkflow.config.{ts,js}`:
+
+<Note>
+  You can run multiple workers simultaneously for high availability and
+  increased throughput.
+</Note>
+
+```bash
+npx @openworkflow/cli worker start
+```
+
+### Programmatic Workers
+
+For more control, you can create workers programmatically:
+
+```ts
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = BackendSqlite.connect("openworkflow/backend.db");
+const ow = new OpenWorkflow({ backend });
+
+const worker = ow.newWorker({ concurrency: 20 });
+await worker.start();
+
+// & to shut down...
+await worker.stop(); // waits for in-flight workflows to complete
+```
+
+## How it Works
+
+Understanding the execution flow helps when debugging or optimizing workflows:
+
+1. **Your app starts a workflow**: A row is inserted into the `workflow_runs`
+   table with status `pending`.
+2. **A worker picks it up**: The worker polls the database, claims the workflow,
+   and sets its status to `running`.
+3. **The worker executes steps**: Each step is recorded in the `step_attempts`
+   table. If a step succeeds, its result is cached.
+4. **The workflow completes**: The worker updates the `workflow_run` status to
+   `completed` or `failed`.
+5. **If the worker crashes**: The workflow becomes visible to other workers via
+   a heartbeat timeout. Another worker picks it up, loads the cached step
+   results, and resumes from the next step.

@@ -7,8 +7,27 @@
   },
   "favicon": "./favicon.ico",
   "navigation": {
-    "pages": ["index", "github", "npm"]
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": ["index", "docs/quickstart", "docs/core-concepts"]
+      },
+      {
+        "group": "Guides",
+        "pages": ["docs/advanced-patterns", "docs/production"]
+      },
+      {
+        "group": "Resources",
+        "pages": ["github", "npm", "docs/roadmap"]
+      }
+    ]
   },
+  "redirects": [
+    {
+      "source": "/docs",
+      "destination": "/"
+    }
+  ],
   "integrations": {
     "posthog": {
       "apiKey": "phc_C1Cm1NAKHDFA3eKLVqcYzR5wUk8WhSbMMXltk5Qj1Ye"
