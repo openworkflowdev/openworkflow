@@ -29,6 +29,7 @@ export default defineConfig(
       "prettier.config.js",
       "examples/workflow-discovery/openworkflow.config.js",
       "packages/dashboard/.output",
+      "packages/dashboard/bin.mjs",
     ],
   },
   {
