@@ -33,7 +33,7 @@
     "nitro": "^3.0.1-alpha.1",
     "openworkflow": "*",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.4",
     "shadcn": "^3.6.2",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.0.6",
