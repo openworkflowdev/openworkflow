@@ -29,7 +29,6 @@ export default defineConfig(
       "prettier.config.js",
       "examples/workflow-discovery/openworkflow.config.js",
       "packages/dashboard/.output",
-      "packages/dashboard/bin.mjs",
     ],
   },
   {
@@ -37,6 +36,16 @@ export default defineConfig(
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ["**/*.mjs"],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: false,
       },
     },
   },
@@ -122,11 +131,6 @@ export default defineConfig(
   },
   {
     files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
-    ignores: [
-      "packages/dashboard/eslint.config.js",
-      "packages/dashboard/prettier.config.js",
-      "packages/dashboard/vite.config.ts",
-    ],
     // massive, but temporary, will need to come back and enable these a few at
     // a time
     rules: {
