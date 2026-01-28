@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 /* v8 ignore file -- @preserve */
-import { doctor, getVersion, init, workerStart } from "./commands.js";
+import {
+  dashboard,
+  doctor,
+  getVersion,
+  init,
+  workerStart,
+} from "./commands.js";
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";
 
@@ -37,5 +43,11 @@ workerCmd
     Number.parseInt,
   )
   .action(withErrorHandling(workerStart));
+
+// dashboard
+program
+  .command("dashboard")
+  .description("start the dashboard to view workflow runs")
+  .action(withErrorHandling(dashboard));
 
 await program.parseAsync(process.argv);

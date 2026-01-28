@@ -10,6 +10,7 @@ import * as p from "@clack/prompts";
 import { consola } from "consola";
 import { config as loadDotenv } from "dotenv";
 import { createJiti } from "jiti";
+import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -306,6 +307,70 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
     await gracefulShutdown();
     throw error;
   }
+}
+
+/**
+ * openworkflow dashboard
+ * Starts the dashboard by delegating to `@openworkflow/dashboard` via npx.
+ */
+export async function dashboard(): Promise<void> {
+  consola.start("Starting dashboard...");
+
+  const { configFile } = await loadConfigWithEnv();
+  if (!configFile) {
+    throw new CLIError(
+      "No config file found.",
+      "Run `ow init` to create a config file before starting the dashboard.",
+    );
+  }
+  consola.info(`Using config: ${configFile}`);
+
+  // eslint-disable-next-line sonarjs/no-os-command-from-path
+  const child = spawn("npx", ["@openworkflow/dashboard"], {
+    stdio: "inherit",
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    /** remove signal handlers after the child exits */
+    function cleanupSignalHandlers(): void {
+      process.off("SIGINT", signalHandler);
+      process.off("SIGTERM", signalHandler);
+    }
+
+    child.on("error", (error) => {
+      cleanupSignalHandlers();
+      reject(
+        new CLIError(
+          "Failed to start dashboard.",
+          `Could not spawn npx: ${error.message}`,
+        ),
+      );
+    });
+
+    child.on("exit", (code) => {
+      cleanupSignalHandlers();
+      if (code === 0 || code === null) {
+        resolve();
+      } else {
+        reject(
+          new CLIError(
+            "Dashboard exited with an error.",
+            `Exit code: ${String(code)}`,
+          ),
+        );
+      }
+    });
+
+    /**
+     * Graceful shutdown on signals.
+     * @param signal - Signal
+     */
+    function signalHandler(signal: NodeJS.Signals): void {
+      child.kill(signal);
+    }
+    process.on("SIGINT", signalHandler);
+    process.on("SIGTERM", signalHandler);
+  });
 }
 
 // -----------------------------------------------------------------------------

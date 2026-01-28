@@ -39,6 +39,16 @@ export default defineConfig(
       },
     },
   },
+  {
+    files: ["**/*.mjs"],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: false,
+      },
+    },
+  },
   // ---------------------------------------------------------------------------
   {
     settings: {
@@ -121,11 +131,6 @@ export default defineConfig(
   },
   {
     files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
-    ignores: [
-      "packages/dashboard/eslint.config.js",
-      "packages/dashboard/prettier.config.js",
-      "packages/dashboard/vite.config.ts",
-    ],
     // massive, but temporary, will need to come back and enable these a few at
     // a time
     rules: {
