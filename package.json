@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
+    "benchmarks/*",
+    "examples/*",
     "packages/*"
   ],
   "scripts": {
