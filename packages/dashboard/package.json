@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/dashboard",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "bin": "./bin.mjs",
   "files": [

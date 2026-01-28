@@ -68,8 +68,6 @@ The CLI will prompt for your backend, installs dependencies, and generates:
 ### 2. Start a worker
 
 ```bash
-npm run worker
-# or
 npx @openworkflow/cli worker start
 ```
 
@@ -98,6 +96,16 @@ console.log(result); // { greeting: "Hello, World!" }
 ```
 
 That's it. Your workflow is now durable, resumable, and fault-tolerant.
+
+### 4. View workflows in the dashboard
+
+View your workflows using the built-in dashboard:
+
+```bash
+npx @openworkflow/cli dashboard
+```
+
+The dashboard provides a UI for monitoring workflow runs, viewing step details, and inspecting workflow state.
 
 ## Core Concepts
 
@@ -144,8 +152,6 @@ and execute them. Run workers via the CLI so workflow discovery stays in sync
 with your `openworkflow.config.{ts,js}`:
 
 ```bash
-npm run worker
-# or
 npx @openworkflow/cli worker start
 ```
 
@@ -390,6 +396,7 @@ and Yup.
 
 - ✅ PostgreSQL and SQLite backends
 - ✅ CLI (`npx @openworkflow/cli`)
+- ✅ Dashboard (`npx @openworkflow/cli dashboard`)
 - ✅ Worker with concurrency control
 - ✅ Step memoization & retries
 - ✅ Graceful shutdown
@@ -400,12 +407,6 @@ and Yup.
 
 **Coming Soon:**
 
-> These releases don't yet include a dashboard UI. For now, you can inspect
-> workflow and step state directly in PostgreSQL or SQLite (workflow_runs and
-> step_attempts tables). A dashboard is planned for an upcoming release to make
-> debugging and monitoring much easier.
-
-- Dashboard UI
 - Idempotency keys
 - Rollback / compensation functions
 - Configurable retry policies

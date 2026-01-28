@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.2.0
+
+- Add `openworkflow dashboard` command to launch the dashboard
+
 ## 0.1.0
 
 - Initial release of the `openworkflow` CLI (alias `ow`).
