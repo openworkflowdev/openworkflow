@@ -1,0 +1,12 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "linden",
+  "name": "OpenWorkflow",
+  "colors": {
+    "primary": "#000000"
+  },
+  "favicon": "./favicon.ico",
+  "navigation": {
+    "pages": ["index", "github", "npm"]
+  }
+}
