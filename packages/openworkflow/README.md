@@ -9,13 +9,9 @@ that can pause for seconds or months, survive crashes and deploys, and resume
 exactly where they left off - all without extra servers to manage.
 
 ```ts
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
-import { OpenWorkflow } from "openworkflow";
+import { defineWorkflow } from "openworkflow";
 
-const backend = BackendSqlite.connect("openworkflow/backend.db");
-const ow = new OpenWorkflow({ backend });
-
-const sendWelcomeEmail = ow.defineWorkflow(
+export const sendWelcomeEmail = defineWorkflow(
   { name: "send-welcome-email" },
   async ({ input, step }) => {
     const user = await step.run({ name: "fetch-user" }, async () => {
@@ -35,6 +31,7 @@ const sendWelcomeEmail = ow.defineWorkflow(
     await step.run({ name: "mark-welcome-email-sent" }, async () => {
       await db.users.update(input.userId, { welcomeEmailSent: true });
     });
+
     return { user };
   },
 );
