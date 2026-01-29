@@ -7,6 +7,15 @@
   },
   "favicon": "./favicon.ico",
   "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Star on GitHub",
+          "icon": "star",
+          "href": "https://github.com/openworkflowdev/openworkflow"
+        }
+      ]
+    },
     "groups": [
       {
         "group": "Get started",
@@ -18,7 +27,7 @@
       },
       {
         "group": "Resources",
-        "pages": ["github", "npm", "docs/roadmap"]
+        "pages": ["docs/roadmap", "npm", "github"]
       }
     ]
   },
