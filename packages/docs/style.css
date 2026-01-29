@@ -9,3 +9,8 @@
 .eyebrow {
   display: none;
 }
+
+/* hide the "..." that opens an empty menu on mobile w/ the linden theme */
+button[aria-label="More actions"] {
+  display: none;
+}
