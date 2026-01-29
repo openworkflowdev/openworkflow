@@ -33,13 +33,8 @@ workflows from the configured directories (default: `openworkflow/`).
 Run a workflow from anywhere:
 
 ```ts
-// trigger.ts
+import { ow } from "./openworkflow/client.js";
 import { helloWorld } from "./openworkflow/hello-world.js";
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
-import { OpenWorkflow } from "openworkflow";
-
-const backend = BackendSqlite.connect("openworkflow/backend.db");
-const ow = new OpenWorkflow({ backend });
 
 // Run the workflow
 const handle = await ow.runWorkflow(helloWorld.spec, {});

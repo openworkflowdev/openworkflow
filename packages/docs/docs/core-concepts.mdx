@@ -66,24 +66,6 @@ with your `openworkflow.config.{ts,js}`:
 npx @openworkflow/cli worker start
 ```
 
-### Programmatic Workers
-
-For more control, you can create workers programmatically:
-
-```ts
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
-import { OpenWorkflow } from "openworkflow";
-
-const backend = BackendSqlite.connect("openworkflow/backend.db");
-const ow = new OpenWorkflow({ backend });
-
-const worker = ow.newWorker({ concurrency: 20 });
-await worker.start();
-
-// & to shut down...
-await worker.stop(); // waits for in-flight workflows to complete
-```
-
 ## How it Works
 
 Understanding the execution flow helps when debugging or optimizing workflows:

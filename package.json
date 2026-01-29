@@ -21,7 +21,7 @@
     "test:coverage:browse": "open ./coverage/index.html",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "worker": "ow worker start"
+    "worker": "npx @openworkflow/cli worker start"
   },
   "dependencies": {
     "@openworkflow/backend-postgres": "*",

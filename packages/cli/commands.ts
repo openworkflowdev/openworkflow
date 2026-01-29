@@ -1,10 +1,11 @@
 import { WorkerConfig, loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import {
+  CONFIG,
   HELLO_WORLD_WORKFLOW,
-  POSTGRES_CONFIG,
-  POSTGRES_PROD_SQLITE_DEV_CONFIG,
-  SQLITE_CONFIG,
+  POSTGRES_CLIENT,
+  POSTGRES_PROD_SQLITE_DEV_CLIENT,
+  SQLITE_CLIENT,
 } from "./templates.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
@@ -122,6 +123,7 @@ export async function init(): Promise<void> {
   }
 
   const configFileName = getConfigFileName(packageJson);
+  const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
 
   const shouldSetup = await p.confirm({
@@ -158,6 +160,7 @@ export async function init(): Promise<void> {
     spinner.stop(`Installed ${devDependencies.join(", ")}`);
   }
 
+  createClientFile(backendChoice, clientFileName);
   createExampleWorkflow(exampleWorkflowFileName);
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
@@ -172,7 +175,7 @@ export async function init(): Promise<void> {
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
-  createConfigFile(backendChoice, configFileName);
+  createConfigFile(configFileName);
 
   // wrap up
   p.note(
@@ -636,16 +639,21 @@ async function discoverWorkflowsInDirs(
  * @param backendChoice - The selected backend choice
  * @returns The config template string
  */
-function getConfigTemplate(backendChoice: BackendChoice): string {
+/**
+ * Get the client template for a backend choice.
+ * @param backendChoice - The selected backend choice
+ * @returns The client template string
+ */
+function getClientTemplate(backendChoice: BackendChoice): string {
   switch (backendChoice) {
     case "sqlite": {
-      return SQLITE_CONFIG;
+      return SQLITE_CLIENT;
     }
     case "postgres": {
-      return POSTGRES_CONFIG;
+      return POSTGRES_CLIENT;
     }
     case "both": {
-      return POSTGRES_PROD_SQLITE_DEV_CONFIG;
+      return POSTGRES_PROD_SQLITE_DEV_CLIENT;
     }
   }
 }
@@ -679,19 +687,41 @@ function getDevDependenciesToInstall(): string[] {
 
 /**
  * Create config file.
- * @param backendChoice - The selected backend choice
  * @param configFileName - The config file name to write
  */
-function createConfigFile(
-  backendChoice: BackendChoice,
-  configFileName: string,
-): void {
+function createConfigFile(configFileName: string): void {
   const spinner = p.spinner();
   spinner.start("Writing config...");
-  const configTemplate = getConfigTemplate(backendChoice);
   const configDestPath = path.join(process.cwd(), configFileName);
-  writeFileSync(configDestPath, configTemplate, "utf8");
+  writeFileSync(configDestPath, CONFIG, "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
+}
+
+/**
+ * Create client file.
+ * @param backendChoice - The selected backend choice
+ * @param clientFileName - The client filename to write
+ */
+function createClientFile(
+  backendChoice: BackendChoice,
+  clientFileName: string,
+): void {
+  const spinner = p.spinner();
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
+  }
+  const clientDestPath = path.join(workflowsDir, clientFileName);
+  if (existsSync(clientDestPath)) {
+    spinner.start("Checking client file...");
+    spinner.stop(`Client file already exists at ${clientDestPath}`);
+    return;
+  }
+
+  spinner.start("Creating client file...");
+  const clientTemplate = getClientTemplate(backendChoice);
+  writeFileSync(clientDestPath, clientTemplate, "utf8");
+  spinner.stop(`Created client file at ${clientDestPath}`);
 }
 
 /**
@@ -897,6 +927,20 @@ export function getExampleWorkflowFileName(
   const extension = path.extname(configFileName) || ".js";
 
   return `hello-world${extension}`;
+}
+
+/**
+ * Determine the client filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The client file name to create
+ */
+export function getClientFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  const configFileName = getConfigFileName(packageJson);
+  const extension = path.extname(configFileName) || ".js";
+
+  return `client${extension}`;
 }
 
 /**
