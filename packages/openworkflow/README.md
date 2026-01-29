@@ -50,20 +50,7 @@ npx @openworkflow/cli init
 The CLI will guide you through setup and generate everything you need to get
 started.
 
-### Start a worker
-
-```bash
-npx @openworkflow/cli worker start
-```
-
-### View the dashboard
-
-```bash
-npx @openworkflow/cli dashboard
-```
-
-That's it. For more details, check out our
-[documentation](https://openworkflow.dev/docs).
+For more details, check out our [docs](https://openworkflow.dev/docs).
 
 ## Features
 
