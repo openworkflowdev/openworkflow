@@ -1,5 +1,10 @@
 # @openworkflow/cli
 
+## 0.2.3
+
+- Ignore `*.run.*` in default generated config
+- Add support for ignorePatterns
+
 ## 0.2.2
 
 - Generate example run script on `ow init`
