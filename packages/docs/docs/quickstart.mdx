@@ -16,8 +16,7 @@ Install and set up OpenWorkflow with:
 npx @openworkflow/cli init
 ```
 
-The CLI will prompt for your backend, install dependencies, and generate several
-files.
+The CLI will help you set up OpenWorkflow and generate an example workflow.
 
 ## 2. Start a worker
 
@@ -25,24 +24,25 @@ files.
 npx @openworkflow/cli worker start
 ```
 
-This runs the worker using `openworkflow.config.{ts,js}` and auto-loads
+This starts the worker using `openworkflow.config.{ts,js}` and auto-loads
 workflows from the configured directories (default: `openworkflow/`).
 
 ## 3. Run workflows from your app
 
-Run a workflow from anywhere:
+```bash
+// TypeScript
+npx tsx openworkflow/hello-world.run.ts
 
-```ts
-import { ow } from "./openworkflow/client.js";
-import { helloWorld } from "./openworkflow/hello-world.js";
-
-// Run the workflow
-const handle = await ow.runWorkflow(helloWorld.spec, {});
-
-// Wait for the result
-const result = await handle.result();
-console.log(result); // { greeting: "Hello, World!" }
+// JavaScript
+node openworkflow/hello-world.run.js
 ```
+
+This script runs the `helloWorld` workflow and waits for it to complete.
+
+<Note>
+  This file is a temporary dev helper. Copy the code into your app (e.g., an API
+  route or a script) and modify it to run your workflows, then delete the file.
+</Note>
 
 ## 4. View workflows in the dashboard
 

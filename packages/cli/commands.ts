@@ -2,6 +2,7 @@ import { WorkerConfig, loadConfig } from "./config.js";
 import { CLIError } from "./errors.js";
 import {
   CONFIG,
+  HELLO_WORLD_RUNNER,
   HELLO_WORLD_WORKFLOW,
   POSTGRES_CLIENT,
   POSTGRES_PROD_SQLITE_DEV_CLIENT,
@@ -125,6 +126,7 @@ export async function init(): Promise<void> {
   const configFileName = getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
+  const runFileName = getRunFileName(packageJson);
 
   const shouldSetup = await p.confirm({
     message: `Install packages and set up project files (.env, .gitignore, package.json, ${configFileName}, openworkflow/${exampleWorkflowFileName})?`,
@@ -162,6 +164,7 @@ export async function init(): Promise<void> {
 
   createClientFile(backendChoice, clientFileName);
   createExampleWorkflow(exampleWorkflowFileName);
+  createRunFile(runFileName);
 
   if (backendChoice === "sqlite" || backendChoice === "both") {
     updateGitignoreForSqlite();
@@ -698,6 +701,28 @@ function createConfigFile(configFileName: string): void {
 }
 
 /**
+ * Create hello-world runner file.
+ * @param runFileName - The runner filename to write
+ */
+function createRunFile(runFileName: string): void {
+  const spinner = p.spinner();
+  const workflowsDir = path.join(process.cwd(), "openworkflow");
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(workflowsDir, { recursive: true });
+  }
+  const runDestPath = path.join(workflowsDir, runFileName);
+  if (existsSync(runDestPath)) {
+    spinner.start("Checking hello-world runner...");
+    spinner.stop(`Hello-world runner already exists at ${runDestPath}`);
+    return;
+  }
+
+  spinner.start("Creating hello-world runner...");
+  writeFileSync(runDestPath, HELLO_WORLD_RUNNER, "utf8");
+  spinner.stop(`Created hello-world runner at ${runDestPath}`);
+}
+
+/**
  * Create client file.
  * @param backendChoice - The selected backend choice
  * @param clientFileName - The client filename to write
@@ -927,6 +952,20 @@ export function getExampleWorkflowFileName(
   const extension = path.extname(configFileName) || ".js";
 
   return `hello-world${extension}`;
+}
+
+/**
+ * Determine the hello-world runner filename to write during init.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns The runner file name to create
+ */
+export function getRunFileName(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): string {
+  const configFileName = getConfigFileName(packageJson);
+  const extension = path.extname(configFileName) || ".js";
+
+  return `hello-world.run${extension}`;
 }
 
 /**
