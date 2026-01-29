@@ -1,4 +1,7 @@
 {
   "name": "@openworkflow/docs",
-  "private": true
+  "private": true,
+  "scripts": {
+    "dev": "npx mint dev"
+  }
 }
