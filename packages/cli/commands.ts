@@ -127,6 +127,9 @@ export async function init(): Promise<void> {
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
   const runFileName = getRunFileName(packageJson);
+  const runCommand = runFileName.endsWith(".ts")
+    ? `npx tsx openworkflow/${runFileName}`
+    : `node openworkflow/${runFileName}`;
 
   const shouldSetup = await p.confirm({
     message: "Install packages and set up project files?",
@@ -182,7 +185,7 @@ export async function init(): Promise<void> {
 
   // wrap up
   p.note(
-    "➡️ Start a worker:\n$ npx @openworkflow/cli worker start\n\n➡️ Run the example workflow:\n$ node openworkflow/hello-world.run.js\n   (or: npx tsx openworkflow/hello-world.run.ts)\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard",
+    `➡️ Start a worker:\n$ npx @openworkflow/cli worker start\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard`,
     "Next steps",
   );
   p.outro("✅ Setup complete!");
