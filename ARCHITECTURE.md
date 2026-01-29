@@ -32,9 +32,10 @@ durable execution with minimal operational complexity.
 - **Backend**: A pluggable persistence layer (e.g., a Postgres or SQLite
   database) that stores all state for workflow runs and step attempts. It serves
   as the queue and the durable state log.
-- **Config**: `openworkflow.config.*` defines backend settings and workflow
-  discovery paths for CLI commands. It typically imports the shared `backend`
-  from `openworkflow/client.*` so app code and CLI use the same connection.
+- **Config**: `openworkflow.config.*` defines backend settings, workflow
+  discovery paths, and optional ignore patterns for CLI commands. It typically
+  imports the shared `backend` from `openworkflow/client.*` so app code and CLI
+  use the same connection.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.

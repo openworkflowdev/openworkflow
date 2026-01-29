@@ -1,9 +1,13 @@
 import {
+  discoverWorkflowFiles,
   getClientFileName,
   getConfigFileName,
   getExampleWorkflowFileName,
   getRunFileName,
 } from "./commands.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 describe("getConfigFileName", () => {
@@ -111,5 +115,29 @@ describe("getClientFileName", () => {
     expect(getClientFileName({ dependencies: {}, devDependencies: {} })).toBe(
       "client.js",
     );
+  });
+});
+
+describe("discoverWorkflowFiles", () => {
+  test("respects ignorePatterns", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ow-ignore-"));
+    try {
+      const workflowsDir = path.join(tmpDir, "openworkflow");
+      fs.mkdirSync(workflowsDir, { recursive: true });
+
+      const keepFile = path.join(workflowsDir, "hello-world.ts");
+      const ignoredFile = path.join(workflowsDir, "hello-world.skip.ts");
+
+      fs.writeFileSync(keepFile, "export const hello = true;");
+      fs.writeFileSync(ignoredFile, "export const skip = true;");
+
+      const files = discoverWorkflowFiles(["openworkflow"], tmpDir, [
+        "**/*.skip.ts",
+      ]);
+
+      expect(files).toEqual([keepFile]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

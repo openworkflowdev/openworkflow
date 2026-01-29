@@ -223,6 +223,7 @@ export async function doctor(): Promise<void> {
     const { files, workflows } = await discoverWorkflowsInDirs(
       dirs,
       configFileDir,
+      config.ignorePatterns ?? [],
     );
     consola.log("");
     consola.info(`Found ${String(files.length)} workflow file(s):`);
@@ -283,6 +284,7 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
     const { files, workflows } = await discoverWorkflowsInDirs(
       dirs,
       configFileDir,
+      config.ignorePatterns ?? [],
     );
     consola.info(`Found ${String(files.length)} workflow file(s)`);
 
@@ -506,16 +508,125 @@ function printDiscoveredWorkflows(
 }
 
 const WORKFLOW_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
+const DEFAULT_IGNORE_PATTERNS = ["**/*.run.*"];
+
+/**
+ * Normalize a path for glob matching.
+ * @param filePath - Path to normalize
+ * @returns Normalized path
+ */
+function normalizeForGlobMatch(filePath: string): string {
+  return filePath.split(path.sep).join("/");
+}
+
+/**
+ * Escape a single character for regex usage.
+ * @param char - Character to escape
+ * @returns Escaped character
+ */
+function escapeRegexChar(char: string): string {
+  return /[-/\\^$+?.()|[\]{}]/.test(char) ? `\\${char}` : char;
+}
+
+/**
+ * Handle "*" and "**" glob tokens.
+ * @param pattern - Glob pattern
+ * @param index - Current index
+ * @returns Regex fragment and next index
+ */
+function handleAsteriskToken(
+  pattern: string,
+  index: number,
+): { regexFragment: string; nextIndex: number } {
+  const next = pattern[index + 1];
+  if (next === "*") {
+    const nextIndex = pattern[index + 2] === "/" ? index + 3 : index + 2;
+    return {
+      regexFragment: pattern[index + 2] === "/" ? "(?:.*/)?" : ".*",
+      nextIndex,
+    };
+  }
+
+  return { regexFragment: "[^/]*", nextIndex: index + 1 };
+}
+
+/**
+ * Convert a glob pattern to a RegExp.
+ * @param pattern - Glob pattern
+ * @returns Regex to match the glob
+ */
+function globToRegExp(pattern: string): RegExp {
+  let regex = "^";
+  let index = 0;
+
+  while (index < pattern.length) {
+    const char = pattern[index];
+    if (!char) break;
+
+    switch (char) {
+      case "*": {
+        const { regexFragment, nextIndex } = handleAsteriskToken(
+          pattern,
+          index,
+        );
+        regex += regexFragment;
+        index = nextIndex;
+        break;
+      }
+      case "?": {
+        regex += "[^/]";
+        index += 1;
+        break;
+      }
+      default: {
+        regex += escapeRegexChar(char);
+        index += 1;
+      }
+    }
+  }
+
+  regex += "$";
+  return new RegExp(regex);
+}
+
+/**
+ * Check whether a file path matches ignore patterns.
+ * @param filePath - Absolute file path
+ * @param baseDir - Base directory for relative matching
+ * @param matchers - Compiled regex matchers
+ * @returns Whether the file should be ignored
+ */
+function isIgnoredFile(
+  filePath: string,
+  baseDir: string,
+  matchers: RegExp[],
+): boolean {
+  if (matchers.length === 0) return false;
+
+  const relativePath = normalizeForGlobMatch(path.relative(baseDir, filePath));
+  const fileName = path.basename(filePath);
+
+  return matchers.some(
+    (matcher) => matcher.test(relativePath) || matcher.test(fileName),
+  );
+}
 
 /**
  * Discover workflow files from directories. Recursively scans directories for
  * workflow files with supported extensions (.ts, .js, .mjs, .cjs).
  * @param dirs - Directory or directories to scan for workflow files
  * @param baseDir - Base directory to resolve relative paths from
+ * @param ignorePatterns - Glob patterns to ignore
  * @returns Array of absolute file paths
  */
-function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
+export function discoverWorkflowFiles(
+  dirs: string[],
+  baseDir: string,
+  ignorePatterns: string[] = [],
+): string[] {
   const discoveredFiles: string[] = [];
+  const patterns = [...DEFAULT_IGNORE_PATTERNS, ...ignorePatterns];
+  const matchers = patterns.map((pattern) => globToRegExp(pattern));
 
   /**
    * Recursively scan a directory for workflow files.
@@ -543,7 +654,8 @@ function discoverWorkflowFiles(dirs: string[], baseDir: string): string[] {
         WORKFLOW_EXTENSIONS.some((ext: string) =>
           entry.name.endsWith(`.${ext}`),
         ) &&
-        !entry.name.endsWith(".d.ts")
+        !entry.name.endsWith(".d.ts") &&
+        !isIgnoredFile(fullPath, baseDir, matchers)
       ) {
         discoveredFiles.push(fullPath);
       }
@@ -602,16 +714,18 @@ async function importWorkflows(
  * Discover workflow files and import workflows with common error handling.
  * @param dirs - Workflow directories
  * @param baseDir - Base directory for relative paths
+ * @param ignorePatterns - Glob patterns to ignore
  * @returns Files and workflows
  */
 async function discoverWorkflowsInDirs(
   dirs: string[],
   baseDir: string,
+  ignorePatterns: string[] = [],
 ): Promise<{
   files: string[];
   workflows: Workflow<unknown, unknown, unknown>[];
 }> {
-  const files = discoverWorkflowFiles(dirs, baseDir);
+  const files = discoverWorkflowFiles(dirs, baseDir, ignorePatterns);
 
   if (files.length === 0) {
     const extensionsStr = WORKFLOW_EXTENSIONS.map(

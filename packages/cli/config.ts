@@ -16,6 +16,13 @@ export interface OpenWorkflowConfig {
    * @example ["./openworkflow", "./src/openworkflow", "./workflows"]
    */
   dirs?: string | string[];
+  /**
+   * Glob patterns to ignore when discovering workflow files.
+   * Patterns are matched against paths relative to the config directory.
+   * @example ["**\\/*.run.*"]
+   * @example ["**\\/*.test.*", "**\\/__fixtures__/**"]
+   */
+  ignorePatterns?: string[];
 }
 
 export type WorkerConfig = Pick<WorkerOptions, "concurrency">;
