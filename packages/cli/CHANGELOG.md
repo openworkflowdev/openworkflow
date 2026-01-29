@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.2.1
+
+- `ow init`: Generate a client file to DRY up the client
+
 ## 0.2.0
 
 - Add `openworkflow dashboard` command to launch the dashboard
