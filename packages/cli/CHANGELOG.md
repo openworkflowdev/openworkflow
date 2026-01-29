@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.2.2
+
+- Generate example run script on `ow init`
+
 ## 0.2.1
 
 - `ow init`: Generate a client file to DRY up the client
