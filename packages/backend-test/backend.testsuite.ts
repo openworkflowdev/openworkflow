@@ -112,7 +112,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const listed = await backend.listWorkflowRuns({});
         const listedIds = listed.data.map((run) => run.id);
-        expect(listedIds).toEqual([first.id, second.id]);
+        expect(listedIds).toEqual([second.id, first.id]);
         await teardown(backend);
       });
 
@@ -127,8 +127,8 @@ export function testBackend(options: TestBackendOptions): void {
         // p1
         const page1 = await backend.listWorkflowRuns({ limit: 2 });
         expect(page1.data).toHaveLength(2);
-        expect(page1.data[0]?.id).toBe(runs[0]?.id);
-        expect(page1.data[1]?.id).toBe(runs[1]?.id);
+        expect(page1.data[0]?.id).toBe(runs[4]?.id);
+        expect(page1.data[1]?.id).toBe(runs[3]?.id);
         expect(page1.pagination.next).not.toBeNull();
         expect(page1.pagination.prev).toBeNull();
 
@@ -139,7 +139,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(page2.data).toHaveLength(2);
         expect(page2.data[0]?.id).toBe(runs[2]?.id);
-        expect(page2.data[1]?.id).toBe(runs[3]?.id);
+        expect(page2.data[1]?.id).toBe(runs[1]?.id);
         expect(page2.pagination.next).not.toBeNull();
         expect(page2.pagination.prev).not.toBeNull();
 
@@ -149,7 +149,7 @@ export function testBackend(options: TestBackendOptions): void {
           after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
         });
         expect(page3.data).toHaveLength(1);
-        expect(page3.data[0]?.id).toBe(runs[4]?.id);
+        expect(page3.data[0]?.id).toBe(runs[0]?.id);
         expect(page3.pagination.next).toBeNull();
         expect(page3.pagination.prev).not.toBeNull();
 
@@ -160,7 +160,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(page2Back.data).toHaveLength(2);
         expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
-        expect(page2Back.data[1]?.id).toBe(runs[3]?.id);
+        expect(page2Back.data[1]?.id).toBe(runs[1]?.id);
         expect(page2Back.pagination.next).toEqual(page2.pagination.next);
         expect(page2Back.pagination.prev).toEqual(page2.pagination.prev);
         await teardown(backend);
@@ -184,9 +184,9 @@ export function testBackend(options: TestBackendOptions): void {
         }
 
         runs.sort((a, b) => {
-          const timeDiff = a.createdAt.getTime() - b.createdAt.getTime();
+          const timeDiff = b.createdAt.getTime() - a.createdAt.getTime();
           if (timeDiff !== 0) return timeDiff;
-          return a.id.localeCompare(b.id);
+          return b.id.localeCompare(a.id);
         });
 
         const page1 = await backend.listWorkflowRuns({ limit: 2 });

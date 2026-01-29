@@ -153,8 +153,8 @@ export class BackendPostgres implements Backend {
 
     const whereClause = this.buildListWorkflowRunsWhere(params, cursor);
     const order = before
-      ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
-      : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+      ? this.pg`ORDER BY "created_at" ASC, "id" ASC`
+      : this.pg`ORDER BY "created_at" DESC, "id" DESC`;
 
     const rows = await this.pg<WorkflowRun[]>`
       SELECT *
@@ -175,7 +175,7 @@ export class BackendPostgres implements Backend {
     const conditions = [this.pg`"namespace_id" = ${this.namespaceId}`];
 
     if (cursor) {
-      const op = after ? this.pg`>` : this.pg`<`;
+      const op = after ? this.pg`<` : this.pg`>`;
       conditions.push(
         this.pg`("created_at", "id") ${op} (${cursor.createdAt}, ${cursor.id})`,
       );

@@ -489,14 +489,14 @@ export class BackendSqlite implements Backend {
     }
 
     const order = before
-      ? `ORDER BY "created_at" DESC, "id" DESC`
-      : `ORDER BY "created_at" ASC, "id" ASC`;
+      ? `ORDER BY "created_at" ASC, "id" ASC`
+      : `ORDER BY "created_at" DESC, "id" DESC`;
 
     let query: string;
     let queryParams: (string | number)[];
 
     if (cursor) {
-      const op = after ? ">" : "<";
+      const op = after ? "<" : ">";
       query = `
         SELECT *
         FROM "workflow_runs"
