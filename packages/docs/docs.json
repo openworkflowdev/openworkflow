@@ -38,8 +38,8 @@
     }
   ],
   "integrations": {
-    "gtm": {
-      "tagId": "G-MJ06221ME3"
+    "ga4": {
+      "measurementId": "G-MJ06221ME3"
     },
     "posthog": {
       "apiKey": "phc_C1Cm1NAKHDFA3eKLVqcYzR5wUk8WhSbMMXltk5Qj1Ye"
