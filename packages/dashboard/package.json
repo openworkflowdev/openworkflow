@@ -24,7 +24,7 @@
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "^0.9.3",
     "@tanstack/react-router": "^1.157.16",
-    "@tanstack/react-router-devtools": "^1.157.16",
+    "@tanstack/react-router-devtools": "^1.157.17",
     "@tanstack/react-router-ssr-query": "^1.157.16",
     "@tanstack/react-start": "^1.157.16",
     "@tanstack/router-plugin": "^1.157.16",
