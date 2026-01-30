@@ -1,0 +1,152 @@
+---
+title: Standard Schema
+description: Use Zod, Valibot, ArkType, and more to validate workflow inputs
+---
+
+OpenWorkflow supports the [Standard Schema](https://standardschema.dev/) spec.
+This allows you to use your favorite validation library to define type-safe
+contracts for your workflows.
+
+## Overview
+
+When you define a workflow, you can provide a `schema`. OpenWorkflow uses this
+schema to:
+
+1. **Validate inputs at runtime**: When `workflow.run()` is called, the input is
+   validated immediately. If validation fails, an error is thrown before the
+   workflow is enqueued, preventing invalid data from entering your system.
+2. **Type Safety**: The `input` parameter in your workflow function is
+   automatically typed based on your schema.
+
+## Supported Libraries
+
+Any library that implements the Standard Schema specification works out of the
+box, including:
+
+- [Zod](https://zod.dev)
+- [Valibot](https://valibot.dev)
+- [ArkType](https://arktype.io)
+- [Yup](https://github.com/jquense/yup)
+
+And [many
+more](https://standardschema.dev/schema#what-schema-libraries-implement-the-spec).
+
+## Examples
+
+### Zod
+
+```ts
+import { defineWorkflow } from "openworkflow";
+import { z } from "zod";
+
+const emailSchema = z.object({
+  to: z.string().email(),
+  subject: z.string().min(1),
+  body: z.string(),
+});
+
+export const sendEmail = defineWorkflow(
+  {
+    name: "send-email",
+    schema: emailSchema,
+  },
+  async ({ input, step }) => {
+    // `input` is fully typed as { to: string; subject: string; body: string }
+
+    await step.run({ name: "send-email" }, async () => {
+      await emailProvider.send({
+        to: input.to,
+        subject: input.subject,
+        body: input.body,
+      });
+    });
+
+    return { success: true, recipient: input.to };
+  },
+);
+```
+
+### Valibot
+
+```ts
+import { defineWorkflow } from "openworkflow";
+import * as v from "valibot";
+
+const emailSchema = v.object({
+  to: v.pipe(v.string(), v.email()),
+  subject: v.pipe(v.string(), v.minLength(1)),
+  body: v.string(),
+});
+
+export const sendEmail = defineWorkflow(
+  {
+    name: "send-email",
+    schema: emailSchema,
+  },
+  async ({ input, step }) => {
+    // `input` is fully typed as { to: string; subject: string; body: string }
+
+    await step.run({ name: "send-email" }, async () => {
+      await emailProvider.send({
+        to: input.to,
+        subject: input.subject,
+        body: input.body,
+      });
+    });
+
+    return { success: true, recipient: input.to };
+  },
+);
+```
+
+### ArkType
+
+```ts
+import { type } from "arktype";
+import { defineWorkflow } from "openworkflow";
+
+const emailSchema = type({
+  to: "string.email",
+  subject: "string>0",
+  body: "string",
+});
+
+export const sendEmail = defineWorkflow(
+  {
+    name: "send-email",
+    schema: emailSchema,
+  },
+  async ({ input, step }) => {
+    // `input` is fully typed as { to: string; subject: string; body: string }
+
+    await step.run({ name: "send-email" }, async () => {
+      await emailProvider.send({
+        to: input.to,
+        subject: input.subject,
+        body: input.body,
+      });
+    });
+
+    return { success: true, recipient: input.to };
+  },
+);
+```
+
+## Validation Errors
+
+When validation fails, OpenWorkflow throws a detailed error that includes
+information about what went wrong:
+
+```ts
+import { sendEmail } from "./workflows/send-email";
+
+try {
+  await sendEmail.run({
+    to: "invalid-email", // Invalid email format
+    subject: "", // Too short
+    body: "Hello",
+  });
+} catch (error) {
+  console.error("Validation failed:", error);
+}
+```

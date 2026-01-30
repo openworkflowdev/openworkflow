@@ -26,6 +26,10 @@
         "pages": ["docs/advanced-patterns", "docs/production"]
       },
       {
+        "group": "Integrations",
+        "pages": ["docs/standard-schema"]
+      },
+      {
         "group": "Resources",
         "pages": ["docs/roadmap", "npm", "github"]
       }
