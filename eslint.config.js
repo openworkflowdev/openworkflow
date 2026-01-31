@@ -16,6 +16,7 @@ export default defineConfig(
   tseslint.configs.stylisticTypeChecked,
   importPlugin.flatConfigs.recommended,
   importPlugin.flatConfigs.typescript,
+  // @ts-ignore
   sonarjs.configs.recommended,
   unicorn.configs.recommended,
   jsdoc.configs["flat/recommended-typescript-error"],
@@ -119,7 +120,6 @@ export default defineConfig(
     files: ["packages/openworkflow/core/**/*.ts"],
     ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
     plugins: {
-      // @ts-expect-error - eslint-plugin-functional types don't align with eslint's Plugin type
       functional,
     },
     rules: {
