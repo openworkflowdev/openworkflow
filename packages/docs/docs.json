@@ -13,6 +13,11 @@
           "anchor": "Star on GitHub",
           "icon": "star",
           "href": "https://github.com/openworkflowdev/openworkflow"
+        },
+        {
+          "anchor": "Join Discord 🆕",
+          "icon": "discord",
+          "href": "https://discord.openworkflow.dev"
         }
       ]
     },
