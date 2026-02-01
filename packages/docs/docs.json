@@ -55,7 +55,7 @@
       },
       {
         "group": "Resources",
-        "pages": ["docs/roadmap", "npm", "github"]
+        "pages": ["docs/roadmap", "docs/llms", "npm", "github"]
       }
     ]
   },
