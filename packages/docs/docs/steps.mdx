@@ -76,7 +76,8 @@ await step.run({ name: "step-2" }, ...);
 
 <Warning>
   Changing step names after workflows are in-flight can cause replay errors.
-  Completed steps won't be found in the history, causing them to re-execute.
+  Completed steps won't be found in the history, causing them to re-execute. To
+  change logic safely, see [Versioning](/docs/versioning).
 </Warning>
 
 ## Return Values
