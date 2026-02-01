@@ -1,0 +1,193 @@
+---
+title: Workflows
+description: Durable functions that survive crashes and resume where they left off
+---
+
+Workflows are the core building block of OpenWorkflow. They are durable
+functions that can survive process crashes, server restarts, and code deploys.
+When a workflow is interrupted, it resumes from its last completed step.
+
+## Defining a Workflow
+
+Define a workflow with `defineWorkflow`:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const sendWelcomeEmail = defineWorkflow(
+  { name: "send-welcome-email" },
+  async ({ input, step }) => {
+    const user = await step.run({ name: "fetch-user" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    });
+
+    await step.run({ name: "send-email" }, async () => {
+      await emailService.send({
+        to: user.email,
+        subject: "Welcome!",
+        body: "Thanks for signing up.",
+      });
+    });
+
+    return { sent: true };
+  },
+);
+```
+
+A workflow consists of:
+
+1. **A spec** - Configuration including the workflow name and optional version
+2. **A function** - The async function that contains your workflow logic
+
+## Running a Workflow
+
+Start a workflow by calling `.run()`:
+
+```ts
+import { sendWelcomeEmail } from "./workflows/send-welcome-email";
+
+const handle = await sendWelcomeEmail.run({ userId: "user_123" });
+```
+
+The `run()` method returns a handle immediately. The actual workflow execution
+happens in a worker process. This lets your application continue without waiting
+for the workflow to complete.
+
+## Waiting for Results
+
+If you need to wait for a workflow to complete, use `.result()` on the handle:
+
+```ts
+const handle = await sendWelcomeEmail.run({ userId: "user_123" });
+
+// Wait for completion (polls the database)
+const result = await handle.result();
+console.log(result); // { sent: true }
+```
+
+<Note>
+  `result()` polls the database periodically. Use this for workflows that
+  complete quickly (seconds to minutes). For long-running workflows, consider
+  using events or callbacks instead.
+</Note>
+
+You can also configure a custom timeout:
+
+```ts
+const result = await handle.result({ timeoutMs: 60000 }); // 1 minute timeout
+```
+
+## Workflow Options
+
+### Name (Required)
+
+Every workflow needs a unique name. This name is used to identify the workflow
+in the database and must match when workers execute the workflow.
+
+```ts
+defineWorkflow({ name: "process-order" }, async ({ input, step }) => {
+  // ...
+});
+```
+
+### Version (Optional)
+
+Use versioning when you need to support multiple implementations of the same
+workflow simultaneously. See [Versioning](/docs/versioning) for details.
+
+```ts
+defineWorkflow(
+  { name: "process-order", version: "v2" },
+  async ({ input, step, version }) => {
+    // version === "v2"
+  },
+);
+```
+
+### Schema (Optional)
+
+Validate inputs before the workflow is enqueued using any Standard Schema
+compatible validator. See [Standard Schema](/docs/standard-schema) for details.
+
+```ts
+import { z } from "zod";
+
+defineWorkflow(
+  {
+    name: "send-email",
+    schema: z.object({
+      to: z.string().email(),
+      subject: z.string().min(1),
+    }),
+  },
+  async ({ input, step }) => {
+    // input is typed and validated
+  },
+);
+```
+
+## Workflow Function Parameters
+
+The workflow function receives an object with three properties:
+
+| Parameter | Type             | Description                                       |
+| --------- | ---------------- | ------------------------------------------------- |
+| `input`   | Generic          | The input data passed to `workflow.run()`         |
+| `step`    | `StepApi`        | API for defining steps (`step.run`, `step.sleep`) |
+| `version` | `string \| null` | The workflow version, if specified                |
+
+```ts
+defineWorkflow({ name: "example" }, async ({ input, step, version }) => {
+  console.log("Input:", input);
+  console.log("Version:", version);
+
+  await step.run({ name: "my-step" }, async () => {
+    // step logic
+  });
+});
+```
+
+## Workflow Run States
+
+A workflow run progresses through these states:
+
+| Status      | Description                                       |
+| ----------- | ------------------------------------------------- |
+| `pending`   | Created and waiting for a worker to claim it      |
+| `running`   | Actively being executed by a worker               |
+| `sleeping`  | Paused and waiting for a `step.sleep` to complete |
+| `completed` | Finished successfully                             |
+| `failed`    | Failed after exhausting retries                   |
+| `canceled`  | Explicitly canceled and will not continue         |
+
+## Determinism
+
+Workflow functions should be deterministic. This means:
+
+- Given the same inputs, the workflow should execute the same steps in the same
+  order
+- Non-deterministic operations (API calls, random numbers, current time) should
+  be wrapped in steps
+
+When a workflow replays after a crash, it re-executes the function from the
+beginning. Completed steps return their cached results instantly. If the
+workflow encounters different steps during replay, it can cause errors.
+
+<Warning>
+  Avoid calling `Math.random()`, `Date.now()`, or making API calls directly in
+  the workflow function. Wrap them in steps instead.
+</Warning>
+
+```ts
+// Bad - non-deterministic
+defineWorkflow({ name: "bad" }, async ({ step }) => {
+  const random = Math.random(); // Different on replay!
+  // ...
+});
+
+// Good - deterministic
+defineWorkflow({ name: "good" }, async ({ step }) => {
+  const random = await step.run({ name: "get-random" }, () => Math.random());
+  // ...
+});
+```

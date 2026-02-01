@@ -1,0 +1,145 @@
+---
+title: Type Safety
+description: End-to-end TypeScript type safety for workflows
+---
+
+OpenWorkflow provides full TypeScript support with type inference for workflow
+inputs and outputs.
+
+## Schema Validation with Type Inference
+
+For runtime validation with type inference, use [Standard
+Schema](/docs/standard-schema) compatible libraries like Zod:
+
+```typescript
+import { z } from "zod";
+
+const inputSchema = z.object({
+  email: z.string().email(),
+  amount: z.number().positive(),
+});
+
+export const payment = defineWorkflow(
+  {
+    name: "payment",
+    schema: inputSchema,
+  },
+  async ({ input, step }) => {
+    // input is typed as { email: string; amount: number }
+    // and validated at runtime
+  },
+);
+```
+
+## Explicit Type Definitions
+
+To manually specify input and (optionally) output types, use generics with
+`defineWorkflow`:
+
+```typescript
+import { defineWorkflow } from "openworkflow";
+
+interface OrderInput {
+  orderId: string;
+  customerId: string;
+}
+
+interface OrderResult {
+  success: boolean;
+  trackingNumber: string;
+}
+
+export const processOrder = defineWorkflow<OrderInput, OrderResult>(
+  { name: "process-order" },
+  async ({ input, step }) => {
+    const validated = await step.run("validate", async () => {
+      // input is typed as OrderInput
+      return validateOrder(input.orderId);
+    });
+
+    const trackingNumber = await step.run("ship", async () => {
+      return shipOrder(input.orderId);
+    });
+
+    // Return type must match OrderResult
+    return {
+      success: true,
+      trackingNumber,
+    };
+  },
+);
+```
+
+If you only specify the input type, the output type is inferred from the return
+value:
+
+```typescript
+export const greet = defineWorkflow<{ name: string }>(
+  { name: "greet" },
+  async ({ input }) => {
+    return `Hello, ${input.name}!`; // Output inferred as string
+  },
+);
+```
+
+## Workflow Specs
+
+When using `defineWorkflowSpec` for separate declaration and implementation,
+types flow through:
+
+```typescript
+import { defineWorkflowSpec, OpenWorkflow } from "openworkflow";
+
+// Declare the workflow spec with types
+export const emailSpec = defineWorkflowSpec<
+  { to: string; subject: string },
+  { sent: boolean }
+>({
+  name: "send-email",
+});
+
+// Implementation receives typed input
+const ow = new OpenWorkflow({ backend });
+ow.implementWorkflow(emailSpec, async ({ input, step }) => {
+  // input.to and input.subject are typed
+  await step.run("send", async () => {
+    await sendEmail(input.to, input.subject);
+  });
+  return { sent: true };
+});
+```
+
+## Client-Side Type Safety
+
+When you run a workflow, the handle is typed with the output:
+
+```typescript
+const handle = await processOrder.run({
+  orderId: "123",
+  customerId: "456",
+});
+
+// result is typed as OrderResult
+const result = await handle.result();
+console.log(result.trackingNumber); // TypeScript knows this exists
+```
+
+## Step Result Types
+
+Step return types are inferred automatically:
+
+```typescript
+const workflow = defineWorkflow<{ userId: string }>(
+  { name: "user-workflow" },
+  async ({ input, step }) => {
+    // user is inferred as User type from the return
+    const user = await step.run("get-user", async () => {
+      const response = await fetch(`/api/users/${input.userId}`);
+      return response.json() as User;
+    });
+
+    // TypeScript knows user has these properties
+    console.log(user.email, user.name);
+  },
+);
+```

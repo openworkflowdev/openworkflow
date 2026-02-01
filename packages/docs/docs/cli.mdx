@@ -1,0 +1,156 @@
+---
+title: CLI Reference
+description: Command-line interface for OpenWorkflow
+---
+
+The OpenWorkflow CLI helps you initialize projects, run workers, and manage
+workflows.
+
+## Installation
+
+```bash
+npm install -D @openworkflow/cli
+```
+
+## Commands
+
+### `init`
+
+Initialize OpenWorkflow in your project:
+
+```bash
+npx @openworkflow/cli init
+```
+
+This interactive command:
+
+1. Asks which backend to use (SQLite, PostgreSQL, or both)
+2. Installs required dependencies
+3. Creates `openworkflow.config.ts`
+4. Creates an example workflow in `./openworkflow/`
+5. Adds a `worker` script to `package.json`
+6. Updates `.gitignore` for SQLite (if selected)
+7. Adds `OPENWORKFLOW_POSTGRES_URL` to `.env` for PostgreSQL (if selected)
+
+### `worker start`
+
+Start a worker to process workflows:
+
+```bash
+npx @openworkflow/cli worker start
+```
+
+Options:
+
+- `--concurrency <n>` - Number of concurrent workflow executions (overrides
+  config)
+
+```bash
+# Run with 4 concurrent workflows
+npx @openworkflow/cli worker start --concurrency 4
+```
+
+The worker:
+
+1. Loads your config file
+2. Discovers workflows in the configured directories
+3. Registers all workflows
+4. Starts polling for work
+5. Handles graceful shutdown on SIGINT/SIGTERM
+
+### `dashboard`
+
+Start the web dashboard:
+
+```bash
+npx @openworkflow/cli dashboard
+```
+
+This launches the OpenWorkflow dashboard on `http://localhost:3000`. See
+[Dashboard](/docs/dashboard) for details.
+
+### `doctor`
+
+Diagnose your OpenWorkflow setup:
+
+```bash
+npx @openworkflow/cli doctor
+```
+
+This command checks:
+
+- Config file exists and loads correctly
+- Backend connection works
+- Workflow directories exist
+- Workflow files are discoverable
+- Workflows export valid definitions
+- No duplicate workflow names
+
+Example output:
+
+```
+ℹ Config file: /project/openworkflow.config.ts
+  • Backend: Postgres
+  • Workflow directories: ./openworkflow
+
+ℹ Found 3 workflow file(s):
+  • /project/openworkflow/orders.ts
+  • /project/openworkflow/notifications.ts
+  • /project/openworkflow/reports.ts
+
+ℹ Discovered 5 workflow(s):
+  • process-order
+  • send-notification (version: 2.0.0)
+  • send-notification (version: 1.0.0)
+  • generate-report
+  • cleanup
+
+✔ Configuration looks good!
+```
+
+### `--version`
+
+Show the CLI version:
+
+```bash
+npx @openworkflow/cli --version
+```
+
+### `--help`
+
+Show help for any command:
+
+```bash
+npx @openworkflow/cli --help
+npx @openworkflow/cli worker --help
+npx @openworkflow/cli worker start --help
+```
+
+## Environment Variables
+
+The CLI loads `.env` files automatically before reading the config.
+
+```bash
+# .env
+OPENWORKFLOW_POSTGRES_URL=postgresql://user:pass@localhost:5432/openworkflow
+```
+
+## Exit Codes
+
+| Code | Meaning                                           |
+| ---- | ------------------------------------------------- |
+| 0    | Success                                           |
+| 1    | Error (config not found, connection failed, etc.) |
+
+## Graceful Shutdown
+
+When running `worker start`, the CLI handles shutdown signals:
+
+- **SIGINT** (Ctrl+C) - Graceful shutdown
+- **SIGTERM** - Graceful shutdown
+
+On shutdown, the worker:
+
+1. Stops accepting new work
+2. Waits for active workflows to complete
+3. Closes the backend connection

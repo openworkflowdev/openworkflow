@@ -1,0 +1,136 @@
+---
+title: Namespaces
+description: Isolate environments with namespace IDs
+---
+
+Namespaces let you run multiple isolated environments in the same database. This
+is useful for separating development, staging, and production, or for
+multi-tenant applications.
+
+## How Namespaces Work
+
+Every workflow run and step attempt is tagged with a `namespaceId`. Workers and
+clients only see data in their namespace.
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+
+// Production namespace
+const prodBackend = await BackendPostgres.connect(url, {
+  namespaceId: "production",
+});
+
+// Staging namespace (same database)
+const stagingBackend = await BackendPostgres.connect(url, {
+  namespaceId: "staging",
+});
+```
+
+## Default Namespace
+
+If you don't specify a `namespaceId`, the default is `"default"`:
+
+```typescript
+// These are equivalent
+const backend = await BackendPostgres.connect(url);
+const backend = await BackendPostgres.connect(url, { namespaceId: "default" });
+```
+
+## Use Cases
+
+### Environment Isolation
+
+Run development, staging, and production in the same database:
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { defineConfig } from "@openworkflow/cli";
+
+const namespace = process.env.NAMESPACE || "development";
+
+export default defineConfig({
+  backend: await BackendPostgres.connect(
+    process.env.OPENWORKFLOW_POSTGRES_URL!,
+    {
+      namespaceId: namespace,
+    },
+  ),
+});
+```
+
+Set the namespace per environment:
+
+```bash
+# Development
+NAMESPACE=development npm run worker
+
+# Staging
+NAMESPACE=staging npm run worker
+
+# Production
+NAMESPACE=production npm run worker
+```
+
+### Multi-Tenancy
+
+Isolate workflows per tenant:
+
+```typescript
+async function getBackendForTenant(tenantId: string) {
+  return BackendPostgres.connect(process.env.OPENWORKFLOW_POSTGRES_URL!, {
+    namespaceId: `tenant-${tenantId}`,
+  });
+}
+```
+
+### Testing
+
+Use separate namespaces for test runs:
+
+```typescript
+// In your test setup
+const testNamespace = `test-${Date.now()}`;
+
+const backend = await BackendPostgres.connect(testUrl, {
+  namespaceId: testNamespace,
+});
+```
+
+## SQLite Namespaces
+
+Namespaces work the same way with SQLite:
+
+```typescript
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+
+const backend = BackendSqlite.connect("./backend.db", {
+  namespaceId: "development",
+});
+```
+
+## Data Visibility
+
+Each namespace is completely isolated:
+
+| Namespace    | Can See                     |
+| ------------ | --------------------------- |
+| `production` | Only `production` workflows |
+| `staging`    | Only `staging` workflows    |
+| `default`    | Only `default` workflows    |
+
+A worker with `namespaceId: "production"` will never pick up work from the
+`staging` namespace.
+
+## Dashboard
+
+The dashboard shows workflows for the namespace configured in your config file.
+To view a different namespace, update the config and restart the dashboard.
+
+## Best Practices
+
+1. **Use environment variables** - Don't hardcode namespace IDs
+2. **Consistent naming** - Use clear names like `production`, `staging`,
+   `development`
+3. **One namespace per worker pool** - Don't mix namespaces in the same worker
+   process
+4. **Clean up test namespaces** - Periodically remove old test data

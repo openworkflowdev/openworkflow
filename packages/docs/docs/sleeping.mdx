@@ -1,0 +1,191 @@
+---
+title: Sleeping
+description: Pause workflows for seconds, hours, or months without blocking resources
+---
+
+Workflows can pause for any duration using `step.sleep()`. This is a durable
+pause that survives crashes and restarts. Unlike `setTimeout` or `await
+sleep()`, a workflow sleep releases the worker slot so you can pause thousands
+of workflows without tying up compute.
+
+## Basic Usage
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const reminderWorkflow = defineWorkflow(
+  { name: "send-reminder" },
+  async ({ input, step }) => {
+    await step.run({ name: "send-initial-email" }, async () => {
+      await emailService.send({
+        to: input.email,
+        subject: "Welcome!",
+      });
+    });
+
+    // Pause for 7 days
+    await step.sleep("wait-7-days", "7d");
+
+    await step.run({ name: "send-followup" }, async () => {
+      await emailService.send({
+        to: input.email,
+        subject: "How's it going?",
+      });
+    });
+  },
+);
+```
+
+## How Sleep Works
+
+When a workflow encounters `step.sleep()`:
+
+1. A step attempt is created with the resume time
+2. The workflow status changes to `sleeping`
+3. The worker releases the workflow (frees the slot)
+4. When the sleep duration elapses, the workflow becomes available again
+5. A worker claims it and resumes from after the sleep
+
+## Duration Formats
+
+The duration argument accepts a number followed by a unit:
+
+| Unit         | Aliases               | Examples         |
+| ------------ | --------------------- | ---------------- |
+| milliseconds | `ms`, `msec`, `msecs` | `100ms`, `1.5ms` |
+| seconds      | `s`, `sec`, `secs`    | `5s`, `0.25s`    |
+| minutes      | `m`, `min`, `mins`    | `2m`, `1.5m`     |
+| hours        | `h`, `hr`, `hrs`      | `1h`, `0.25h`    |
+| days         | `d`, `day(s)`         | `1d`, `0.5d`     |
+| weeks        | `w`, `week(s)`        | `1w`, `2w`       |
+| months       | `mo`, `month(s)`      | `1mo`, `2mo`     |
+| years        | `y`, `yr`, `yrs`      | `1y`, `2yr`      |
+
+Examples:
+
+```ts
+await step.sleep("short-wait", "500ms");
+await step.sleep("one-minute", "1m");
+await step.sleep("half-hour", "30min");
+await step.sleep("overnight", "12h");
+await step.sleep("one-week", "1w");
+await step.sleep("quarterly", "3mo");
+```
+
+## Sleep Names
+
+Like `step.run()`, each sleep needs a unique name within the workflow:
+
+```ts
+// Good - descriptive names
+await step.sleep("wait-for-trial-end", "14d");
+await step.sleep("cool-off-period", "1h");
+
+// Bad - generic names
+await step.sleep("sleep-1", "1h");
+await step.sleep("sleep-2", "1h");
+```
+
+## Common Patterns
+
+### Scheduled Follow-ups
+
+```ts
+export const onboardingSequence = defineWorkflow(
+  { name: "onboarding-sequence" },
+  async ({ input, step }) => {
+    await step.run({ name: "send-welcome" }, ...);
+
+    await step.sleep("wait-1-day", "1d");
+    await step.run({ name: "send-tips" }, ...);
+
+    await step.sleep("wait-3-days", "3d");
+    await step.run({ name: "send-checkin" }, ...);
+
+    await step.sleep("wait-7-days", "7d");
+    await step.run({ name: "send-survey" }, ...);
+  },
+);
+```
+
+### Trial Expiration
+
+```ts
+export const trialWorkflow = defineWorkflow(
+  { name: "trial-workflow" },
+  async ({ input, step }) => {
+    await step.run({ name: "start-trial" }, async () => {
+      await db.users.update(input.userId, { trialStartedAt: new Date() });
+    });
+
+    // Wait for trial to end
+    await step.sleep("trial-period", "14d");
+
+    const user = await step.run({ name: "check-subscription" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    });
+
+    if (!user.hasSubscription) {
+      await step.run({ name: "end-trial" }, async () => {
+        await db.users.update(input.userId, { trialEnded: true });
+        await emailService.send({
+          to: user.email,
+          subject: "Your trial has ended",
+        });
+      });
+    }
+  },
+);
+```
+
+### Rate Limiting
+
+```ts
+export const rateLimitedSync = defineWorkflow(
+  { name: "sync-data" },
+  async ({ input, step }) => {
+    for (const batch of input.batches) {
+      await step.run({ name: `sync-batch-${batch.id}` }, async () => {
+        await api.sync(batch);
+      });
+
+      // Respect API rate limits
+      await step.sleep(`rate-limit-${batch.id}`, "1s");
+    }
+  },
+);
+```
+
+## When to Use Sleep
+
+Use `step.sleep()` for:
+
+- Scheduled follow-ups (emails, notifications)
+- Trial periods and expiration workflows
+- Rate limiting between API calls
+- Retry backoff delays
+- Any pause longer than a few seconds
+
+<Warning>
+  For very short delays (under a few seconds), consider using regular `await`
+  with a Promise. The overhead of a durable sleep isn't worth it for sub-second
+  delays.
+</Warning>
+
+```ts
+// For short delays, regular await is fine
+await new Promise((resolve) => setTimeout(resolve, 100));
+
+// For longer delays, use step.sleep for durability
+await step.sleep("wait-one-minute", "1m");
+```
+
+## Sleep and Memoization
+
+Once a sleep completes, it's memoized like any other step. If the workflow
+replays after the sleep has finished, it returns immediately:
+
+```ts
+await step.sleep("wait-1-hour", "1h");
+// If workflow replays after 1 hour passed, this returns instantly
+```

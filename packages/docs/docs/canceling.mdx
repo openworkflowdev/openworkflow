@@ -1,0 +1,97 @@
+---
+title: Canceling Workflows
+description: Cancel running or pending workflow runs
+---
+
+You can cancel workflow runs that are pending, running, or sleeping.
+
+## Cancel a Workflow Run
+
+Use the `cancel()` method on a workflow run handle:
+
+```typescript
+import { defineWorkflow } from "openworkflow";
+
+const longRunning = defineWorkflow(
+  { name: "long-running" },
+  async ({ step }) => {
+    await step.sleep("wait", "1 hour");
+    await step.run("work", () => doExpensiveWork());
+  },
+);
+
+// Start the workflow
+const handle = await longRunning.run();
+
+// Cancel it before it completes
+await handle.cancel();
+```
+
+## Cancelable States
+
+Only workflows in these states can be canceled:
+
+| Status      | Can Cancel?           |
+| ----------- | --------------------- |
+| `pending`   | Yes                   |
+| `running`   | Yes                   |
+| `sleeping`  | Yes                   |
+| `completed` | No                    |
+| `failed`    | No                    |
+| `canceled`  | No (already canceled) |
+
+Attempting to cancel a completed or failed workflow throws an error:
+
+```typescript
+try {
+  await handle.cancel();
+} catch (error) {
+  // "Cannot cancel workflow run abc123 with status completed"
+}
+```
+
+## Canceled Workflow Behavior
+
+When a workflow is canceled:
+
+1. The status changes to `canceled`
+2. The worker releases the workflow (sets `worker_id` to null)
+3. The `finished_at` timestamp is set
+4. Any sleeping workflow is woken and canceled
+
+If a workflow is mid-execution when canceled, the current step may complete, but
+no new steps will run on the next poll.
+
+## Checking Cancellation Status
+
+After calling `cancel()`, you can verify the status:
+
+```typescript
+const handle = await workflow.run();
+await handle.cancel();
+
+// Waiting for result on a canceled workflow throws
+try {
+  await handle.result();
+} catch (error) {
+  // "Workflow my-workflow was canceled"
+}
+```
+
+## Idempotent Cancellation
+
+Canceling an already-canceled workflow returns successfully without error:
+
+```typescript
+await handle.cancel(); // Cancels the workflow
+await handle.cancel(); // No error - already canceled
+```
+
+## Use Cases
+
+Common reasons to cancel workflows:
+
+- **User-initiated cancellation** - User decides to abort an operation
+- **Timeout exceeded** - External system determines the workflow took too long
+- **Duplicate detection** - Another workflow is already handling this work
+- **Cleanup on shutdown** - Cancel pending work when shutting down a service

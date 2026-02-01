@@ -18,12 +18,31 @@
     },
     "groups": [
       {
-        "group": "Get started",
-        "pages": ["index", "docs/quickstart", "docs/core-concepts"]
+        "group": "Get Started",
+        "pages": ["index", "docs/quickstart"]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": ["docs/workflows", "docs/steps", "docs/workers"]
       },
       {
         "group": "Guides",
-        "pages": ["docs/advanced-patterns", "docs/production"]
+        "pages": [
+          "docs/sleeping",
+          "docs/parallel-steps",
+          "docs/retries",
+          "docs/type-safety",
+          "docs/versioning",
+          "docs/canceling"
+        ]
+      },
+      {
+        "group": "Backends",
+        "pages": ["docs/postgres", "docs/sqlite", "docs/namespaces"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["docs/configuration", "docs/cli", "docs/dashboard"]
       },
       {
         "group": "Integrations",
@@ -39,6 +58,18 @@
     {
       "source": "/docs",
       "destination": "/"
+    },
+    {
+      "source": "/docs/core-concepts",
+      "destination": "/docs/workflows"
+    },
+    {
+      "source": "/docs/advanced-patterns",
+      "destination": "/docs/parallel-steps"
+    },
+    {
+      "source": "/docs/production",
+      "destination": "/docs/postgres"
     }
   ],
   "integrations": {

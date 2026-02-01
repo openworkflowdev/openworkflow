@@ -1,0 +1,123 @@
+---
+title: PostgreSQL Backend
+description: Production-ready PostgreSQL storage for OpenWorkflow
+---
+
+The PostgreSQL backend is recommended for production deployments. It provides
+durability, concurrent worker support, and scales with your application.
+
+## Installation
+
+```bash
+npm install @openworkflow/backend-postgres
+```
+
+## Setup
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = await BackendPostgres.connect(
+  process.env.OPENWORKFLOW_POSTGRES_URL, // e.g., "postgresql://user:pass@localhost:5432/mydb"
+);
+
+const ow = new OpenWorkflow({ backend });
+```
+
+## Connection URL
+
+The connection URL follows the standard PostgreSQL format:
+
+```
+postgresql://[user]:[password]@[host]:[port]/[database]
+```
+
+Examples:
+
+- Local: `postgresql://postgres:postgres@localhost:5432/openworkflow`
+- With SSL: `postgresql://user:pass@host.com:5432/db?sslmode=require`
+
+## Configuration Options
+
+```typescript
+const backend = await BackendPostgres.connect(url, {
+  // Namespace for multi-tenant isolation (default: "default")
+  namespaceId: "production",
+
+  // Whether to run migrations on connect (default: true)
+  runMigrations: true,
+});
+```
+
+## Migrations
+
+By default, `BackendPostgres.connect()` runs database migrations automatically.
+This creates the `openworkflow` schema and required tables.
+
+To disable automatic migrations:
+
+```typescript
+const backend = await BackendPostgres.connect(url, {
+  runMigrations: false,
+});
+```
+
+When disabled, ensure you run migrations separately before starting workers.
+
+## Schema
+
+OpenWorkflow creates tables in the `openworkflow` schema:
+
+- `openworkflow.workflow_runs` - Stores workflow run state
+- `openworkflow.step_attempts` - Stores step execution history
+
+This keeps OpenWorkflow data separate from your application tables.
+
+## Namespaces
+
+Use `namespaceId` to isolate environments or tenants:
+
+```typescript
+// Production environment
+const prodBackend = await BackendPostgres.connect(url, {
+  namespaceId: "production",
+});
+
+// Staging environment (same database, different namespace)
+const stagingBackend = await BackendPostgres.connect(url, {
+  namespaceId: "staging",
+});
+```
+
+See [Namespaces](/docs/namespaces) for more details.
+
+## Config File Example
+
+For use with the CLI, create `openworkflow.config.ts`:
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { defineConfig } from "@openworkflow/cli";
+
+export default defineConfig({
+  backend: await BackendPostgres.connect(
+    process.env.OPENWORKFLOW_POSTGRES_URL!,
+  ),
+  dirs: ["./openworkflow"],
+});
+```
+
+## Connection Pooling
+
+The PostgreSQL backend uses connection pooling internally. For most
+applications, the default pool settings work well. The pool is managed
+automatically and connections are reused across workflow executions.
+
+## Requirements
+
+- PostgreSQL 14 or later
+- The connecting user needs permissions to:
+  - Create schemas (for migrations)
+  - Create tables (for migrations)
+  - Read/write to the `openworkflow` schema

@@ -1,0 +1,180 @@
+---
+title: Steps
+description: Durable checkpoints that don't repeat already completed work
+---
+
+Steps are the building blocks of workflows. Each step is executed exactly once
+and its result is memoized. If a workflow restarts, completed steps return their
+cached results immediately instead of re-running.
+
+## Defining Steps
+
+Use `step.run()` to define a step within a workflow:
+
+```ts
+const result = await step.run({ name: "fetch-user" }, async () => {
+  return await db.users.findOne({ id: input.userId });
+});
+```
+
+The first argument is a config object with the step name. The second argument is
+the async function to execute. The function's return value is stored and
+returned on subsequent replays.
+
+## Why Steps Matter
+
+Consider a workflow that charges a credit card and sends an email:
+
+```ts
+// Without steps (dangerous!)
+async function processOrder(orderId: string) {
+  await chargeCard(orderId); // What if we crash here?
+  await sendConfirmationEmail(orderId);
+}
+```
+
+If the server crashes after charging the card but before sending the email, a
+naive retry would charge the customer twice.
+
+With steps, each operation is memoized:
+
+```ts
+defineWorkflow({ name: "process-order" }, async ({ input, step }) => {
+  await step.run({ name: "charge-card" }, async () => {
+    await chargeCard(input.orderId);
+  });
+
+  await step.run({ name: "send-email" }, async () => {
+    await sendConfirmationEmail(input.orderId);
+  });
+});
+```
+
+If the workflow crashes after the card is charged:
+
+1. The workflow restarts from the beginning
+2. The "charge-card" step sees it already completed and returns instantly
+3. The "send-email" step runs normally
+
+The customer is charged exactly once.
+
+## Step Names
+
+Step names must be unique within a workflow. They identify steps during replay
+and should be stable across code changes.
+
+```ts
+// Good - descriptive, stable names
+await step.run({ name: "fetch-user" }, ...);
+await step.run({ name: "send-welcome-email" }, ...);
+await step.run({ name: "update-user-status" }, ...);
+
+// Bad - generic names that could conflict
+await step.run({ name: "step-1" }, ...);
+await step.run({ name: "step-2" }, ...);
+```
+
+<Warning>
+  Changing step names after workflows are in-flight can cause replay errors.
+  Completed steps won't be found in the history, causing them to re-execute.
+</Warning>
+
+## Return Values
+
+Steps can return any JSON-serializable value:
+
+```ts
+// Returning an object
+const user = await step.run({ name: "fetch-user" }, async () => {
+  return await db.users.findOne({ id: input.userId });
+});
+
+// Returning a primitive
+const count = await step.run({ name: "count-items" }, async () => {
+  return items.length;
+});
+
+// Returning null/undefined
+await step.run({ name: "log-event" }, async () => {
+  console.log("Event logged");
+  // implicitly returns undefined, stored as null
+});
+```
+
+<Note>
+  Step results must be JSON-serializable. Avoid returning functions, circular
+  references, or class instances with methods.
+</Note>
+
+## Step Types
+
+OpenWorkflow provides two step types:
+
+### `step.run()`
+
+Executes arbitrary async code and memoizes the result:
+
+```ts
+const user = await step.run({ name: "fetch-user" }, async () => {
+  return await db.users.findOne({ id: input.userId });
+});
+```
+
+### `step.sleep()`
+
+Pauses the workflow until a specified duration has elapsed. See
+[Sleeping](/docs/sleeping) for details:
+
+```ts
+await step.sleep("wait-one-hour", "1h");
+```
+
+## Error Handling
+
+If a step throws an error, the error is recorded and the workflow fails:
+
+```ts
+await step.run({ name: "risky-operation" }, async () => {
+  const response = await fetch("https://api.example.com/data");
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+  return await response.json();
+});
+```
+
+Steps that throw are marked as failed. The workflow can be retried, and failed
+steps will re-execute (not return cached results).
+
+## What Makes a Good Step
+
+Each step should be a meaningful unit of work. Good steps:
+
+- Represent a single logical operation (fetch user, send email, charge card)
+- Have side effects that shouldn't be repeated (payments, notifications)
+- Take a reasonable amount of time (not too granular, not too coarse)
+
+```ts
+// Good - each step is a meaningful operation
+await step.run({ name: "fetch-user" }, ...);
+await step.run({ name: "validate-subscription" }, ...);
+await step.run({ name: "charge-payment" }, ...);
+await step.run({ name: "send-receipt" }, ...);
+
+// Too granular - overhead outweighs benefits
+await step.run({ name: "parse-json" }, ...);
+await step.run({ name: "validate-field-1" }, ...);
+await step.run({ name: "validate-field-2" }, ...);
+
+// Too coarse - no benefit from checkpointing
+await step.run({ name: "do-everything" }, async () => {
+  await fetchUser();
+  await chargeCard();
+  await sendEmail();
+});
+```
+
+<Tip>
+  If an operation has no side effects and is fast to compute, consider whether
+  it really needs to be a step. Pure computations can happen outside of steps.
+</Tip>

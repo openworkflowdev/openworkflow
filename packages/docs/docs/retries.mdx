@@ -1,0 +1,160 @@
+---
+title: Retries
+description: Automatic retry behavior for failed steps and workflows
+---
+
+OpenWorkflow automatically retries failed steps with exponential backoff. This
+ensures transient failures (network issues, temporary outages) don't permanently
+fail your workflows.
+
+## How Retries Work
+
+When a step throws an error:
+
+1. The step attempt is marked as `failed`
+2. The error is recorded in the database
+3. The workflow is rescheduled with exponential backoff
+4. When the workflow resumes, it replays to the failed step
+5. The step function executes again (not the cached result)
+
+## Automatic Retries in Steps
+
+Steps that throw are automatically retried:
+
+```ts
+await step.run({ name: "call-api" }, async () => {
+  const response = await fetch("https://api.example.com/data");
+
+  if (!response.ok) {
+    // Throwing here triggers a retry
+    throw new Error(`API error: ${response.status}`);
+  }
+
+  return await response.json();
+});
+```
+
+Each retry:
+
+- Replays the workflow from the beginning
+- Returns cached results for completed steps
+- Re-executes the failed step
+
+## Exponential Backoff
+
+Failed workflows are rescheduled with increasing delays:
+
+| Attempt | Delay     |
+| ------- | --------- |
+| 1       | Immediate |
+| 2       | ~1s       |
+| 3       | ~2s       |
+| 4       | ~4s       |
+| 5       | ~8s       |
+| ...     | ...       |
+
+This prevents overwhelming external services during outages.
+
+## What Triggers a Retry
+
+Retries happen when:
+
+- A step function throws an exception
+- A step function returns a rejected promise
+- The worker crashes during step execution
+
+Retries do **not** happen for:
+
+- Completed steps (they return cached results)
+- Explicitly canceled workflows
+- Workflows that complete successfully
+
+## Error Handling
+
+You can catch and handle errors within your workflow:
+
+```ts
+defineWorkflow({ name: "with-error-handling" }, async ({ input, step }) => {
+  try {
+    await step.run({ name: "risky-operation" }, async () => {
+      await externalApi.call();
+    });
+  } catch (error) {
+    // Log the error and continue with fallback
+    console.error("API call failed:", error);
+
+    await step.run({ name: "fallback-operation" }, async () => {
+      await fallbackApi.call();
+    });
+  }
+});
+```
+
+<Note>
+  When you catch an error, the workflow continues normally. The step is still
+  marked as failed in the database, but the workflow doesn't retry from that
+  point.
+</Note>
+
+## Permanent Failures
+
+After exhausting retries, a workflow is marked as `failed`:
+
+- The error is stored in the workflow run record
+- No more automatic retries occur
+- You can view failed workflows in the dashboard
+- Failed workflows can be manually retried or investigated
+
+## Transient vs. Permanent Errors
+
+Design your steps to distinguish between transient and permanent errors:
+
+```ts
+await step.run({ name: "call-api" }, async () => {
+  const response = await fetch("https://api.example.com/data");
+
+  if (response.status === 503) {
+    // Transient - throw to trigger retry
+    throw new Error("Service temporarily unavailable");
+  }
+
+  if (response.status === 400) {
+    // Permanent - bad request won't succeed on retry
+    // Handle differently (return error result, cancel workflow, etc.)
+    return { success: false, error: "Invalid request" };
+  }
+
+  return await response.json();
+});
+```
+
+## Best Practices
+
+### Use Meaningful Error Messages
+
+Include context in errors for debugging:
+
+```ts
+await step.run({ name: "fetch-user" }, async () => {
+  const user = await db.users.findOne({ id: input.userId });
+
+  if (!user) {
+    throw new Error(`User not found: ${input.userId}`);
+  }
+
+  return user;
+});
+```
+
+## Monitoring Retries
+
+Use the dashboard to monitor workflow health:
+
+- View failed workflow runs
+- Inspect step attempt errors
+- See retry history for a workflow
+- Identify patterns in failures
+
+```bash
+npx @openworkflow/cli dashboard
+```

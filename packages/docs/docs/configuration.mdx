@@ -1,0 +1,159 @@
+---
+title: Configuration
+description: openworkflow.config.ts reference
+---
+
+OpenWorkflow uses a configuration file to set up your backend, workflow
+directories, and worker options.
+
+## Config File
+
+Create `openworkflow.config.ts` (or `.js`) in your project root:
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { defineConfig } from "@openworkflow/cli";
+
+export default defineConfig({
+  backend: await BackendPostgres.connect(
+    process.env.OPENWORKFLOW_POSTGRES_URL!,
+  ),
+  dirs: ["./openworkflow"],
+});
+```
+
+The CLI automatically finds this file by searching up from the current
+directory.
+
+## Configuration Options
+
+### `backend` (required)
+
+The storage backend for workflow state. See [PostgreSQL](/docs/postgres) or
+[SQLite](/docs/sqlite).
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+
+// PostgreSQL (production)
+backend: await BackendPostgres.connect(process.env.OPENWORKFLOW_POSTGRES_URL!),
+
+// SQLite (development)
+backend: BackendSqlite.connect("./openworkflow/backend.db"),
+```
+
+### `dirs`
+
+Directory or directories to scan for workflow files. Defaults to
+`["./openworkflow"]`.
+
+```typescript
+// Single directory
+dirs: "./openworkflow",
+
+// Multiple directories
+dirs: ["./openworkflow", "./src/workflows"],
+```
+
+The CLI recursively scans these directories for files with extensions: `.ts`,
+`.mts`, `.cts`, `.js`, `.mjs`, `.cjs`.
+
+### `ignorePatterns`
+
+Glob patterns to exclude when discovering workflow files:
+
+```typescript
+ignorePatterns: [
+  "**/*.test.*",      // Ignore test files
+  "**/*.run.*",       // Ignore runner scripts
+  "**/__fixtures__/**", // Ignore fixtures
+],
+```
+
+The pattern `**/*.run.*` is ignored by default to exclude runner scripts.
+
+### `worker`
+
+Worker configuration options:
+
+```typescript
+worker: {
+  // Number of concurrent workflow executions (default: 1)
+  concurrency: 4,
+},
+```
+
+## Full Example
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { defineConfig } from "@openworkflow/cli";
+
+export default defineConfig({
+  // PostgreSQL for production, with namespace
+  backend: await BackendPostgres.connect(
+    process.env.OPENWORKFLOW_POSTGRES_URL!,
+    {
+      namespaceId: process.env.NAMESPACE || "default",
+    },
+  ),
+
+  // Scan multiple directories
+  dirs: ["./openworkflow", "./src/workflows"],
+
+  // Ignore test files
+  ignorePatterns: ["**/*.test.*", "**/*.spec.*"],
+
+  // Worker configuration
+  worker: {
+    concurrency: 8,
+  },
+});
+```
+
+## Environment-Based Configuration
+
+Use environment variables for different environments:
+
+```typescript
+import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { defineConfig } from "@openworkflow/cli";
+
+const isDev = process.env.NODE_ENV !== "production";
+
+export default defineConfig({
+  backend: isDev
+    ? BackendSqlite.connect("./openworkflow/backend.db")
+    : await BackendPostgres.connect(process.env.OPENWORKFLOW_POSTGRES_URL!),
+
+  dirs: ["./openworkflow"],
+
+  worker: {
+    concurrency: isDev ? 1 : 8,
+  },
+});
+```
+
+## Loading Environment Variables
+
+The CLI loads `.env` files automatically. Add your database URL and other
+secrets there:
+
+```bash
+# .env
+OPENWORKFLOW_POSTGRES_URL=postgresql://user:pass@localhost:5432/openworkflow
+NAMESPACE=development
+```
+
+## Supported Extensions
+
+Config files can use these extensions:
+
+- `openworkflow.config.ts`
+- `openworkflow.config.mts`
+- `openworkflow.config.cts`
+- `openworkflow.config.js`
+- `openworkflow.config.mjs`
+- `openworkflow.config.cjs`

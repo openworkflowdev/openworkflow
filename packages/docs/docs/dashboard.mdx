@@ -1,0 +1,24 @@
+---
+title: Dashboard
+description: Web interface for monitoring workflows
+---
+
+OpenWorkflow includes a built-in dashboard for monitoring and inspecting
+workflow runs.
+
+## Starting the Dashboard
+
+```bash
+npx @openworkflow/cli dashboard
+```
+
+The dashboard starts on `http://localhost:3000`.
+
+## Requirements
+
+The dashboard requires:
+
+1. A valid `openworkflow.config.ts` in your project
+2. A running backend (PostgreSQL or SQLite)
+
+The dashboard connects to the same backend as your workers.

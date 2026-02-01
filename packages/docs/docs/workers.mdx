@@ -1,0 +1,142 @@
+---
+title: Workers
+description: Long-running processes that execute your workflows
+---
+
+Workers are long-running processes that poll your database for pending workflows
+and execute them. They are stateless and can be started, stopped, and deployed
+independently. Your database is the source of truth.
+
+## Starting a Worker
+
+The recommended way to run a worker is via the CLI:
+
+```bash
+npx @openworkflow/cli worker start
+```
+
+This command:
+
+1. Loads your `openworkflow.config.ts` configuration
+2. Discovers workflow files in the configured directories
+3. Starts polling the database for work
+4. Handles graceful shutdown on SIGINT/SIGTERM
+
+## How Workers Execute Workflows
+
+When a worker picks up a workflow:
+
+1. **Claim**: The worker atomically claims the workflow run from the database
+2. **Load history**: The worker loads all completed step attempts
+3. **Replay**: The worker executes the workflow function from the beginning
+4. **Memoization**: Completed steps return cached results instantly
+5. **Execute**: New steps are executed and their results are stored
+6. **Complete**: The workflow status is updated to `completed` or `failed`
+
+## Concurrency
+
+Workers can process multiple workflow runs simultaneously. Configure concurrency
+in your `openworkflow.config.ts`:
+
+```ts
+import { backend } from "./openworkflow/client";
+import { defineConfig } from "@openworkflow/cli";
+
+export default defineConfig({
+  backend,
+  worker: {
+    concurrency: 10, // Process up to 10 workflows at once
+  },
+});
+```
+
+Or via the CLI:
+
+```bash
+npx @openworkflow/cli worker start --concurrency 10
+```
+
+<Note>
+  Start with `concurrency: 10` and tune based on your workload and database
+  capacity.
+</Note>
+
+## Heartbeats and Crash Recovery
+
+Workers maintain their claim on workflow runs through a heartbeat mechanism:
+
+1. When a worker claims a workflow, it sets an `availableAt` timestamp in the
+   future
+2. While executing, the worker periodically extends this timestamp
+3. If the worker crashes, the heartbeat stops
+4. The `availableAt` timestamp expires
+5. Another worker can claim and resume the workflow
+
+This ensures workflows are never stuck if a worker crashes.
+
+## High Availability
+
+For production, run multiple worker instances:
+
+```bash
+# Terminal 1
+npx @openworkflow/cli worker start --concurrency 10
+
+# Terminal 2
+npx @openworkflow/cli worker start --concurrency 10
+```
+
+Workers coordinate through the database:
+
+- Each workflow run is claimed by exactly one worker at a time
+- Workers use atomic database operations to prevent duplicate processing
+- If a worker crashes, its workflows become available to other workers
+
+## Graceful Shutdown
+
+When a worker receives SIGINT or SIGTERM:
+
+1. It stops polling for new work
+2. It waits for active workflow runs to complete their current step
+3. Active workflows are persisted back to the database
+4. The worker process exits
+
+This ensures no work is lost during deploys.
+
+```bash
+# The worker handles Ctrl+C gracefully
+npx @openworkflow/cli worker start
+^C
+# [info] Shutting down worker...
+# [info] Waiting for active workflows to complete...
+# [info] Worker stopped
+```
+
+## Workflow Discovery
+
+The CLI automatically discovers workflows from directories specified in your
+config:
+
+```ts
+// openworkflow.config.ts
+export default defineConfig({
+  backend,
+  dirs: ["./openworkflow"], // Default directory
+});
+```
+
+Workflow files should export workflows created with `defineWorkflow()`:
+
+```ts
+// openworkflow/send-email.ts
+import { defineWorkflow } from "openworkflow";
+
+export const sendEmail = defineWorkflow(
+  { name: "send-email" },
+  async ({ input, step }) => {
+    // ...
+  },
+);
+```
+
+The CLI scans for `.ts`, `.js`, `.mts`, `.mjs`, `.cts`, and `.cjs` files.

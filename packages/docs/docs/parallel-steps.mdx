@@ -1,0 +1,220 @@
+---
+title: Parallel Steps
+description: Run multiple steps concurrently for better performance
+---
+
+OpenWorkflow supports parallel execution of steps using JavaScript's native
+`Promise.all`. This lets you run independent operations concurrently while
+maintaining durability.
+
+## Basic Usage
+
+Use `Promise.all` to run multiple steps in parallel:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const fetchAllData = defineWorkflow(
+  { name: "fetch-all-data" },
+  async ({ input, step }) => {
+    const [user, subscription, settings] = await Promise.all([
+      step.run({ name: "fetch-user" }, async () => {
+        return await db.users.findOne({ id: input.userId });
+      }),
+      step.run({ name: "fetch-subscription" }, async () => {
+        return await stripe.subscriptions.retrieve(input.subId);
+      }),
+      step.run({ name: "fetch-settings" }, async () => {
+        return await db.settings.findOne({ userId: input.userId });
+      }),
+    ]);
+
+    return { user, subscription, settings };
+  },
+);
+```
+
+All three steps run concurrently. Each step is still individually memoized, so
+if the workflow crashes mid-execution, completed steps return instantly on
+resume.
+
+## How It Works
+
+When executing parallel steps:
+
+1. All steps in the `Promise.all` start concurrently
+2. Each step creates its own step attempt in the database
+3. The worker waits for all steps to complete
+4. Results are returned as an array
+
+## Crash Recovery
+
+Parallel steps handle crashes gracefully:
+
+1. Workflow starts three parallel steps
+2. Two steps complete, one is in progress
+3. Worker crashes
+4. New worker picks up the workflow
+5. Two completed steps return cached results
+6. The incomplete step re-executes
+
+```ts
+const [a, b, c] = await Promise.all([
+  step.run({ name: "step-a" }, ...),  // Completed before crash - cached
+  step.run({ name: "step-b" }, ...),  // Completed before crash - cached
+  step.run({ name: "step-c" }, ...),  // In progress during crash - re-runs
+]);
+```
+
+## Error Handling
+
+If any parallel step fails, `Promise.all` rejects with that error:
+
+```ts
+try {
+  const [user, settings] = await Promise.all([
+    step.run({ name: "fetch-user" }, async () => {
+      return await db.users.findOne({ id: input.userId });
+    }),
+    step.run({ name: "fetch-settings" }, async () => {
+      throw new Error("Database unavailable");
+    }),
+  ]);
+} catch (error) {
+  // Handle the error
+  console.error("Failed to fetch data:", error);
+}
+```
+
+For independent operations where you want all results (including errors), use
+`Promise.allSettled`:
+
+```ts
+const results = await Promise.allSettled([
+  step.run({ name: "fetch-user" }, ...),
+  step.run({ name: "fetch-settings" }, ...),
+]);
+
+for (const result of results) {
+  if (result.status === "fulfilled") {
+    console.log("Success:", result.value);
+  } else {
+    console.log("Failed:", result.reason);
+  }
+}
+```
+
+## Common Patterns
+
+### Fetching Multiple Resources
+
+```ts
+const [user, orders, notifications] = await Promise.all([
+  step.run({ name: "fetch-user" }, () => db.users.findOne(userId)),
+  step.run({ name: "fetch-orders" }, () => db.orders.find({ userId })),
+  step.run({ name: "fetch-notifications" }, () =>
+    db.notifications.find({ userId }),
+  ),
+]);
+```
+
+### Sending Multiple Notifications
+
+```ts
+await Promise.all([
+  step.run({ name: "send-email" }, () =>
+    emailService.send({ to: user.email, ... })
+  ),
+  step.run({ name: "send-sms" }, () =>
+    smsService.send({ to: user.phone, ... })
+  ),
+  step.run({ name: "send-push" }, () =>
+    pushService.send({ to: user.deviceToken, ... })
+  ),
+]);
+```
+
+### Processing a Batch
+
+```ts
+const items = await step.run({ name: "fetch-items" }, () => db.items.find());
+
+// Process items in parallel (be mindful of API rate limits)
+await Promise.all(
+  items.map((item) =>
+    step.run({ name: `process-${item.id}` }, async () => {
+      await processItem(item);
+    }),
+  ),
+);
+```
+
+## Best Practices
+
+### Use Descriptive Step Names
+
+Each parallel step needs a unique name:
+
+```ts
+// Good - clear what each step does
+await Promise.all([
+  step.run({ name: "fetch-user-profile" }, ...),
+  step.run({ name: "fetch-user-preferences" }, ...),
+]);
+
+// Bad - confusing names
+await Promise.all([
+  step.run({ name: "step-1" }, ...),
+  step.run({ name: "step-2" }, ...),
+]);
+```
+
+### Limit Parallelism for External APIs
+
+When calling external APIs, consider rate limits:
+
+```ts
+// Be careful with large arrays - you might hit rate limits
+const items = await step.run({ name: "fetch-items" }, () => db.items.find());
+
+// Process in smaller batches if needed
+const batchSize = 10;
+for (let i = 0; i < items.length; i += batchSize) {
+  const batch = items.slice(i, i + batchSize);
+  await Promise.all(
+    batch.map((item) =>
+      step.run({ name: `process-${item.id}` }, () => api.process(item)),
+    ),
+  );
+}
+```
+
+### Group Related Operations
+
+Parallel steps work best when operations are truly independent:
+
+```ts
+// Good - independent fetches
+const [user, products] = await Promise.all([
+  step.run({ name: "fetch-user" }, ...),
+  step.run({ name: "fetch-products" }, ...),
+]);
+
+// Bad - second step depends on first
+const [user, orders] = await Promise.all([
+  step.run({ name: "fetch-user" }, ...),
+  step.run({ name: "fetch-orders" }, async () => {
+    // This needs user.id, but we don't have it yet!
+    return await db.orders.find({ userId: user.id });
+  }),
+]);
+```
+
+For dependent operations, use sequential steps:
+
+```ts
+const user = await step.run({ name: "fetch-user" }, ...);
+const orders = await step.run({ name: "fetch-orders" }, async () => {
+  return await db.orders.find({ userId: user.id });
+});
+```
