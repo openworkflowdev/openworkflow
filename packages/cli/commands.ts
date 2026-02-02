@@ -152,7 +152,7 @@ export async function init(): Promise<void> {
   }
 
   {
-    const dependencies = getDependenciesToInstall();
+    const dependencies = getDependenciesToInstall(backendChoice);
     spinner.start(`Installing ${dependencies.join(", ")}...`);
     await addDependency(dependencies, { silent: true });
     spinner.stop(`Installed ${dependencies.join(", ")}`);
@@ -780,10 +780,17 @@ function getClientTemplate(backendChoice: BackendChoice): string {
 
 /**
  * Get the dependencies to install for a backend choice.
+ * @param backendChoice - The selected backend choice
  * @returns Array of dependency package names to install
  */
-function getDependenciesToInstall(): string[] {
-  return ["openworkflow"];
+function getDependenciesToInstall(backendChoice: BackendChoice): string[] {
+  const dependencies = ["openworkflow"];
+
+  if (backendChoice === "postgres" || backendChoice === "both") {
+    dependencies.push("postgres");
+  }
+
+  return dependencies;
 }
 
 /**
@@ -1114,13 +1121,18 @@ function warnIfMissingBackendPackage(
 ): void {
   const backendNameLower = backendName.toLowerCase();
 
-  if (
-    (backendNameLower.includes("postgres") ||
-      backendNameLower.includes("sqlite")) &&
-    !hasDependency(packageJson, "openworkflow")
-  ) {
+  const isPostgres = backendNameLower.includes("postgres");
+  const isSqlite = backendNameLower.includes("sqlite");
+
+  if ((isPostgres || isSqlite) && !hasDependency(packageJson, "openworkflow")) {
     consola.warn(
       `Backend is ${backendName} but openworkflow is not installed.`,
+    );
+  }
+
+  if (isPostgres && !hasDependency(packageJson, "postgres")) {
+    consola.warn(
+      `Backend is ${backendName} but the postgres driver is not installed.`,
     );
   }
 }
