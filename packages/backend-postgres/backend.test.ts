@@ -1,8 +1,8 @@
 import { BackendPostgres } from "./backend.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres.js";
-import { testBackend } from "@openworkflow/backend-test";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
+import { testBackend } from "openworkflow/internal";
 import { test } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {

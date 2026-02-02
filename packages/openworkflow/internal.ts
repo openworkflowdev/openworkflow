@@ -4,6 +4,7 @@ export { isWorkflow } from "./workflow.js";
 
 // backend
 export * from "./backend.js";
+export { testBackend } from "./backend.testsuite.js";
 
 // core
 export type { JsonValue } from "./core/json.js";

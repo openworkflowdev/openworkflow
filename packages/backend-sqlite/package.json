@@ -16,7 +16,6 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "@openworkflow/backend-test": "*",
     "openworkflow": "*",
     "vitest": "^4.0.18"
   },

@@ -1,5 +1,7 @@
+import type { Backend } from "./backend.js";
+import type { StepAttempt } from "./core/step.js";
+import type { WorkflowRun } from "./core/workflow.js";
 import { randomUUID } from "node:crypto";
-import type { Backend, StepAttempt, WorkflowRun } from "openworkflow/internal";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 /**
@@ -111,7 +113,7 @@ export function testBackend(options: TestBackendOptions): void {
         const second = await createPendingWorkflowRun(backend);
 
         const listed = await backend.listWorkflowRuns({});
-        const listedIds = listed.data.map((run) => run.id);
+        const listedIds = listed.data.map((run: WorkflowRun) => run.id);
         expect(listedIds).toEqual([second.id, first.id]);
         await teardown(backend);
       });
@@ -625,7 +627,9 @@ export function testBackend(options: TestBackendOptions): void {
         const listed = await backend.listStepAttempts({
           workflowRunId: claimed.id,
         });
-        const listedStepNames = listed.data.map((step) => step.stepName);
+        const listedStepNames = listed.data.map(
+          (step: StepAttempt) => step.stepName,
+        );
         expect(listedStepNames).toEqual([first.stepName, second.stepName]);
       });
 

@@ -362,6 +362,5 @@ graceful shutdown:
 - `packages/openworkflow` contains the SDK (client, worker, registry).
 - `packages/backend-postgres` and `packages/backend-sqlite` are infra-specific
   `Backend` implementations.
-- `packages/backend-test` contains test helpers and backend conformance tests.
 - `packages/cli` is the CLI.
 - `packages/dashboard` is the web UI for monitoring workflow runs.

@@ -105,6 +105,12 @@ export default defineConfig(
     },
   },
   {
+    files: ["packages/openworkflow/backend.testsuite.ts"],
+    rules: {
+      "import/no-relative-parent-imports": "off",
+    },
+  },
+  {
     files: ["**/*.test.ts", "**/*.testsuite.ts"],
     rules: {
       "sonarjs/no-nested-functions": "off",
