@@ -6,17 +6,13 @@ description: Lightweight SQLite storage for development and testing
 The SQLite backend is perfect for local development, testing, and single-server
 deployments. It requires no external database server.
 
-## Installation
-
-```bash
-npm install @openworkflow/backend-sqlite
-```
+Requires Node.js 22.5+ for `node:sqlite`.
 
 ## Setup
 
 ```typescript
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { OpenWorkflow } from "openworkflow";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 const backend = BackendSqlite.connect("./openworkflow/backend.db");
 const ow = new OpenWorkflow({ backend });
@@ -105,8 +101,8 @@ See [Namespaces](/docs/namespaces) for more details.
 For use with the CLI, create `openworkflow.config.ts`:
 
 ```typescript
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 export default defineConfig({
   backend: BackendSqlite.connect("./openworkflow/backend.db"),
@@ -119,9 +115,9 @@ export default defineConfig({
 A common pattern uses SQLite for development and PostgreSQL for production:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 const isDev = process.env.NODE_ENV !== "production";
 

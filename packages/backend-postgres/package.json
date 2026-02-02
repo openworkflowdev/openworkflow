@@ -13,19 +13,13 @@
   ],
   "scripts": {
     "build": "tsc",
-    "db:migrate": "tsx ./scripts/db-migrate.ts",
-    "db:reset": "tsx ./scripts/db-reset.ts",
-    "pghero": "sh ./scripts/pghero.sh",
-    "prepublishOnly": "npm run build",
-    "squawk": "tsx ./scripts/squawk.ts"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "postgres": "^3.4.8"
   },
   "devDependencies": {
-    "openworkflow": "*",
-    "squawk-cli": "^2.39.0",
-    "vitest": "^4.0.18"
+    "openworkflow": "*"
   },
   "peerDependencies": {
     "openworkflow": "^0.5.0"

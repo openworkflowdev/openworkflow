@@ -1,5 +1,10 @@
 # @openworkflow/backend-sqlite
 
+## Unreleased
+
+- This package is now a thin compatibility shim. Prefer importing
+  `BackendSqlite` from `openworkflow/sqlite`.
+
 ## 0.5.1
 
 - Change listWorkflowRuns to DESC ordering

@@ -1,11 +1,11 @@
-export const SQLITE_CLIENT = `import { BackendSqlite } from "@openworkflow/backend-sqlite";
+export const SQLITE_CLIENT = `import { BackendSqlite } from "openworkflow/sqlite";
 import { OpenWorkflow } from "openworkflow";
 
 export const backend = BackendSqlite.connect("openworkflow/backend.db");
 export const ow = new OpenWorkflow({ backend });
 `;
 
-export const POSTGRES_CLIENT = `import { BackendPostgres } from "@openworkflow/backend-postgres";
+export const POSTGRES_CLIENT = `import { BackendPostgres } from "openworkflow/postgres";
 import { OpenWorkflow } from "openworkflow";
 
 export const backend = await BackendPostgres.connect(
@@ -14,8 +14,8 @@ export const backend = await BackendPostgres.connect(
 export const ow = new OpenWorkflow({ backend });
 `;
 
-export const POSTGRES_PROD_SQLITE_DEV_CLIENT = `import { BackendPostgres } from "@openworkflow/backend-postgres";
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
+export const POSTGRES_PROD_SQLITE_DEV_CLIENT = `import { BackendPostgres } from "openworkflow/postgres";
+import { BackendSqlite } from "openworkflow/sqlite";
 import { OpenWorkflow } from "openworkflow";
 
 export const backend =

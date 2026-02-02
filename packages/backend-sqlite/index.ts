@@ -1,1 +1,1 @@
-export { BackendSqlite } from "./backend.js";
+export { BackendSqlite } from "openworkflow/sqlite";

@@ -6,17 +6,20 @@ description: Production-ready PostgreSQL storage for OpenWorkflow
 The PostgreSQL backend is recommended for production deployments. It provides
 durability, concurrent worker support, and scales with your application.
 
-## Installation
+## Install
+
+The PostgreSQL backend requires the `postgres` driver. Install it alongside
+OpenWorkflow:
 
 ```bash
-npm install @openworkflow/backend-postgres
+npm i openworkflow postgres
 ```
 
 ## Setup
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
+import { BackendPostgres } from "openworkflow/postgres";
 
 const backend = await BackendPostgres.connect(
   process.env.OPENWORKFLOW_POSTGRES_URL, // e.g., "postgresql://user:pass@localhost:5432/mydb"
@@ -97,8 +100,8 @@ See [Namespaces](/docs/namespaces) for more details.
 For use with the CLI, create `openworkflow.config.ts`:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
 
 export default defineConfig({
   backend: await BackendPostgres.connect(

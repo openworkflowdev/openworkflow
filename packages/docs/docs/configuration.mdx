@@ -6,13 +6,16 @@ description: openworkflow.config.ts reference
 OpenWorkflow uses a configuration file to set up your backend, workflow
 directories, and worker options.
 
+If you're using the PostgreSQL backend, install the Postgres driver:
+`npm i openworkflow postgres`.
+
 ## Config File
 
 Create `openworkflow.config.ts` (or `.js`) in your project root:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
 
 export default defineConfig({
   backend: await BackendPostgres.connect(
@@ -33,8 +36,8 @@ The storage backend for workflow state. See [PostgreSQL](/docs/postgres) or
 [SQLite](/docs/sqlite).
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { BackendPostgres } from "openworkflow/postgres";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 // PostgreSQL (production)
 backend: await BackendPostgres.connect(process.env.OPENWORKFLOW_POSTGRES_URL!),
@@ -87,8 +90,8 @@ worker: {
 ## Full Example
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
 
 export default defineConfig({
   // PostgreSQL for production, with namespace
@@ -117,9 +120,9 @@ export default defineConfig({
 Use environment variables for different environments:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 const isDev = process.env.NODE_ENV !== "production";
 

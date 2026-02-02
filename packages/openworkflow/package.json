@@ -33,6 +33,14 @@
     "./internal": {
       "types": "./dist/internal.d.ts",
       "default": "./dist/internal.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "default": "./dist/postgres.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
     }
   },
   "bin": {
@@ -54,14 +62,10 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@openworkflow/backend-postgres": "^0.5.0",
-    "@openworkflow/backend-sqlite": "^0.5.0"
+    "postgres": ">=3"
   },
   "peerDependenciesMeta": {
-    "@openworkflow/backend-postgres": {
-      "optional": true
-    },
-    "@openworkflow/backend-sqlite": {
+    "postgres": {
       "optional": true
     }
   },

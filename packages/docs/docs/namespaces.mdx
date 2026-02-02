@@ -13,7 +13,7 @@ Every workflow run and step attempt is tagged with a `namespaceId`. Workers and
 clients only see data in their namespace.
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
+import { BackendPostgres } from "openworkflow/postgres";
 
 // Production namespace
 const prodBackend = await BackendPostgres.connect(url, {
@@ -43,8 +43,8 @@ const backend = await BackendPostgres.connect(url, { namespaceId: "default" });
 Run development, staging, and production in the same database:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
 
 const namespace = process.env.NAMESPACE || "development";
 
@@ -101,7 +101,7 @@ const backend = await BackendPostgres.connect(testUrl, {
 Namespaces work the same way with SQLite:
 
 ```typescript
-import { BackendSqlite } from "@openworkflow/backend-sqlite";
+import { BackendSqlite } from "openworkflow/sqlite";
 
 const backend = BackendSqlite.connect("./backend.db", {
   namespaceId: "development",

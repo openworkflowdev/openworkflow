@@ -1,10 +1,10 @@
+import { testBackend } from "../internal.js";
 import { BackendSqlite } from "./backend.js";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { unlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { testBackend } from "openworkflow/internal";
 import { test, describe, afterAll } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {

@@ -1,4 +1,4 @@
-import { Database, newDatabase, migrations, migrate } from "./sqlite.js";
+import { Database, migrate, migrations, newDatabase } from "./sqlite.js";
 import { randomUUID } from "node:crypto";
 import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";

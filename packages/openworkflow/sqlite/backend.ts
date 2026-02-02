@@ -1,16 +1,4 @@
 import {
-  newDatabase,
-  Database,
-  migrate,
-  generateUUID,
-  now,
-  addMilliseconds,
-  toJSON,
-  fromJSON,
-  toISO,
-  fromISO,
-} from "./sqlite.js";
-import {
   DEFAULT_NAMESPACE_ID,
   Backend,
   CancelWorkflowRunParams,
@@ -28,11 +16,23 @@ import {
   FailWorkflowRunParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
-  StepAttempt,
-  WorkflowRun,
-  DEFAULT_RETRY_POLICY,
-  JsonValue,
-} from "openworkflow/internal";
+} from "../backend.js";
+import { JsonValue } from "../core/json.js";
+import { DEFAULT_RETRY_POLICY } from "../core/retry.js";
+import { StepAttempt } from "../core/step.js";
+import { WorkflowRun } from "../core/workflow.js";
+import {
+  newDatabase,
+  Database,
+  migrate,
+  generateUUID,
+  now,
+  addMilliseconds,
+  toJSON,
+  fromJSON,
+  toISO,
+  fromISO,
+} from "./sqlite.js";
 
 const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 

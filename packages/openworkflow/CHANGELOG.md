@@ -1,5 +1,13 @@
 # openworkflow
 
+## Unreleased
+
+- Added `openworkflow/postgres` and `openworkflow/sqlite` entrypoints for
+  backends. The `@openworkflow/backend-postgres` and
+  `@openworkflow/backend-sqlite` packages remain as compatibility shims.
+- Changed the `postgres` driver to be an optional peer dependency. Install it
+  separately when using the PostgreSQL backend.
+
 ## 0.5.0
 
 - **New Tooling:** Introduced the OpenWorkflow CLI (`@openworkflow/cli`) for

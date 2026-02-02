@@ -1,5 +1,5 @@
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
+import { BackendPostgres } from "openworkflow/postgres";
 
 export const backend = await BackendPostgres.connect(
   "postgresql://postgres:postgres@localhost:5432/postgres",

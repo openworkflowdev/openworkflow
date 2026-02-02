@@ -46,8 +46,8 @@ export const orderWorkflow = defineWorkflow(
 Register multiple versions of the same workflow with different implementations:
 
 ```typescript
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { OpenWorkflow } from "openworkflow";
+import { BackendPostgres } from "openworkflow/postgres";
 
 const backend = await BackendPostgres.connect(
   process.env.OPENWORKFLOW_POSTGRES_URL,

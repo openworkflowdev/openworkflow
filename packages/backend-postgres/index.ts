@@ -1,1 +1,1 @@
-export { BackendPostgres } from "./backend.js";
+export { BackendPostgres } from "openworkflow/postgres";

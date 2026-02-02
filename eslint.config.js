@@ -99,13 +99,12 @@ export default defineConfig(
     },
   },
   {
-    files: ["**/*.test.ts", "packages/backend-postgres/scripts/**/*.ts"],
-    rules: {
-      "import/no-relative-parent-imports": "off",
-    },
-  },
-  {
-    files: ["packages/openworkflow/backend.testsuite.ts"],
+    files: [
+      "**/*.test.ts",
+      "packages/openworkflow/backend.testsuite.ts",
+      "packages/openworkflow/postgres/**/*.ts",
+      "packages/openworkflow/sqlite/**/*.ts",
+    ],
     rules: {
       "import/no-relative-parent-imports": "off",
     },

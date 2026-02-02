@@ -1,0 +1,70 @@
+---
+title: Migrating to v0.6
+description: How to upgrade from v0.5 to v0.6
+---
+
+v0.6 moves the database backends into the core `openworkflow` package. This
+simplifies installation, reduces dependency management, and makes imports
+cleaner. Here's everything you need to know to upgrade.
+
+## Step-by-Step Migration
+
+### 1. Update Your Imports
+
+Find and replace the old import paths:
+
+```diff
+// openworkflow.config.ts
+- import { BackendPostgres } from "@openworkflow/backend-postgres";
++ import { BackendPostgres } from "openworkflow/postgres";
+
+// openworkflow/client.ts
+- import { BackendSqlite } from "@openworkflow/backend-sqlite";
++ import { BackendSqlite } from "openworkflow/sqlite";
+```
+
+### 2. Update Your Dependencies
+
+Remove the legacy packages:
+
+```bash
+npm uninstall @openworkflow/backend-postgres @openworkflow/backend-sqlite
+```
+
+If you're using PostgreSQL, install the `postgres` driver directly:
+
+```bash
+npm install postgres
+```
+
+Your `package.json` should now look like:
+
+```json
+{
+  "dependencies": {
+    "openworkflow": "^0.6.0",
+    "postgres": "^3.4.8" // Only if using PostgreSQL
+  }
+}
+```
+
+### 3. That's It
+
+No other changes needed. The backend API is identical.
+
+## New Projects
+
+If you're starting fresh, just run:
+
+```bash
+npx @openworkflow/cli init
+```
+
+The CLI now generates code with the new import paths automatically.
+
+## Need Help?
+
+If you run into issues:
+
+- Check the [GitHub Issues](https://github.com/openworkflowdev/openworkflow/issues)
+- Join the [Discord](https://discord.openworkflow.dev)
