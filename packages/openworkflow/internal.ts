@@ -3,7 +3,11 @@ export type { Workflow } from "./workflow.js";
 export { isWorkflow } from "./workflow.js";
 
 // backend
-export type { Backend } from "./backend.js";
+export type {
+  Backend,
+  PaginationOptions,
+  PaginatedResponse,
+} from "./backend.js";
 export { testBackend } from "./backend.testsuite.js";
 
 // core
