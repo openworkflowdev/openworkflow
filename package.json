@@ -57,5 +57,9 @@
     "typescript-eslint": "^8.54.0",
     "vitest": "^4.0.18"
   },
-  "packageManager": "npm@11.8.0"
+  "packageManager": "npm@11.8.0",
+  "engines": {
+    "node": ">=22.5.0",
+    "npm": ">=11"
+  }
 }
