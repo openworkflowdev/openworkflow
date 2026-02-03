@@ -13,8 +13,7 @@
     }
   },
   "bin": {
-    "openworkflow": "./dist/cli.js",
-    "ow": "./dist/cli.js"
+    "openworkflow": "./dist/cli.js"
   },
   "files": [
     "dist",

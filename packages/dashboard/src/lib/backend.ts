@@ -9,7 +9,7 @@ export async function getBackend(): Promise<Backend> {
   const { config, configFile } = await loadConfig();
   if (!configFile) {
     throw new Error(
-      "No openworkflow.config.* found. Run `ow init` to create one.",
+      "No openworkflow.config.* found. Run `npx @openworkflow/cli init` to create one.",
     );
   }
 

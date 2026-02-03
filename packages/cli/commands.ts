@@ -199,7 +199,7 @@ export async function doctor(): Promise<void> {
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
-      "Run `ow init` to create a config file.",
+      "Run `npx @openworkflow/cli init` to create a config file.",
     );
   }
   const backend = config.backend;
@@ -255,7 +255,7 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
-      "Run `ow init` to create a config file.",
+      "Run `npx @openworkflow/cli init` to create a config file.",
     );
   }
   const backend = config.backend;
@@ -331,7 +331,7 @@ export async function dashboard(): Promise<void> {
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
-      "Run `ow init` to create a config file before starting the dashboard.",
+      "Run `npx @openworkflow/cli init` to create a config file before starting the dashboard.",
     );
   }
   consola.info(`Using config: ${configFile}`);

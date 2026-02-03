@@ -10,11 +10,10 @@ import {
 import { withErrorHandling } from "./errors.js";
 import { Command } from "commander";
 
-// openworkflow | ow
+// openworkflow
 const program = new Command();
 program
   .name("openworkflow")
-  .alias("ow")
   .description("OpenWorkflow CLI - learn more at https://openworkflow.dev")
   .version(getVersion());
 
