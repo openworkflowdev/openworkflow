@@ -1,6 +1,6 @@
 # openworkflow
 
-## Unreleased
+## 0.6.0
 
 - Added `openworkflow/postgres` and `openworkflow/sqlite` entrypoints for
   backends. The `@openworkflow/backend-postgres` and

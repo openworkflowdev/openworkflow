@@ -1,6 +1,6 @@
 # @openworkflow/cli
 
-## Unreleased
+## 0.3.0
 
 - Update `init` templates to use `openworkflow/postgres` and
   `openworkflow/sqlite`. The CLI no longer installs the legacy backend

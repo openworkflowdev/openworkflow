@@ -1,6 +1,6 @@
 # @openworkflow/backend-sqlite
 
-## Unreleased
+## 0.6.0
 
 - This package is now a thin compatibility shim. Prefer importing
   `BackendSqlite` from `openworkflow/sqlite`.

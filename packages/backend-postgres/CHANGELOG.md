@@ -1,6 +1,6 @@
 # @openworkflow/backend-postgres
 
-## Unreleased
+## 0.6.0
 
 - This package is now a thin compatibility shim. Prefer importing
   `BackendPostgres` from `openworkflow/postgres`.
