@@ -1,5 +1,9 @@
 # openworkflow
 
+## 0.6.1
+
+- Exclude test and build files from published package
+
 ## 0.6.0
 
 - Added `openworkflow/postgres` and `openworkflow/sqlite` entrypoints for

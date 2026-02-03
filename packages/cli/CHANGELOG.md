@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.3.1
+
+- Exclude test and build files from published package
+
 ## 0.3.0
 
 - Update `init` templates to use `openworkflow/postgres` and
