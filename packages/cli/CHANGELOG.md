@@ -1,6 +1,6 @@
 # @openworkflow/cli
 
-## Unreleased
+## 0.4.0
 
 - Remove `ow` alias in favor of `openworkflow`
   - This massively improves the `pnpx` DX (fixes `ERR_PNPM_DLX_MULTIPLE_BINS`)

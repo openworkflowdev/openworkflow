@@ -1,6 +1,6 @@
 # @openworkflow/dashboard
 
-## Unreleased
+## 0.1.2
 
 - Suggest npx CLI command
 
