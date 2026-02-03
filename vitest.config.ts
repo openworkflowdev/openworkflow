@@ -13,7 +13,6 @@ export default defineConfig({
         "vitest.global-setup.ts",
         "packages/cli/**",
         "packages/dashboard/**",
-        "packages/openworkflow/bin/**",
       ],
       thresholds: {
         statements: 90,

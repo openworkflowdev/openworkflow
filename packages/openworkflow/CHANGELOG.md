@@ -1,5 +1,10 @@
 # openworkflow
 
+## Unreleased
+
+- Fix pnpx (pnpm dlx) `ERR_PNPM_DLX_MULTIPLE_BINS`
+  - This removes the undocumented/unused openworkflow -> @openworkflow/cli shim
+
 ## 0.6.1
 
 - Exclude test and build files from published package
