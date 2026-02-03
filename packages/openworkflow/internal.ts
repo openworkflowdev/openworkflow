@@ -8,7 +8,6 @@ export type {
   PaginationOptions,
   PaginatedResponse,
 } from "./backend.js";
-export { testBackend } from "./backend.testsuite.js";
 
 // core
 export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow.js";

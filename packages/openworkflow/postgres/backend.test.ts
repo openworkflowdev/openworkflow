@@ -1,4 +1,4 @@
-import { testBackend } from "../internal.js";
+import { testBackend } from "../backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres.js";
 import assert from "node:assert";

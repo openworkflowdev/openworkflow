@@ -1,4 +1,4 @@
-import { testBackend } from "../internal.js";
+import { testBackend } from "../backend.testsuite.js";
 import { BackendSqlite } from "./backend.js";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
