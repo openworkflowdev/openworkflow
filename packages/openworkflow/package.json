@@ -48,7 +48,11 @@
     "ow": "./dist/bin/openworkflow.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!*.test.*",
+    "!*.testsuite.*",
+    "!*.tsbuildinfo",
+    "!vitest.global-setup.*"
   ],
   "scripts": {
     "build": "tsc",
