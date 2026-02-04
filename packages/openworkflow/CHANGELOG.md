@@ -1,5 +1,10 @@
 # openworkflow
 
+## Unreleased
+
+- Added support for scheduling workflow runs with a `Date` or duration string
+  See https://openworkflow.dev/docs/workflows#scheduling-a-workflow-run
+
 ## 0.6.3
 
 - Export the full Backend interface for third-party backends
