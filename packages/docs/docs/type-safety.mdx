@@ -11,7 +11,7 @@ inputs and outputs.
 For runtime validation with type inference, use [Standard
 Schema](/docs/standard-schema) compatible libraries like Zod:
 
-```typescript
+```ts
 import { z } from "zod";
 
 const inputSchema = z.object({
@@ -36,7 +36,7 @@ export const payment = defineWorkflow(
 To manually specify input and (optionally) output types, use generics with
 `defineWorkflow`:
 
-```typescript
+```ts
 import { defineWorkflow } from "openworkflow";
 
 interface OrderInput {
@@ -73,7 +73,7 @@ export const processOrder = defineWorkflow<OrderInput, OrderResult>(
 If you only specify the input type, the output type is inferred from the return
 value:
 
-```typescript
+```ts
 export const greet = defineWorkflow<{ name: string }>(
   { name: "greet" },
   async ({ input }) => {
@@ -87,7 +87,7 @@ export const greet = defineWorkflow<{ name: string }>(
 When using `defineWorkflowSpec` for separate declaration and implementation,
 types flow through:
 
-```typescript
+```ts
 import { defineWorkflowSpec, OpenWorkflow } from "openworkflow";
 
 // Declare the workflow spec with types
@@ -113,7 +113,7 @@ ow.implementWorkflow(emailSpec, async ({ input, step }) => {
 
 When you run a workflow, the handle is typed with the output:
 
-```typescript
+```ts
 const handle = await processOrder.run({
   orderId: "123",
   customerId: "456",
@@ -128,7 +128,7 @@ console.log(result.trackingNumber); // TypeScript knows this exists
 
 Step return types are inferred automatically:
 
-```typescript
+```ts
 const workflow = defineWorkflow<{ userId: string }>(
   { name: "user-workflow" },
   async ({ input, step }) => {

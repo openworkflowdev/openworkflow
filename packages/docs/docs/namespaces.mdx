@@ -12,7 +12,7 @@ multi-tenant applications.
 Every workflow run and step attempt is tagged with a `namespaceId`. Workers and
 clients only see data in their namespace.
 
-```typescript
+```ts
 import { BackendPostgres } from "openworkflow/postgres";
 
 // Production namespace
@@ -30,7 +30,7 @@ const stagingBackend = await BackendPostgres.connect(url, {
 
 If you don't specify a `namespaceId`, the default is `"default"`:
 
-```typescript
+```ts
 // These are equivalent
 const backend = await BackendPostgres.connect(url);
 const backend = await BackendPostgres.connect(url, { namespaceId: "default" });
@@ -42,7 +42,7 @@ const backend = await BackendPostgres.connect(url, { namespaceId: "default" });
 
 Run development, staging, and production in the same database:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 
@@ -75,7 +75,7 @@ NAMESPACE=production npm run worker
 
 Isolate workflows per tenant:
 
-```typescript
+```ts
 async function getBackendForTenant(tenantId: string) {
   return BackendPostgres.connect(process.env.OPENWORKFLOW_POSTGRES_URL!, {
     namespaceId: `tenant-${tenantId}`,
@@ -87,7 +87,7 @@ async function getBackendForTenant(tenantId: string) {
 
 Use separate namespaces for test runs:
 
-```typescript
+```ts
 // In your test setup
 const testNamespace = `test-${Date.now()}`;
 
@@ -100,7 +100,7 @@ const backend = await BackendPostgres.connect(testUrl, {
 
 Namespaces work the same way with SQLite:
 
-```typescript
+```ts
 import { BackendSqlite } from "openworkflow/sqlite";
 
 const backend = BackendSqlite.connect("./backend.db", {

@@ -10,7 +10,7 @@ Requires Node.js 22.5+ for `node:sqlite`.
 
 ## Setup
 
-```typescript
+```ts
 import { OpenWorkflow } from "openworkflow";
 import { BackendSqlite } from "openworkflow/sqlite";
 
@@ -24,7 +24,7 @@ Note: `BackendSqlite.connect()` is synchronous (no `await` needed).
 
 The database file is created if it doesn't exist:
 
-```typescript
+```ts
 // Relative path (recommended for projects)
 const backend = BackendSqlite.connect("./openworkflow/backend.db");
 
@@ -37,7 +37,7 @@ const backend = BackendSqlite.connect(":memory:");
 
 ## Configuration Options
 
-```typescript
+```ts
 const backend = BackendSqlite.connect(path, {
   // Namespace for multi-tenant isolation (default: "default")
   namespaceId: "development",
@@ -84,7 +84,7 @@ works well. For multiple workers, PostgreSQL is recommended.
 
 Use `namespaceId` to isolate environments:
 
-```typescript
+```ts
 const devBackend = BackendSqlite.connect("./backend.db", {
   namespaceId: "development",
 });
@@ -100,7 +100,7 @@ See [Namespaces](/docs/namespaces) for more details.
 
 For use with the CLI, create `openworkflow.config.ts`:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendSqlite } from "openworkflow/sqlite";
 
@@ -114,7 +114,7 @@ export default defineConfig({
 
 A common pattern uses SQLite for development and PostgreSQL for production:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 import { BackendSqlite } from "openworkflow/sqlite";

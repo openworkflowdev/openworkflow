@@ -20,7 +20,7 @@ isn't compatible with their saved state. Versioning solves this by:
 
 Add a `version` to your workflow spec:
 
-```typescript
+```ts
 import { defineWorkflow } from "openworkflow";
 
 export const orderWorkflow = defineWorkflow(
@@ -45,7 +45,7 @@ export const orderWorkflow = defineWorkflow(
 
 Register multiple versions of the same workflow with different implementations:
 
-```typescript
+```ts
 import { OpenWorkflow } from "openworkflow";
 import { BackendPostgres } from "openworkflow/postgres";
 

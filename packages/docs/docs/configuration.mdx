@@ -13,7 +13,7 @@ If you're using the PostgreSQL backend, install the Postgres driver:
 
 Create `openworkflow.config.ts` (or `.js`) in your project root:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 
@@ -35,7 +35,7 @@ directory.
 The storage backend for workflow state. See [PostgreSQL](/docs/postgres) or
 [SQLite](/docs/sqlite).
 
-```typescript
+```ts
 import { BackendPostgres } from "openworkflow/postgres";
 import { BackendSqlite } from "openworkflow/sqlite";
 
@@ -51,7 +51,7 @@ backend: BackendSqlite.connect("./openworkflow/backend.db"),
 Directory or directories to scan for workflow files. Defaults to
 `["./openworkflow"]`.
 
-```typescript
+```ts
 // Single directory
 dirs: "./openworkflow",
 
@@ -66,7 +66,7 @@ The CLI recursively scans these directories for files with extensions: `.ts`,
 
 Glob patterns to exclude when discovering workflow files:
 
-```typescript
+```ts
 ignorePatterns: [
   "**/*.test.*",      // Ignore test files
   "**/*.run.*",       // Ignore runner scripts
@@ -80,7 +80,7 @@ The pattern `**/*.run.*` is ignored by default to exclude runner scripts.
 
 Worker configuration options:
 
-```typescript
+```ts
 worker: {
   // Number of concurrent workflow executions (default: 1)
   concurrency: 4,
@@ -89,7 +89,7 @@ worker: {
 
 ## Full Example
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 
@@ -119,7 +119,7 @@ export default defineConfig({
 
 Use environment variables for different environments:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 import { BackendSqlite } from "openworkflow/sqlite";

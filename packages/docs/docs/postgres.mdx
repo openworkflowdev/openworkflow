@@ -17,7 +17,7 @@ npm i openworkflow postgres
 
 ## Setup
 
-```typescript
+```ts
 import { OpenWorkflow } from "openworkflow";
 import { BackendPostgres } from "openworkflow/postgres";
 
@@ -43,7 +43,7 @@ Examples:
 
 ## Configuration Options
 
-```typescript
+```ts
 const backend = await BackendPostgres.connect(url, {
   // Namespace for multi-tenant isolation (default: "default")
   namespaceId: "production",
@@ -60,7 +60,7 @@ This creates the `openworkflow` schema and required tables.
 
 To disable automatic migrations:
 
-```typescript
+```ts
 const backend = await BackendPostgres.connect(url, {
   runMigrations: false,
 });
@@ -81,7 +81,7 @@ This keeps OpenWorkflow data separate from your application tables.
 
 Use `namespaceId` to isolate environments or tenants:
 
-```typescript
+```ts
 // Production environment
 const prodBackend = await BackendPostgres.connect(url, {
   namespaceId: "production",
@@ -99,7 +99,7 @@ See [Namespaces](/docs/namespaces) for more details.
 
 For use with the CLI, create `openworkflow.config.ts`:
 
-```typescript
+```ts
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 
