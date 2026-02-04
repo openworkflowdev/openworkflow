@@ -1,5 +1,9 @@
 # openworkflow
 
+## 0.6.3
+
+- Export the full Backend interface for third-party backends
+
 ## 0.6.2
 
 - Fix pnpx (pnpm dlx) `ERR_PNPM_DLX_MULTIPLE_BINS`
