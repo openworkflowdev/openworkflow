@@ -2,7 +2,7 @@ name: CI (Bun)
 permissions:
   contents: read
 on:
-  workflow_call:
+  workflow_dispatch:
 jobs:
   ci:
     runs-on: ubuntu-latest
