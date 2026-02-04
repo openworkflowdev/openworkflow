@@ -3,11 +3,7 @@ export type { Workflow } from "./workflow.js";
 export { isWorkflow } from "./workflow.js";
 
 // backend
-export type {
-  Backend,
-  PaginationOptions,
-  PaginatedResponse,
-} from "./backend.js";
+export * from "./backend.js";
 
 // core
 export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow.js";
