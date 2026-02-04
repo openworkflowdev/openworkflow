@@ -31,7 +31,7 @@
     "openworkflow": "*"
   },
   "devDependencies": {
-    "@cspell/eslint-plugin": "^9.6.3",
+    "@cspell/eslint-plugin": "^9.6.4",
     "@eslint/js": "^9.39.2",
     "@openworkflow/cli": "*",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
