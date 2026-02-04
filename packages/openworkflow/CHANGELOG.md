@@ -1,6 +1,6 @@
 # openworkflow
 
-## Unreleased
+## 0.6.4
 
 - Added support for scheduling workflow runs with a `Date` or duration string
   See https://openworkflow.dev/docs/workflows#scheduling-a-workflow-run
