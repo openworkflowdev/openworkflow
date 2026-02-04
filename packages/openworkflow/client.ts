@@ -1,4 +1,5 @@
 import type { Backend } from "./backend.js";
+import { parseDuration, type DurationString } from "./core/duration.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import type {
   SchemaInput,
@@ -106,7 +107,7 @@ export class OpenWorkflow {
       config: {},
       context: null,
       input: parsedInput ?? null,
-      availableAt: options?.availableAt ?? null,
+      availableAt: resolveAvailableAt(options?.availableAt),
       deadlineAt: options?.deadlineAt ?? null,
     });
 
@@ -196,14 +197,35 @@ export class RunnableWorkflow<Input, Output, RunInput = Input> {
 export interface WorkflowRunOptions {
   /**
    * Schedule the workflow run for a future time. When set, the run will stay
-   * pending until the timestamp is reached.
+   * pending until the timestamp is reached. Accepts an absolute Date or a
+   * duration string (e.g. "5m", "2 hours").
    */
-  availableAt?: Date;
+  availableAt?: Date | DurationString;
   /**
    * Set a deadline for the workflow run. If the workflow exceeds this deadline,
    * it will be marked as failed.
    */
   deadlineAt?: Date;
+}
+
+/**
+ * Resolve availableAt to an absolute Date or null.
+ * @param availableAt - Absolute Date or duration string
+ * @returns Absolute Date or null
+ * @throws {Error} When a duration string is invalid
+ */
+function resolveAvailableAt(
+  availableAt: Date | DurationString | undefined,
+): Date | null {
+  if (!availableAt) return null;
+  if (availableAt instanceof Date) return availableAt;
+
+  const result = parseDuration(availableAt);
+  if (!result.ok) {
+    throw result.error;
+  }
+
+  return new Date(Date.now() + result.value);
 }
 
 /**

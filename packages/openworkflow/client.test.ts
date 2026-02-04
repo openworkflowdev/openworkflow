@@ -262,6 +262,43 @@ describe("OpenWorkflow", () => {
     );
   });
 
+  test("creates workflow run with availableAt duration", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "available-at-duration-test" },
+      noopFn,
+    );
+
+    const start = Date.now();
+    const handle = await workflow.run({ value: 1 }, { availableAt: "2s" });
+
+    expect(handle.workflowRun.availableAt).not.toBeNull();
+    if (!handle.workflowRun.availableAt) {
+      throw new Error("availableAt should be set");
+    }
+
+    const delayMs = handle.workflowRun.availableAt.getTime() - start;
+    expect(delayMs).toBeGreaterThanOrEqual(1900);
+    expect(delayMs).toBeLessThanOrEqual(10_000);
+  });
+
+  test("throws for invalid availableAt duration", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "available-at-invalid-test" },
+      noopFn,
+    );
+
+    await expect(
+      // @ts-expect-error - invalid duration format
+      workflow.run({ value: 1 }, { availableAt: "not-a-duration" }),
+    ).rejects.toThrow('Invalid duration format: "not-a-duration"');
+  });
+
   test("creates workflow run with version", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

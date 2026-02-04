@@ -53,7 +53,7 @@ The `run()` method returns a handle immediately. The actual workflow execution
 happens in a worker process. This lets your application continue without waiting
 for the workflow to complete.
 
-## Scheduling a Workflow
+### Scheduling a Workflow Run
 
 You can schedule a workflow run for a specific time by passing `availableAt`:
 
@@ -62,6 +62,16 @@ const runAt = new Date("2026-02-05T15:00:00.000Z");
 const handle = await sendWelcomeEmail.run(
   { userId: "user_123" },
   { availableAt: runAt },
+);
+```
+
+You can also pass a duration string using the same [duration
+format](/docs/sleeping#duration-formats) as `step.sleep`:
+
+```ts
+const handle = await sendWelcomeEmail.run(
+  { userId: "user_123" },
+  { availableAt: "5m" },
 );
 ```
 
