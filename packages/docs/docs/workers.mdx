@@ -11,9 +11,16 @@ independently. Your database is the source of truth.
 
 The recommended way to run a worker is via the CLI:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli worker start
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli worker start
+```
+
+</CodeGroup>
 
 This command:
 
@@ -52,9 +59,16 @@ export default defineConfig({
 
 Or via the CLI:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli worker start --concurrency 10
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli worker start --concurrency 10
+```
+
+</CodeGroup>
 
 <Note>
   Start with `concurrency: 10` and tune based on your workload and database
@@ -78,13 +92,22 @@ This ensures workflows are never stuck if a worker crashes.
 
 For production, run multiple worker instances:
 
-```bash
+<CodeGroup>
+```bash npm
 # Terminal 1
 npx @openworkflow/cli worker start --concurrency 10
-
 # Terminal 2
 npx @openworkflow/cli worker start --concurrency 10
 ```
+
+```bash pnpm
+# Terminal 1
+pnpx @openworkflow/cli worker start --concurrency 10
+# Terminal 2
+pnpx @openworkflow/cli worker start --concurrency 10
+```
+
+</CodeGroup>
 
 Workers coordinate through the database:
 
@@ -103,7 +126,8 @@ When a worker receives SIGINT or SIGTERM:
 
 This ensures no work is lost during deploys.
 
-```bash
+<CodeGroup>
+```bash npm
 # The worker handles Ctrl+C gracefully
 npx @openworkflow/cli worker start
 ^C
@@ -111,6 +135,17 @@ npx @openworkflow/cli worker start
 # [info] Waiting for active workflows to complete...
 # [info] Worker stopped
 ```
+
+```bash pnpm
+# The worker handles Ctrl+C gracefully
+pnpx @openworkflow/cli worker start
+^C
+# [info] Shutting down worker...
+# [info] Waiting for active workflows to complete...
+# [info] Worker stopped
+```
+
+</CodeGroup>
 
 ## Workflow Discovery
 

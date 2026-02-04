@@ -8,9 +8,16 @@ workflows.
 
 ## Installation
 
-```bash
+<CodeGroup>
+```bash npm
 npm install -D @openworkflow/cli
 ```
+
+```bash pnpm
+pnpm add -D @openworkflow/cli
+```
+
+</CodeGroup>
 
 ## Commands
 
@@ -18,9 +25,16 @@ npm install -D @openworkflow/cli
 
 Initialize OpenWorkflow in your project:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli init
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli init
+```
+
+</CodeGroup>
 
 This interactive command:
 
@@ -36,19 +50,34 @@ This interactive command:
 
 Start a worker to process workflows:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli worker start
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli worker start
+```
+
+</CodeGroup>
 
 Options:
 
 - `--concurrency <n>` - Number of concurrent workflow executions (overrides
   config)
 
-```bash
+<CodeGroup>
+```bash npm
 # Run with 4 concurrent workflows
 npx @openworkflow/cli worker start --concurrency 4
 ```
+
+```bash pnpm
+# Run with 4 concurrent workflows
+pnpx @openworkflow/cli worker start --concurrency 4
+```
+
+</CodeGroup>
 
 The worker:
 
@@ -62,9 +91,16 @@ The worker:
 
 Start the web dashboard:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli dashboard
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli dashboard
+```
+
+</CodeGroup>
 
 This launches the OpenWorkflow dashboard on `http://localhost:3000`. See
 [Dashboard](/docs/dashboard) for details.
@@ -73,9 +109,16 @@ This launches the OpenWorkflow dashboard on `http://localhost:3000`. See
 
 Diagnose your OpenWorkflow setup:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli doctor
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli doctor
+```
+
+</CodeGroup>
 
 This command checks:
 
@@ -112,19 +155,35 @@ Example output:
 
 Show the CLI version:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli --version
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli --version
+```
+
+</CodeGroup>
 
 ### `--help`
 
 Show help for any command:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli --help
 npx @openworkflow/cli worker --help
 npx @openworkflow/cli worker start --help
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli --help
+pnpx @openworkflow/cli worker --help
+pnpx @openworkflow/cli worker start --help
+```
+
+</CodeGroup>
 
 ## Environment Variables
 

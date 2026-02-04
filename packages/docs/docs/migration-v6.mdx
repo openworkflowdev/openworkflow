@@ -27,15 +27,29 @@ Find and replace the old import paths:
 
 Remove the legacy packages:
 
-```bash
+<CodeGroup>
+```bash npm
 npm uninstall @openworkflow/backend-postgres @openworkflow/backend-sqlite
 ```
 
+```bash pnpm
+pnpm remove @openworkflow/backend-postgres @openworkflow/backend-sqlite
+```
+
+</CodeGroup>
+
 If you're using PostgreSQL, install the `postgres` driver directly:
 
-```bash
+<CodeGroup>
+```bash npm
 npm install postgres
 ```
+
+```bash pnpm
+pnpm add postgres
+```
+
+</CodeGroup>
 
 Your `package.json` should now look like:
 
@@ -56,9 +70,16 @@ No other changes needed. The backend API is identical.
 
 If you're starting fresh, just run:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli init
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli init
+```
+
+</CodeGroup>
 
 The CLI now generates code with the new import paths automatically.
 

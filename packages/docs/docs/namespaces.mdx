@@ -60,16 +60,26 @@ export default defineConfig({
 
 Set the namespace per environment:
 
-```bash
+<CodeGroup>
+```bash npm
 # Development
 NAMESPACE=development npm run worker
-
 # Staging
 NAMESPACE=staging npm run worker
-
 # Production
 NAMESPACE=production npm run worker
 ```
+
+```bash pnpm
+# Development
+NAMESPACE=development pnpm run worker
+# Staging
+NAMESPACE=staging pnpm run worker
+# Production
+NAMESPACE=production pnpm run worker
+```
+
+</CodeGroup>
 
 ### Multi-Tenancy
 

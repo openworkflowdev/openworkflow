@@ -12,31 +12,54 @@ description: Get up and running with OpenWorkflow
 
 Install and set up OpenWorkflow with:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli init
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli init
+```
+
+</CodeGroup>
 
 The CLI will help you set up OpenWorkflow, create your `openworkflow.config.ts`,
 and generate an example workflow.
 
 ## 2. Start a worker
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli worker start
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli worker start
+```
+
+</CodeGroup>
 
 This starts the worker using `openworkflow.config.{ts,js}` and auto-loads
 workflows from the configured directories (default: `openworkflow/`).
 
 ## 3. Run workflows from your app
 
-```bash
-// TypeScript
+<CodeGroup>
+```bash npm
+# TypeScript
 npx tsx openworkflow/hello-world.run.ts
-
-// JavaScript
+# JavaScript
 node openworkflow/hello-world.run.js
 ```
+
+```bash pnpm
+# TypeScript
+pnpx tsx openworkflow/hello-world.run.ts
+# JavaScript
+node openworkflow/hello-world.run.js
+```
+
+</CodeGroup>
 
 This script runs the `helloWorld` workflow and waits for it to complete.
 
@@ -49,9 +72,16 @@ This script runs the `helloWorld` workflow and waits for it to complete.
 
 View your workflows using the built-in dashboard:
 
-```bash
+<CodeGroup>
+```bash npm
 npx @openworkflow/cli dashboard
 ```
+
+```bash pnpm
+pnpx @openworkflow/cli dashboard
+```
+
+</CodeGroup>
 
 The dashboard provides a UI for monitoring workflow runs, viewing step details,
 and inspecting workflow state.
