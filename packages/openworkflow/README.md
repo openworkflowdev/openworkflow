@@ -62,6 +62,7 @@ For more details, check out our [docs](https://openworkflow.dev/docs).
 - ✅ **Step memoization** - Never repeat completed work
 - ✅ **Automatic retries** - Built-in exponential backoff
 - ✅ **Long pauses** - Sleep for seconds or months
+- ✅ **Scheduled runs** - Start workflows at a specific time
 - ✅ **Parallel execution** - Run steps concurrently
 - ✅ **No extra servers** - Uses your existing database
 - ✅ **Dashboard included** - Monitor and debug workflows

@@ -245,6 +245,23 @@ describe("OpenWorkflow", () => {
     expect(handle.workflowRun.deadlineAt?.getTime()).toBe(deadline.getTime());
   });
 
+  test("creates workflow run with availableAt", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "available-at-test" },
+      noopFn,
+    );
+    const availableAt = new Date(Date.now() + 60_000); // in 1 minute
+    const handle = await workflow.run({ value: 1 }, { availableAt });
+
+    expect(handle.workflowRun.availableAt).not.toBeNull();
+    expect(handle.workflowRun.availableAt?.getTime()).toBe(
+      availableAt.getTime(),
+    );
+  });
+
   test("creates workflow run with version", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

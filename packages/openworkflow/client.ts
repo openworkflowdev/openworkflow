@@ -106,7 +106,7 @@ export class OpenWorkflow {
       config: {},
       context: null,
       input: parsedInput ?? null,
-      availableAt: null,
+      availableAt: options?.availableAt ?? null,
       deadlineAt: options?.deadlineAt ?? null,
     });
 
@@ -194,6 +194,11 @@ export class RunnableWorkflow<Input, Output, RunInput = Input> {
  * `workflowDef.run()`.
  */
 export interface WorkflowRunOptions {
+  /**
+   * Schedule the workflow run for a future time. When set, the run will stay
+   * pending until the timestamp is reached.
+   */
+  availableAt?: Date;
   /**
    * Set a deadline for the workflow run. If the workflow exceeds this deadline,
    * it will be marked as failed.
