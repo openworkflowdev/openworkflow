@@ -20,6 +20,10 @@ npx @openworkflow/cli worker start
 pnpx @openworkflow/cli worker start
 ```
 
+```bash bun
+bunx @openworkflow/cli worker start
+```
+
 </CodeGroup>
 
 This command:
@@ -68,6 +72,10 @@ npx @openworkflow/cli worker start --concurrency 10
 pnpx @openworkflow/cli worker start --concurrency 10
 ```
 
+```bash bun
+bunx @openworkflow/cli worker start --concurrency 10
+```
+
 </CodeGroup>
 
 <Note>
@@ -107,6 +115,13 @@ pnpx @openworkflow/cli worker start --concurrency 10
 pnpx @openworkflow/cli worker start --concurrency 10
 ```
 
+```bash bun
+# Terminal 1
+bunx @openworkflow/cli worker start --concurrency 10
+# Terminal 2
+bunx @openworkflow/cli worker start --concurrency 10
+```
+
 </CodeGroup>
 
 Workers coordinate through the database:
@@ -139,6 +154,15 @@ npx @openworkflow/cli worker start
 ```bash pnpm
 # The worker handles Ctrl+C gracefully
 pnpx @openworkflow/cli worker start
+^C
+# [info] Shutting down worker...
+# [info] Waiting for active workflows to complete...
+# [info] Worker stopped
+```
+
+```bash bun
+# The worker handles Ctrl+C gracefully
+bunx @openworkflow/cli worker start
 ^C
 # [info] Shutting down worker...
 # [info] Waiting for active workflows to complete...
