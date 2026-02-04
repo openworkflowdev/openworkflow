@@ -8,7 +8,7 @@ import {
   getCachedStepAttempt,
   addToStepAttemptCache,
   normalizeStepOutput,
-  calculateSleepResumeAt,
+  calculateDateFromDuration,
   createSleepContext,
 } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
@@ -160,7 +160,7 @@ class StepExecutor implements StepApi {
     if (existingAttempt) return;
 
     // create new step attempt for the sleep
-    const result = calculateSleepResumeAt(duration);
+    const result = calculateDateFromDuration(duration);
     if (!result.ok) {
       throw result.error;
     }

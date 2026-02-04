@@ -1,6 +1,7 @@
 import type { Backend } from "./backend.js";
-import { parseDuration, type DurationString } from "./core/duration.js";
+import type { DurationString } from "./core/duration.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
+import { calculateDateFromDuration } from "./core/step.js";
 import type {
   SchemaInput,
   SchemaOutput,
@@ -220,12 +221,12 @@ function resolveAvailableAt(
   if (!availableAt) return null;
   if (availableAt instanceof Date) return availableAt;
 
-  const result = parseDuration(availableAt);
+  const result = calculateDateFromDuration(availableAt);
   if (!result.ok) {
     throw result.error;
   }
 
-  return new Date(Date.now() + result.value);
+  return result.value;
 }
 
 /**

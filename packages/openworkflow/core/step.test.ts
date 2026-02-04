@@ -4,7 +4,7 @@ import {
   getCachedStepAttempt,
   addToStepAttemptCache,
   normalizeStepOutput,
-  calculateSleepResumeAt,
+  calculateDateFromDuration,
   createSleepContext,
 } from "./step.js";
 import type { StepAttempt, StepAttemptCache } from "./step.js";
@@ -224,38 +224,38 @@ describe("normalizeStepOutput", () => {
   });
 });
 
-describe("calculateSleepResumeAt", () => {
+describe("calculateDateFromDuration", () => {
   test("calculates resume time from duration string", () => {
     const now = 1_000_000;
-    const result = calculateSleepResumeAt("5s", now);
+    const result = calculateDateFromDuration("5s", now);
 
     expect(result).toEqual(ok(new Date(now + 5000)));
   });
 
   test("calculates resume time with milliseconds", () => {
     const now = 1_000_000;
-    const result = calculateSleepResumeAt("500ms", now);
+    const result = calculateDateFromDuration("500ms", now);
 
     expect(result).toEqual(ok(new Date(now + 500)));
   });
 
   test("calculates resume time with minutes", () => {
     const now = 1_000_000;
-    const result = calculateSleepResumeAt("2m", now);
+    const result = calculateDateFromDuration("2m", now);
 
     expect(result).toEqual(ok(new Date(now + 2 * 60 * 1000)));
   });
 
   test("calculates resume time with hours", () => {
     const now = 1_000_000;
-    const result = calculateSleepResumeAt("1h", now);
+    const result = calculateDateFromDuration("1h", now);
 
     expect(result).toEqual(ok(new Date(now + 60 * 60 * 1000)));
   });
 
   test("uses Date.now() when now is not provided", () => {
     const before = Date.now();
-    const result = calculateSleepResumeAt("1s");
+    const result = calculateDateFromDuration("1s");
     const after = Date.now();
 
     expect(result.ok).toBe(true);
@@ -268,7 +268,7 @@ describe("calculateSleepResumeAt", () => {
 
   test("returns error for invalid duration", () => {
     // @ts-expect-error testing invalid input
-    const result = calculateSleepResumeAt("invalid");
+    const result = calculateDateFromDuration("invalid");
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -278,7 +278,7 @@ describe("calculateSleepResumeAt", () => {
 
   test("returns error for empty duration", () => {
     // @ts-expect-error testing invalid input
-    const result = calculateSleepResumeAt("");
+    const result = calculateDateFromDuration("");
 
     expect(result.ok).toBe(false);
   });

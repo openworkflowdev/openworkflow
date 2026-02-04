@@ -111,12 +111,12 @@ export function normalizeStepOutput(result: unknown): JsonValue {
 }
 
 /**
- * Calculate the resume time for a sleep step.
- * @param duration - The duration string to sleep for
+ * Calculate a future time from a duration string.
+ * @param duration - The duration string to add
  * @param now - The current timestamp (defaults to Date.now())
  * @returns A Result containing the resume Date or an Error
  */
-export function calculateSleepResumeAt(
+export function calculateDateFromDuration(
   duration: DurationString,
   now: number = Date.now(),
 ): Result<Date> {
