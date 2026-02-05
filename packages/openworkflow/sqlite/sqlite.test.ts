@@ -50,6 +50,25 @@ describe("sqlite", () => {
     }
   });
 
+  // a bit of a hacky test, but needed since vitest still loads requires even
+  // though the package is type:module
+  test("newDatabase does not depend on global require", () => {
+    const globals = globalThis as { require?: unknown };
+    const originalRequire = globals.require;
+
+    try {
+      globals.require = undefined;
+      const tempDb = newDatabase(":memory:");
+      tempDb.close();
+    } finally {
+      if (originalRequire === undefined) {
+        delete globals.require;
+      } else {
+        globals.require = originalRequire;
+      }
+    }
+  });
+
   describe("migrations()", () => {
     test("returns migration SQL statements with correct table names", () => {
       const migs = migrations();

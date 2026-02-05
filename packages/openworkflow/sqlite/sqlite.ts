@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 /**
  * Common database interface that both Node and Bun SQLite drivers satisfy.
@@ -20,6 +21,10 @@ export interface Database {
  * @returns SQLite database connection
  */
 export function newDatabase(path: string): Database {
+  // needed for Node ESM, also supported in Bun
+  // https://bun.com/reference/node/module/default/createRequire
+  const require = createRequire(import.meta.url);
+
   let db: Database;
 
   // https://bun.com/docs/guides/util/detect-bun
@@ -27,14 +32,12 @@ export function newDatabase(path: string): Database {
 
   if (isBun) {
     /* v8 ignore start -- Bun tests are run separately */
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Database: BunDatabase } = require("bun:sqlite") as {
       Database: new (path: string) => Database;
     };
     db = new BunDatabase(path);
     /* v8 ignore stop */
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { DatabaseSync: NodeDatabase } = require("node:sqlite") as {
       DatabaseSync: new (path: string) => Database;
     };
