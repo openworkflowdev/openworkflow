@@ -22,7 +22,8 @@ export interface Database {
 export function newDatabase(path: string): Database {
   let db: Database;
 
-  const isBun = (globalThis as { Bun?: unknown }).Bun !== undefined;
+  // https://bun.com/docs/guides/util/detect-bun
+  const isBun = !!process.versions["bun"];
 
   if (isBun) {
     /* v8 ignore start -- Bun tests are run separately */
