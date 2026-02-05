@@ -1,42 +1,137 @@
 ---
-title: Production Checklist
-description: Prepare your OpenWorkflow application for production
+title: Production
+description: Run OpenWorkflow in your own infrastructure
 ---
 
-Before deploying OpenWorkflow to production, review this checklist to ensure
-your workflows are reliable, observable, and scalable.
+OpenWorkflow runs entirely in your infrastructure. There are no external servers
+to connect to or third-party services to manage. Your database is the only
+dependency.
 
-### Database
+## Architecture Overview
 
-- **Use a production-ready Postgres instance**: SQLite is great for development
-  but Postgres is recommended for production workloads due to better concurrency
-  handling and scalability.
-- **Configure connection pooling**: Ensure your Postgres connection pool is
-  appropriately sized for your worker concurrency.
-- **Set up backups**: Regular database backups are critical since your workflow
-  state lives in the database.
+OpenWorkflow uses a **worker-driven architecture**:
 
-### Workers
+1. **Workers** run in your infrastructure and poll the database for work
+2. **Clients** create workflow runs by writing to the database
+3. **Database** (PostgreSQL or SQLite) stores all workflow state
 
-- **Run at least one worker process**: Deploy workers as separate long-running
-  processes. They can run on the same servers as your application or separately.
-- **Concurrency**: Start with `concurrency: 10` per worker and tune based on
-  your workload.
-- **High availability**: Run multiple worker instances for redundancy. Workers
-  are stateless and can be scaled horizontally.
+There's no central orchestration server. Workers coordinate through the
+database, making the system simple to deploy and operate.
 
-### Error Handling
+```mermaid
+graph TD
+    App[<b>Your App</b><br>Creates runs]
+    Worker1[<b>Worker 1</b><br>Executes runs]
+    Worker2[<b>Worker 2</b><br>Executes runs]
+    DB[<b>Database</b><br>Source of truth for all state]
 
-- Review your step functions to ensure proper error handling
-- Configure appropriate retry policies for your use case
-- Set up alerting for persistently failing workflows
+    App --> DB
+    Worker1 --> DB
+    Worker2 --> DB
+```
 
-### Debugging
+## Requirements
 
-- Use the dashboard to inspect workflow runs:
+For most production use cases, use PostgreSQL 14 or later:
+
+- The connecting user needs permissions to create schemas and tables (for
+  migrations)
+- Workflow state is stored in the `openworkflow` schema
+
+For single-server deployments, SQLite works well.
+
+## Production Setup
+
+### 1. Set Up PostgreSQL
+
+Provision a PostgreSQL database. Any PostgreSQL 14+ instance works.
+
+### 2. Configure the Backend
+
+Edit your `openworkflow.config.ts` to set the Postgres URL and namespace:
+
+```ts
+import { defineConfig } from "@openworkflow/cli";
+import { BackendPostgres } from "openworkflow/postgres";
+
+export default defineConfig({
+  backend: await BackendPostgres.connect(
+    process.env.OPENWORKFLOW_POSTGRES_URL!,
+    {
+      namespaceId: process.env.OPENWORKFLOW_NAMESPACE_ID || "production",
+    },
+  ),
+  dirs: ["./openworkflow"],
+  worker: {
+    concurrency: 10,
+  },
+});
+```
+
+In this example, we use the `OPENWORKFLOW_POSTGRES_URL` and
+`OPENWORKFLOW_NAMESPACE_ID` env vars to dynamically set the Postgres URL and
+namespace, but you can set this up however you'd like.
+
+### 3. Migrations
+
+Migrations run automatically when the backend connects. OpenWorkflow creates:
+
+- `openworkflow.workflow_runs` - Stores workflow run state
+- `openworkflow.step_attempts` - Stores step execution history
+
+### 4. Deploy Workers
 
 <CodeGroup>
+```bash npm
+npx @openworkflow/cli worker start
+```
 
+```bash pnpm
+pnpx @openworkflow/cli worker start
+```
+
+```bash bun
+bunx @openworkflow/cli worker start
+```
+
+</CodeGroup>
+
+## Scaling Workers
+
+### Horizontal Scaling
+
+You can run multiple worker instances for high availability and throughput.
+Workers coordinate through the database:
+
+- Each workflow run is claimed by exactly one worker at a time
+- Workers use atomic database operations to prevent duplicate processing
+- If a worker crashes, its workflows automatically become available to others
+
+### Concurrency Tuning
+
+The `concurrency` setting controls how many workflow runs a single worker
+processes simultaneously. Each workflow occupies one slot while executing.
+
+```ts
+worker: {
+  concurrency: 10, // Process up to 10 workflows at once
+}
+```
+
+**Guidelines:**
+
+- Start with `concurrency: 10` and adjust based on workload
+- Increase for I/O-bound workflows (lots of API calls, database queries)
+- Decrease for CPU-bound workflows (heavy computation)
+- Monitor database connection usage - each worker maintains a connection pool
+
+## Monitoring
+
+### Dashboard
+
+OpenWorkflow includes a built-in dashboard for monitoring:
+
+<CodeGroup>
 ```bash npm
 npx @openworkflow/cli dashboard
 ```
@@ -51,19 +146,13 @@ bunx @openworkflow/cli dashboard
 
 </CodeGroup>
 
-- Review step attempts and errors for failed workflows
-- Check database state for workflow runs that appear stuck
+The dashboard shows:
 
-### Namespaces (Optional)
+- Workflow run status (pending, running, sleeping, completed, failed)
+- Step execution history
+- Error details and retry attempts
+- Real-time updates
 
-Use `namespaceId` in your backend configuration to isolate workflows per
-environment:
-
-```ts
-const backend = await BackendPostgres.connect(postgresUrl, {
-  namespaceId: "production",
-});
-```
-
-This allows you to run multiple environments (staging, production) against the
-same database safely.
+The dashboard does not include built-in authentication. We recommend deploying
+it behind a VPN, private network, or Basic Auth proxy to prevent unauthorized
+access.

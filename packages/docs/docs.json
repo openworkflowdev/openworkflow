@@ -38,7 +38,8 @@
           "docs/retries",
           "docs/type-safety",
           "docs/versioning",
-          "docs/canceling"
+          "docs/canceling",
+          "docs/production"
         ]
       },
       {
@@ -77,10 +78,6 @@
     {
       "source": "/docs/advanced-patterns",
       "destination": "/docs/parallel-steps"
-    },
-    {
-      "source": "/docs/production",
-      "destination": "/docs/postgres"
     }
   ],
   "integrations": {
