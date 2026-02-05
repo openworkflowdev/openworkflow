@@ -22,4 +22,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - run: bun ci
-      - run: bun run test
+
+      # https://github.com/vitest-dev/vscode/discussions/473
+      - run: bun run --bun vitest run
