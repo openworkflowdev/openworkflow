@@ -532,7 +532,9 @@ export class BackendSqlite implements Backend {
       });
     }
 
-    const rows = rawRows.map((row) => rowToWorkflowRun(row as WorkflowRunRow));
+    const rows = rawRows.map((row) =>
+      rowToWorkflowRun(row as unknown as WorkflowRunRow),
+    );
 
     return Promise.resolve(
       this.processPaginationResults(rows, limit, !!after, !!before),
@@ -599,7 +601,9 @@ export class BackendSqlite implements Backend {
       });
     }
 
-    const rows = rawRows.map((row) => rowToStepAttempt(row as StepAttemptRow));
+    const rows = rawRows.map((row) =>
+      rowToStepAttempt(row as unknown as StepAttemptRow),
+    );
 
     return Promise.resolve(
       this.processPaginationResults(rows, limit, !!after, !!before),

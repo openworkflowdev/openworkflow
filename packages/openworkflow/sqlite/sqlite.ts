@@ -1,45 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 
-/**
- * Common database interface that both Node and Bun SQLite drivers satisfy.
- */
-export interface Database {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    run(...params: unknown[]): { changes: number };
-    get(...params: unknown[]): unknown;
-    all(...params: unknown[]): unknown[];
-  };
-  close(): void;
-}
+export type Database = DatabaseSync;
 
 /**
  * newDatabase creates a new SQLite database connection.
- * Uses node:sqlite in Node.js or bun:sqlite in Bun.
  * @param path - Database file path (or ":memory:") for testing
  * @returns SQLite database connection
  */
 export function newDatabase(path: string): Database {
-  let db: Database;
-
-  const isBun = (globalThis as { Bun?: unknown }).Bun !== undefined;
-
-  if (isBun) {
-    /* v8 ignore start -- Bun tests are run in CI via ci.bun.yaml */
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Database: BunDatabase } = require("bun:sqlite") as {
-      Database: new (path: string) => Database;
-    };
-    db = new BunDatabase(path);
-    /* v8 ignore stop */
-  } else {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { DatabaseSync } = require("node:sqlite") as {
-      DatabaseSync: new (path: string) => Database;
-    };
-    db = new DatabaseSync(path);
-  }
-
+  const db = new DatabaseSync(path);
   // Only enable WAL mode for file-based databases
   if (path !== ":memory:") {
     db.exec("PRAGMA journal_mode = WAL;");
