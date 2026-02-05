@@ -33,7 +33,7 @@ jobs:
       - uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-  bun-tests:
+  ci-bun:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -49,9 +49,6 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: package.json
-      - run: npm ci
       - uses: oven-sh/setup-bun@v2
-      - run: bun run test
+      - run: bun ci
+      - run: bun run ci:bun

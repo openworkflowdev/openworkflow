@@ -10,6 +10,7 @@
   "scripts": {
     "build": "turbo build",
     "ci": "npm run format && npm run build && npm run lint && npm run typecheck && npm run test:coverage",
+    "ci:bun": "bun run build && bun run test",
     "db:migrate": "tsx ./packages/openworkflow/postgres/scripts/db-migrate.ts",
     "db:reset": "tsx ./packages/openworkflow/postgres/scripts/db-reset.ts",
     "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
