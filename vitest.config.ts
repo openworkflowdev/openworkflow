@@ -21,5 +21,11 @@ export default defineConfig({
         lines: 90,
       },
     },
+    // fix ESM resolution issues when running tests with Bun
+    server: {
+      deps: {
+        inline: ["arktype", "valibot", "yup", "zod"],
+      },
+    },
   },
 });

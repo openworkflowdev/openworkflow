@@ -5,7 +5,7 @@ description: Get up and running with OpenWorkflow
 
 ## Prerequisites
 
-- Node.js
+- Node.js or Bun
 - PostgreSQL (and/or SQLite)
 
 ## 1. Install
@@ -19,6 +19,10 @@ npx @openworkflow/cli init
 
 ```bash pnpm
 pnpx @openworkflow/cli init
+```
+
+```bash bun
+bunx @openworkflow/cli init
 ```
 
 </CodeGroup>
@@ -35,6 +39,10 @@ npx @openworkflow/cli worker start
 
 ```bash pnpm
 pnpx @openworkflow/cli worker start
+```
+
+```bash bun
+bunx @openworkflow/cli worker start
 ```
 
 </CodeGroup>
@@ -59,6 +67,10 @@ pnpx tsx openworkflow/hello-world.run.ts
 node openworkflow/hello-world.run.js
 ```
 
+```bash bun
+bun openworkflow/hello-world.run.ts
+```
+
 </CodeGroup>
 
 This script runs the `helloWorld` workflow and waits for it to complete.
@@ -79,6 +91,10 @@ npx @openworkflow/cli dashboard
 
 ```bash pnpm
 pnpx @openworkflow/cli dashboard
+```
+
+```bash bun
+bunx @openworkflow/cli dashboard
 ```
 
 </CodeGroup>

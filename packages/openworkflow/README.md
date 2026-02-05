@@ -41,12 +41,15 @@ export const sendWelcomeEmail = defineWorkflow(
 
 ## Quick Start
 
-**Prerequisites:** Node.js & PostgreSQL (or SQLite)
-
-### Install
-
 ```bash
+# npm
 npx @openworkflow/cli init
+
+# pnpm
+pnpx @openworkflow/cli init
+
+# bun
+bunx @openworkflow/cli init
 ```
 
 The CLI will guide you through setup and generate everything you need to get
