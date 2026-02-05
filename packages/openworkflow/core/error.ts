@@ -27,3 +27,14 @@ export function serializeError(error: unknown): SerializedError {
     message: String(error),
   };
 }
+
+/**
+ * Wrap an error with a clearer message while preserving the original cause.
+ * @param message - The message to use for the new error
+ * @param error - The original error
+ * @returns A new error with the original error as its cause
+ */
+export function wrapError(message: string, error: unknown): Error {
+  const { message: wrappedMessage } = serializeError(error);
+  return new Error(`${message}: ${wrappedMessage}`, { cause: error });
+}

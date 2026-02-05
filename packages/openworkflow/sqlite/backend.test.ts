@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { test, describe, afterAll } from "vitest";
+import { test, describe, afterAll, expect } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
   assert.ok(true);
@@ -58,5 +58,19 @@ describe("BackendSqlite (file-based)", () => {
     teardown: async (backend) => {
       await backend.stop();
     },
+  });
+});
+
+describe("BackendSqlite.connect errors", () => {
+  test("returns a helpful error for invalid database paths", () => {
+    const badPath = path.join(
+      tmpdir(),
+      `openworkflow-missing-${randomUUID()}`,
+      "backend.db",
+    );
+
+    expect(() => BackendSqlite.connect(badPath)).toThrow(
+      /SQLite backend failed to open database.*valid and writable.*:/,
+    );
   });
 });
