@@ -114,7 +114,8 @@ of coordination. There is no separate orchestrator server.
   available work, executes the workflow logic, and updates the Backend with the
   results.
 - **CLI**: The dev tooling that scaffolds projects, writes
-  `openworkflow.config.ts`, and runs workers via `ow worker start` with
+  `openworkflow.config.ts`, and runs workers via
+  `npx @openworkflow/cli worker start` with
   auto-discovery of workflow files.
 - **Backend**: The source of truth. It stores workflow runs and step attempts.
   The `workflow_runs` table serves as the job queue for the workers, while the
