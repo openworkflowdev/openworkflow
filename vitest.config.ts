@@ -24,7 +24,7 @@ export default defineConfig({
     // fix ESM resolution issues when running with Bun
     server: {
       deps: {
-        inline: ["arktype", "valibot", "yup", "zod"],
+        inline: ["arktype", "openworkflow", "valibot", "yup", "zod"],
       },
     },
   },
