@@ -30,11 +30,11 @@ export const orderWorkflow = defineWorkflow(
   },
   async ({ input, step }) => {
     // New v2 logic
-    await step.run("validate-v2", async () => {
+    await step.run({ name: "validate-v2" }, async () => {
       return validateOrderV2(input);
     });
 
-    await step.run("process-v2", async () => {
+    await step.run({ name: "process-v2" }, async () => {
       return processWithNewLogic(input);
     });
   },
@@ -58,8 +58,8 @@ const ow = new OpenWorkflow({ backend });
 ow.implementWorkflow(
   { name: "process-order", version: "1.0.0" },
   async ({ input, step }) => {
-    await step.run("validate", () => validateOrderV1(input));
-    await step.run("process", () => processV1(input));
+    await step.run({ name: "validate" }, () => validateOrderV1(input));
+    await step.run({ name: "process" }, () => processV1(input));
   },
 );
 
@@ -67,8 +67,8 @@ ow.implementWorkflow(
 ow.implementWorkflow(
   { name: "process-order", version: "2.0.0" },
   async ({ input, step }) => {
-    await step.run("validate-v2", () => validateOrderV2(input));
-    await step.run("process-v2", () => processWithNewLogic(input));
+    await step.run({ name: "validate-v2" }, () => validateOrderV2(input));
+    await step.run({ name: "process-v2" }, () => processWithNewLogic(input));
   },
 );
 

@@ -52,12 +52,12 @@ interface OrderResult {
 export const processOrder = defineWorkflow<OrderInput, OrderResult>(
   { name: "process-order" },
   async ({ input, step }) => {
-    const validated = await step.run("validate", async () => {
+    const validated = await step.run({ name: "validate" }, async () => {
       // input is typed as OrderInput
       return validateOrder(input.orderId);
     });
 
-    const trackingNumber = await step.run("ship", async () => {
+    const trackingNumber = await step.run({ name: "ship" }, async () => {
       return shipOrder(input.orderId);
     });
 
@@ -102,7 +102,7 @@ export const emailSpec = defineWorkflowSpec<
 const ow = new OpenWorkflow({ backend });
 ow.implementWorkflow(emailSpec, async ({ input, step }) => {
   // input.to and input.subject are typed
-  await step.run("send", async () => {
+  await step.run({ name: "send" }, async () => {
     await sendEmail(input.to, input.subject);
   });
   return { sent: true };
@@ -133,7 +133,7 @@ const workflow = defineWorkflow<{ userId: string }>(
   { name: "user-workflow" },
   async ({ input, step }) => {
     // user is inferred as User type from the return
-    const user = await step.run("get-user", async () => {
+    const user = await step.run({ name: "get-user" }, async () => {
       const response = await fetch(`/api/users/${input.userId}`);
       return response.json() as User;
     });

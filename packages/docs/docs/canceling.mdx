@@ -16,7 +16,7 @@ const longRunning = defineWorkflow(
   { name: "long-running" },
   async ({ step }) => {
     await step.sleep("wait", "1 hour");
-    await step.run("work", () => doExpensiveWork());
+    await step.run({ name: "work" }, () => doExpensiveWork());
   },
 );
 
