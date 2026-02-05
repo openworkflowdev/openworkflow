@@ -55,6 +55,9 @@ Failed workflows are rescheduled with increasing delays:
 
 This prevents overwhelming external services during outages.
 
+By default, retries continue indefinitely. A workflow is marked `failed` when
+its configured `deadlineAt` is reached (or the next retry would pass it).
+
 ## What Triggers a Retry
 
 Retries happen when:
