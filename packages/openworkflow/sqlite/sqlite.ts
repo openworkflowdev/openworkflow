@@ -25,13 +25,13 @@ export function newDatabase(path: string): Database {
   const isBun = (globalThis as { Bun?: unknown }).Bun !== undefined;
 
   if (isBun) {
-    // istanbul ignore next -- Bun tested in CI
+    /* v8 ignore start -- Bun tests are run in CI via ci.bun.yaml */
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Database: BunDatabase } = require("bun:sqlite") as {
       Database: new (path: string) => Database;
     };
-    // istanbul ignore next -- Bun tested in CI
     db = new BunDatabase(path);
+    /* v8 ignore stop */
   } else {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { DatabaseSync } = require("node:sqlite") as {
