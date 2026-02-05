@@ -176,14 +176,14 @@ defineWorkflow({ name: "example" }, async ({ input, step, version }) => {
 
 A workflow run progresses through these states:
 
-| Status      | Description                                       |
-| ----------- | ------------------------------------------------- |
-| `pending`   | Created and waiting for a worker to claim it      |
-| `running`   | Actively being executed by a worker               |
-| `sleeping`  | Paused and waiting for a `step.sleep` to complete |
-| `completed` | Finished successfully                             |
-| `failed`    | Failed after exhausting retries                   |
-| `canceled`  | Explicitly canceled and will not continue         |
+| Status      | Description                                         |
+| ----------- | --------------------------------------------------- |
+| `pending`   | Created and waiting for a worker to claim it        |
+| `running`   | Actively being executed by a worker                 |
+| `sleeping`  | Paused and waiting for a `step.sleep` to complete   |
+| `completed` | Finished successfully                               |
+| `failed`    | Failed after exhausting retries or deadline reached |
+| `canceled`  | Explicitly canceled and will not continue           |
 
 ## Determinism
 

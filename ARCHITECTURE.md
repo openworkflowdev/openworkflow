@@ -54,7 +54,8 @@ A workflow run can be in one of the following states:
   (`step.sleep`). The `availableAt` timestamp controls when it becomes available
   again.
 - **`completed`**: The workflow run has completed successfully.
-- **`failed`**: The workflow run has failed and all retries have been exhausted.
+- **`failed`**: The workflow run has failed after exhausting retries or deadline
+  reached.
 - **`canceled`**: The workflow run has been explicitly canceled and will not be
   processed further.
 
@@ -224,17 +225,17 @@ await step.sleep("wait-one-hour", "1h");
 
 When a step's function throws an error, the framework records the error in the
 `step_attempt` and sets its status to `failed`. The error then propagates up. If
-the workflow has a retry policy, the entire workflow run is rescheduled with an
-exponential backoff by setting its `availableAt` timestamp to a future time. On
-the next execution, the replay will reach the failed step and re-execute its
-function.
+the run is retryable, the entire workflow run is rescheduled with exponential
+backoff by setting its `availableAt` timestamp to a future time. On the next
+execution, the replay will reach the failed step and re-execute its function.
 
 ### 4.2. Workflow Failures & Retries
 
 If an error is unhandled by the workflow code, the entire workflow run fails.
-Similar to step retries, the workflow run itself can have a retry policy. If
-retries remain, it will be rescheduled with a backoff. If all retries are
-exhausted, its status is set to `failed` permanently.
+The workflow run is rescheduled with backoff. By default, retries continue
+until canceled or until a configured deadline is reached. If the run can no
+longer be retried (for example, because the next retry would exceed
+`deadlineAt`), its status is set to `failed` permanently.
 
 ### 4.3. Workflow Deadlines
 
