@@ -1,5 +1,13 @@
 # openworkflow
 
+## 0.6.6
+
+- Reverts and deprecates 0.6.5
+
+## 0.6.5
+
+- Add support for Bun as an alternative to Node
+
 ## 0.6.4
 
 - Added support for scheduling workflow runs with a `Date` or duration string
