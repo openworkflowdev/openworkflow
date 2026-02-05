@@ -1,5 +1,9 @@
 # openworkflow
 
+## 0.6.7
+
+- Add support for Bun as an alternative to Node
+
 ## 0.6.6
 
 - Reverts and deprecates 0.6.5
