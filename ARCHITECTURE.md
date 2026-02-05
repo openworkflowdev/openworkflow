@@ -360,8 +360,8 @@ graceful shutdown:
 
 ## 8. Package/Folder Structure
 
-- `packages/openworkflow` contains the SDK (client, worker, registry).
-- `packages/backend-postgres` and `packages/backend-sqlite` are infra-specific
-  `Backend` implementations.
+- `packages/openworkflow` contains the SDK (client, worker, registry) and
+  backend implementations via `openworkflow/postgres` and `openworkflow/sqlite`
+  subpath exports.
 - `packages/cli` is the CLI.
 - `packages/dashboard` is the web UI for monitoring workflow runs.
