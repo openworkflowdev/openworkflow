@@ -1,7 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
 
 /**
  * Common database interface that both Node and Bun SQLite drivers satisfy.
@@ -29,16 +26,18 @@ export function newDatabase(path: string): Database {
 
   if (isBun) {
     /* v8 ignore start -- Bun tests are run separately */
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Database: BunDatabase } = require("bun:sqlite") as {
       Database: new (path: string) => Database;
     };
     db = new BunDatabase(path);
     /* v8 ignore stop */
   } else {
-    const { DatabaseSync } = require("node:sqlite") as {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { DatabaseSync: NodeDatabase } = require("node:sqlite") as {
       DatabaseSync: new (path: string) => Database;
     };
-    db = new DatabaseSync(path);
+    db = new NodeDatabase(path);
   }
   // Only enable WAL mode for file-based databases
   if (path !== ":memory:") {
