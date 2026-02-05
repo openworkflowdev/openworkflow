@@ -1,4 +1,4 @@
-import { serializeError } from "./error.js";
+import { serializeError, wrapError } from "./error.js";
 import { describe, expect, test } from "vitest";
 
 describe("serializeError", () => {
@@ -74,5 +74,23 @@ describe("serializeError", () => {
     const result = serializeError({ foo: "bar" });
 
     expect(result.message).toBe("[object Object]");
+  });
+});
+
+describe("wrapError", () => {
+  test("wraps errors with serialized cause", () => {
+    const original = new Error("boom");
+    const wrapped = wrapError("Top-level", original);
+
+    expect(original.message).toBe("boom");
+    expect(wrapped.message).toBe("Top-level: boom");
+    expect(wrapped.cause).toBe(original);
+  });
+
+  test("wraps string errors with serialized cause", () => {
+    const wrapped = wrapError("Top-level", "boom");
+
+    expect(wrapped.message).toBe("Top-level: boom");
+    expect(wrapped.cause).toBe("boom");
   });
 });

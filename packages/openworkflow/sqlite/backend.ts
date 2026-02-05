@@ -17,6 +17,7 @@ import {
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
 } from "../backend.js";
+import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { DEFAULT_RETRY_POLICY } from "../core/retry.js";
 import { StepAttempt } from "../core/step.js";
@@ -60,6 +61,7 @@ export class BackendSqlite implements Backend {
    * @param path - Database path
    * @param options - Backend options
    * @returns A connected backend instance
+   * @throws {Error} Error connecting to the SQLite database
    */
   static connect(path: string, options?: BackendSqliteOptions): BackendSqlite {
     const { namespaceId, runMigrations } = {
@@ -68,13 +70,20 @@ export class BackendSqlite implements Backend {
       ...options,
     };
 
-    const db = newDatabase(path);
+    try {
+      const db = newDatabase(path);
 
-    if (runMigrations) {
-      migrate(db);
+      if (runMigrations) {
+        migrate(db);
+      }
+
+      return new BackendSqlite(db, namespaceId);
+    } catch (error) {
+      throw wrapError(
+        "SQLite backend failed to open database. Check the path is valid and writable.",
+        error,
+      );
     }
-
-    return new BackendSqlite(db, namespaceId);
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await

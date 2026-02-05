@@ -17,6 +17,7 @@ import {
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
 } from "../backend.js";
+import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { DEFAULT_RETRY_POLICY } from "../core/retry.js";
 import { StepAttempt } from "../core/step.js";
@@ -55,6 +56,7 @@ export class BackendPostgres implements Backend {
    * @param url - Postgres connection URL
    * @param options - Backend options
    * @returns A connected backend instance
+   * @throws {Error} Error connecting to the Postgres database
    */
   static async connect(
     url: string,
@@ -66,14 +68,21 @@ export class BackendPostgres implements Backend {
       ...options,
     };
 
-    if (runMigrations) {
-      const pgForMigrate = newPostgresMaxOne(url);
-      await migrate(pgForMigrate, DEFAULT_SCHEMA);
-      await pgForMigrate.end();
-    }
+    try {
+      if (runMigrations) {
+        const pgForMigrate = newPostgresMaxOne(url);
+        await migrate(pgForMigrate, DEFAULT_SCHEMA);
+        await pgForMigrate.end();
+      }
 
-    const pg = newPostgres(url);
-    return new BackendPostgres(pg, namespaceId);
+      const pg = newPostgres(url);
+      return new BackendPostgres(pg, namespaceId);
+    } catch (error) {
+      throw wrapError(
+        'Postgres backend failed to connect. Check the connection URL (e.g. "postgresql://user:pass@host:port/db").',
+        error,
+      );
+    }
   }
 
   async stop(): Promise<void> {
