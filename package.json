@@ -10,7 +10,7 @@
   "scripts": {
     "build": "turbo build",
     "ci": "npm run format && npm run build && npm run lint && npm run typecheck && npm run test:coverage",
-    "ci:bun": "bun run build && bun run test",
+    "ci:bun": "bun run build && bun run test:bun",
     "db:migrate": "tsx ./packages/openworkflow/postgres/scripts/db-migrate.ts",
     "db:reset": "tsx ./packages/openworkflow/postgres/scripts/db-reset.ts",
     "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
@@ -22,6 +22,7 @@
     "pghero": "sh ./packages/openworkflow/postgres/scripts/pghero.sh",
     "squawk": "tsx ./packages/openworkflow/postgres/scripts/squawk.ts",
     "test": "vitest run",
+    "test:bun": "bun run --bun vitest run",
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
     "test:watch": "vitest",
