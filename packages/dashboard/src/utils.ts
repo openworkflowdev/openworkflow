@@ -19,7 +19,7 @@ export function computeDuration(
   }
 
   if (durationMs < 1000) {
-    return `${durationMs}ms`;
+    return `${durationMs.toString()}ms`;
   }
 
   if (durationMs < 60_000) {
@@ -30,10 +30,10 @@ export function computeDuration(
   const seconds = Math.round((durationMs % 60_000) / 1000);
 
   if (seconds === 0) {
-    return `${minutes}m`;
+    return `${minutes.toString()}m`;
   }
 
-  return `${minutes}m ${seconds}s`;
+  return `${minutes.toString()}m ${seconds.toString()}s`;
 }
 
 /**
@@ -55,19 +55,19 @@ export function formatRelativeTime(date: Date | null): string {
 
   if (diffMs < 60_000) {
     const seconds = Math.round(diffMs / 1000);
-    return `${seconds}s ago`;
+    return `${seconds.toString()}s ago`;
   }
 
   if (diffMs < 3_600_000) {
     const minutes = Math.round(diffMs / 60_000);
-    return `${minutes}m ago`;
+    return `${minutes.toString()}m ago`;
   }
 
   if (diffMs < 86_400_000) {
     const hours = Math.round(diffMs / 3_600_000);
-    return `${hours}h ago`;
+    return `${hours.toString()}h ago`;
   }
 
   const days = Math.round(diffMs / 86_400_000);
-  return `${days}d ago`;
+  return `${days.toString()}d ago`;
 }

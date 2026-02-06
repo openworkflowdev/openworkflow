@@ -12,9 +12,11 @@ function Slider({
 }: SliderPrimitive.Root.Props) {
   const _values = React.useMemo(
     () =>
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       Array.isArray(value)
         ? value
-        : Array.isArray(defaultValue)
+        : // eslint-disable-next-line sonarjs/no-nested-conditional
+          Array.isArray(defaultValue)
           ? defaultValue
           : [min, max],
     [value, defaultValue, min, max],

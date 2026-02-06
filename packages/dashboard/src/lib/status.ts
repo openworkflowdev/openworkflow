@@ -1,10 +1,10 @@
 import {
-  CheckCircle,
-  CircleNotch,
-  Clock,
-  Hourglass,
-  Prohibit,
-  XCircle,
+  CheckCircleIcon,
+  CircleNotchIcon,
+  ClockIcon,
+  HourglassIcon,
+  ProhibitIcon,
+  XCircleIcon,
 } from "@phosphor-icons/react";
 import type {
   WorkflowRunStatus,
@@ -14,51 +14,51 @@ import type {
 export const STATUS_CONFIG: Record<
   WorkflowRunStatus,
   {
-    icon: typeof CheckCircle;
+    icon: typeof CheckCircleIcon;
     color: string;
     label: string;
     badgeClass: string;
   }
 > = {
   completed: {
-    icon: CheckCircle,
+    icon: CheckCircleIcon,
     color: "text-green-500",
     label: "Completed",
     badgeClass: "bg-green-500/10 text-green-500 border-green-500/20",
   },
   succeeded: {
-    icon: CheckCircle,
+    icon: CheckCircleIcon,
     color: "text-green-500",
     label: "Completed",
     badgeClass: "bg-green-500/10 text-green-500 border-green-500/20",
   },
   running: {
     // use the spinning notch for running states to match existing UI patterns
-    icon: CircleNotch,
+    icon: CircleNotchIcon,
     color: "text-blue-500",
     label: "Running",
     badgeClass: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   },
   failed: {
-    icon: XCircle,
+    icon: XCircleIcon,
     color: "text-red-500",
     label: "Failed",
     badgeClass: "bg-red-500/10 text-red-500 border-red-500/20",
   },
   pending: {
-    icon: Clock,
+    icon: ClockIcon,
     color: "text-yellow-500",
     label: "Pending",
     badgeClass: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
   },
   sleeping: {
-    icon: Hourglass,
+    icon: HourglassIcon,
     color: "text-purple-500",
     label: "Sleeping",
     badgeClass: "bg-purple-500/10 text-purple-500 border-purple-500/20",
   },
   canceled: {
-    icon: Prohibit,
+    icon: ProhibitIcon,
     color: "text-gray-500",
     label: "Canceled",
     badgeClass: "bg-gray-500/10 text-gray-500 border-gray-500/20",
@@ -67,7 +67,7 @@ export const STATUS_CONFIG: Record<
 
 export const STEP_STATUS_CONFIG: Record<
   StepAttemptStatus,
-  { icon: typeof CheckCircle; color: string }
+  { icon: typeof CheckCircleIcon; color: string }
 > = {
   completed: {
     icon: STATUS_CONFIG.completed.icon,
@@ -87,15 +87,22 @@ export const STEP_STATUS_CONFIG: Record<
   },
 };
 
+const fallbackStatusColor = "text-yellow-500";
+const fallbackStatusBadgeClass =
+  "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+
+function getStatusConfig(status: string) {
+  if (!(status in STATUS_CONFIG)) {
+    return;
+  }
+
+  return STATUS_CONFIG[status as WorkflowRunStatus];
+}
+
 export function getStatusColor(status: string): string {
-  return (
-    (STATUS_CONFIG as Record<string, any>)[status]?.color ?? "text-yellow-500"
-  );
+  return getStatusConfig(status)?.color ?? fallbackStatusColor;
 }
 
 export function getStatusBadgeClass(status: string): string {
-  return (
-    (STATUS_CONFIG as Record<string, any>)[status]?.badgeClass ??
-    "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
-  );
+  return getStatusConfig(status)?.badgeClass ?? fallbackStatusBadgeClass;
 }
