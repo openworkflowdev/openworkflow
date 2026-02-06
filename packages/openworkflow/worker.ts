@@ -37,7 +37,7 @@ export class Worker {
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
   private loopPromise: Promise<void> | null = null;
-  private idlePollAttempts = 0;
+  private backoffAttempts = 0;
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
@@ -62,7 +62,7 @@ export class Worker {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    this.idlePollAttempts = 0;
+    this.backoffAttempts = 0;
     this.loopPromise = this.runLoop();
     await Promise.resolve();
   }
@@ -121,15 +121,15 @@ export class Worker {
         const claimedCount = await this.tick();
 
         if (claimedCount > 0) {
-          this.idlePollAttempts = 0;
+          this.backoffAttempts = 0;
         } else {
-          this.idlePollAttempts += 1;
-          await sleep(getIdlePollDelayMs(this.idlePollAttempts));
+          this.backoffAttempts += 1;
+          await sleep(getPollBackoffDelayMs(this.backoffAttempts));
         }
       } catch (error) {
         console.error("Worker tick failed:", error);
-        this.idlePollAttempts += 1;
-        await sleep(getIdlePollDelayMs(this.idlePollAttempts));
+        this.backoffAttempts += 1;
+        await sleep(getPollBackoffDelayMs(this.backoffAttempts));
       }
     }
   }
@@ -287,17 +287,17 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Compute idle polling delay with exponential backoff and jitter.
- * @param idlePollAttempts - Number of consecutive idle poll attempts
+ * Compute polling delay with exponential backoff and jitter.
+ * @param backoffAttempts - Number of consecutive backoff attempts
  * @returns Delay in milliseconds
  */
-function getIdlePollDelayMs(idlePollAttempts: number): number {
+function getPollBackoffDelayMs(backoffAttempts: number): number {
   const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
     DEFAULT_POLL_BACKOFF_POLICY;
 
   const exponentialBackoffMs =
     initialIntervalMs *
-    Math.pow(backoffCoefficient, Math.max(0, idlePollAttempts - 1));
+    Math.pow(backoffCoefficient, Math.max(0, backoffAttempts - 1));
 
   const cappedBackoffMs = Math.min(exponentialBackoffMs, maximumIntervalMs);
 
