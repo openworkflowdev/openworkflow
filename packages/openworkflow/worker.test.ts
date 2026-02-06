@@ -1285,6 +1285,46 @@ describe("Worker", () => {
       vi.useRealTimers();
     }
   });
+
+  test("backs off polling exponentially when tick fails", async () => {
+    vi.useFakeTimers();
+
+    const claimWorkflowRun = vi.fn().mockRejectedValue(new Error("boom"));
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => 0);
+
+    const worker = new Worker({
+      backend: {
+        claimWorkflowRun,
+      } as unknown as Backend,
+      workflows: [],
+    });
+
+    try {
+      await worker.start();
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(1); // immediate tick
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(51);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(151);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(3);
+    } finally {
+      const stopPromise = worker.stop();
+      await vi.runOnlyPendingTimersAsync();
+      await stopPromise;
+
+      consoleErrorSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {
