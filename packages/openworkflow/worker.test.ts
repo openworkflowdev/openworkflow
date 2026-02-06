@@ -1,9 +1,11 @@
+import type { Backend } from "./backend.js";
 import { OpenWorkflow } from "./client.js";
 import { BackendPostgres } from "./postgres.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
+import { Worker } from "./worker.js";
 import { defineWorkflowSpec } from "./workflow.js";
 import { randomUUID } from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 describe("Worker", () => {
   test("passes workflow input to handlers", async () => {
@@ -1246,6 +1248,42 @@ describe("Worker", () => {
       const result = await handle.result();
       expect(result).toBe("v1");
     });
+  });
+
+  test("backs off idle polling exponentially with jitter", async () => {
+    vi.useFakeTimers();
+
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+    const worker = new Worker({
+      backend: {
+        claimWorkflowRun,
+      } as unknown as Backend,
+      workflows: [],
+    });
+
+    try {
+      await worker.start();
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(1); // immediate tick
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(51);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(151);
+      expect(claimWorkflowRun).toHaveBeenCalledTimes(3);
+    } finally {
+      const stopPromise = worker.stop();
+      await vi.runOnlyPendingTimersAsync();
+      await stopPromise;
+
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -4,9 +4,16 @@ import { executeWorkflow } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
 import type { Workflow } from "./workflow.js";
 import { randomUUID } from "node:crypto";
+import * as nodeCrypto from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
-const DEFAULT_POLL_INTERVAL_MS = 100; // 100ms
+const DEFAULT_POLL_BACKOFF_POLICY = {
+  initialIntervalMs: 100,
+  backoffCoefficient: 2,
+  maximumIntervalMs: 1000,
+} as const;
+const DEFAULT_POLL_JITTER_FACTOR_MIN = 0.5;
+const DEFAULT_POLL_JITTER_FACTOR_MAX = 1;
 const DEFAULT_CONCURRENCY = 1;
 
 /**
@@ -30,6 +37,7 @@ export class Worker {
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
   private loopPromise: Promise<void> | null = null;
+  private idlePollAttempts = 0;
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
@@ -54,6 +62,7 @@ export class Worker {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
+    this.idlePollAttempts = 0;
     this.loopPromise = this.runLoop();
     await Promise.resolve();
   }
@@ -110,13 +119,17 @@ export class Worker {
     while (this.running) {
       try {
         const claimedCount = await this.tick();
-        // only sleep if we didn't claim any work
-        if (claimedCount === 0) {
-          await sleep(DEFAULT_POLL_INTERVAL_MS);
+
+        if (claimedCount > 0) {
+          this.idlePollAttempts = 0;
+        } else {
+          this.idlePollAttempts += 1;
+          await sleep(getIdlePollDelayMs(this.idlePollAttempts));
         }
       } catch (error) {
         console.error("Worker tick failed:", error);
-        await sleep(DEFAULT_POLL_INTERVAL_MS);
+        this.idlePollAttempts += 1;
+        await sleep(getIdlePollDelayMs(this.idlePollAttempts));
       }
     }
   }
@@ -271,4 +284,27 @@ class WorkflowExecution {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Compute idle polling delay with exponential backoff and jitter.
+ * @param idlePollAttempts - Number of consecutive idle poll attempts
+ * @returns Delay in milliseconds
+ */
+function getIdlePollDelayMs(idlePollAttempts: number): number {
+  const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
+    DEFAULT_POLL_BACKOFF_POLICY;
+
+  const exponentialBackoffMs =
+    initialIntervalMs *
+    Math.pow(backoffCoefficient, Math.max(0, idlePollAttempts - 1));
+
+  const cappedBackoffMs = Math.min(exponentialBackoffMs, maximumIntervalMs);
+
+  const jitterScale = nodeCrypto.randomInt(
+    Math.round(DEFAULT_POLL_JITTER_FACTOR_MIN * 1000),
+    Math.round(DEFAULT_POLL_JITTER_FACTOR_MAX * 1000) + 1,
+  );
+
+  return Math.max(1, Math.round((cappedBackoffMs * jitterScale) / 1000));
 }
