@@ -1,10 +1,10 @@
 import { Card } from "@/components/ui/card";
 import {
-  CheckCircle,
-  Clock,
-  Hourglass,
-  Pulse,
-  XCircle,
+  CheckCircleIcon,
+  ClockIcon,
+  HourglassIcon,
+  PulseIcon,
+  XCircleIcon,
 } from "@phosphor-icons/react";
 import type { WorkflowRun } from "openworkflow/internal";
 
@@ -28,22 +28,22 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
     {
       label: "Total Runs",
       value: runs.length.toLocaleString(),
-      icon: Pulse,
+      icon: PulseIcon,
     },
     {
       label: "Completed",
       value: completed.toLocaleString(),
-      icon: CheckCircle,
+      icon: CheckCircleIcon,
     },
     {
       label: "Running",
       value: running.toLocaleString(),
-      icon: Clock,
+      icon: ClockIcon,
     },
     {
       label: "Failed",
       value: failed.toLocaleString(),
-      icon: XCircle,
+      icon: XCircleIcon,
     },
   ];
 
@@ -52,21 +52,21 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
     additionalStats.push({
       label: "Sleeping",
       value: sleeping.toLocaleString(),
-      icon: Hourglass,
+      icon: HourglassIcon,
     });
   }
   if (pending > 0) {
     additionalStats.push({
       label: "Pending",
       value: pending.toLocaleString(),
-      icon: Clock,
+      icon: ClockIcon,
     });
   }
   if (canceled > 0) {
     additionalStats.push({
       label: "Canceled",
       value: canceled.toLocaleString(),
-      icon: XCircle,
+      icon: XCircleIcon,
     });
   }
 

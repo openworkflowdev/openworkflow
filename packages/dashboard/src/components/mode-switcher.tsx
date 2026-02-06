@@ -9,9 +9,9 @@ import {
 export function ModeSwitcher() {
   const { setTheme, theme } = useTheme();
 
-  const toggleTheme = () => {
+  function toggleTheme() {
     setTheme(theme === "dark" ? "light" : "dark");
-  };
+  }
 
   return (
     <Tooltip>

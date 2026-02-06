@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { STATUS_CONFIG } from "@/lib/status";
 import { computeDuration, formatRelativeTime } from "@/utils";
-import { CaretRight } from "@phosphor-icons/react";
+import { CaretRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { WorkflowRun } from "openworkflow/internal";
 
@@ -78,20 +78,7 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                       <div className="text-muted-foreground flex items-center gap-4 text-xs">
                         <Badge
                           variant="outline"
-                          className={`border-border text-xs capitalize ${
-                            run.status === "completed" ||
-                            run.status === "succeeded"
-                              ? "border-green-500/20 bg-green-500/10 text-green-500"
-                              : run.status === "running"
-                                ? "border-blue-500/20 bg-blue-500/10 text-blue-500"
-                                : run.status === "failed"
-                                  ? "border-red-500/20 bg-red-500/10 text-red-500"
-                                  : run.status === "sleeping"
-                                    ? "border-purple-500/20 bg-purple-500/10 text-purple-500"
-                                    : run.status === "canceled"
-                                      ? "border-gray-500/20 bg-gray-500/10 text-gray-500"
-                                      : "border-yellow-500/20 bg-yellow-500/10 text-yellow-500"
-                          }`}
+                          className={`text-xs capitalize ${config.badgeClass}`}
                         >
                           {config.label}
                         </Badge>
@@ -111,7 +98,7 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                     </div>
                   </div>
 
-                  <CaretRight className="text-muted-foreground ml-4 size-5" />
+                  <CaretRightIcon className="text-muted-foreground ml-4 size-5" />
                 </div>
               </Link>
             );

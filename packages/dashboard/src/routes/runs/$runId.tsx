@@ -11,10 +11,9 @@ import {
 import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
 import {
-  ArrowLeft,
-  CaretDown,
-  CircleNotch,
-  ListDashes,
+  ArrowLeftIcon,
+  CaretDownIcon,
+  ListDashesIcon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import type { StepAttempt } from "openworkflow/internal";
@@ -35,7 +34,7 @@ function RunDetailsPage() {
   const { run, steps } = Route.useLoaderData();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
-  const toggleStep = (stepId: string) => {
+  function toggleStep(stepId: string) {
     setExpandedSteps((prev) => {
       const next = new Set(prev);
       if (next.has(stepId)) {
@@ -45,7 +44,7 @@ function RunDetailsPage() {
       }
       return next;
     });
-  };
+  }
 
   if (!run) {
     return (
@@ -75,7 +74,7 @@ function RunDetailsPage() {
         <div className="flex items-center gap-4">
           <Link to="/">
             <Button variant="ghost" size="icon">
-              <ArrowLeft className="size-5" />
+              <ArrowLeftIcon className="size-5" />
             </Button>
           </Link>
           <div className="flex-1">
@@ -105,7 +104,7 @@ function RunDetailsPage() {
             <Card className="bg-card border-border overflow-hidden py-0">
               {steps.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                  <ListDashes className="text-muted-foreground mb-4 size-16" />
+                  <ListDashesIcon className="text-muted-foreground mb-4 size-16" />
                   <h3 className="mb-2 text-lg font-semibold">No steps yet</h3>
                   <p className="text-muted-foreground max-w-md text-sm">
                     This workflow run hasn't executed any steps yet. Steps will
@@ -117,8 +116,8 @@ function RunDetailsPage() {
                   {steps.map((step: StepAttempt, index: number) => {
                     const isExpanded = expandedSteps.has(step.id);
                     const config = STEP_STATUS_CONFIG[step.status];
-                    const StatusIcon = config?.icon ?? CircleNotch;
-                    const iconColor = config?.color ?? "text-gray-500";
+                    const StatusIcon = config.icon;
+                    const iconColor = config.color;
                     const stepDuration = computeDuration(
                       step.startedAt,
                       step.finishedAt,
@@ -128,7 +127,9 @@ function RunDetailsPage() {
                     return (
                       <div key={step.id}>
                         <button
-                          onClick={() => toggleStep(step.id)}
+                          onClick={() => {
+                            toggleStep(step.id);
+                          }}
                           className="hover:bg-muted/50 flex w-full items-center gap-4 px-6 py-4 text-left transition-colors"
                         >
                           <div className="flex flex-1 items-center gap-3">
@@ -172,7 +173,7 @@ function RunDetailsPage() {
                             </div>
                           </div>
 
-                          <CaretDown
+                          <CaretDownIcon
                             className={`text-muted-foreground size-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                           />
                         </button>
@@ -185,7 +186,7 @@ function RunDetailsPage() {
                               </p>
                               <pre className="font-mono text-sm whitespace-pre-wrap">
                                 {JSON.stringify(
-                                  step.error || step.output,
+                                  step.error ?? step.output,
                                   null,
                                   2,
                                 )}
