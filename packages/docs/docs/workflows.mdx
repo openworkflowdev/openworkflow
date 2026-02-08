@@ -3,9 +3,11 @@ title: Workflows
 description: Durable functions that survive crashes and resume where they left off
 ---
 
-Workflows are the core building block of OpenWorkflow. They are durable
-functions that can survive process crashes, server restarts, and code deploys.
-When a workflow is interrupted, it resumes from its last completed step.
+A workflow is a function that describes a multi-step process — like processing
+an order, onboarding a new user, or syncing data with an external service. What
+makes it special is that it's durable: OpenWorkflow saves the progress of each
+step to the database. If the process crashes or the server restarts, the
+workflow picks up right where it left off instead of starting over.
 
 ## Defining a Workflow
 
