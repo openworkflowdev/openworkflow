@@ -1,0 +1,12 @@
+{
+  "//": "https://github.com/kucherenko/jscpd/tree/master/apps/jscpd#config-file",
+  "threshold": 0,
+  "exitCode": 1,
+  "gitignore": true,
+  "ignore": [
+    "**/*.test.ts",
+    "packages/dashboard/.output",
+    "packages/openworkflow/postgres/backend.ts",
+    "packages/openworkflow/sqlite/backend.ts"
+  ]
+}

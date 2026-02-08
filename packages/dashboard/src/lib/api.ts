@@ -8,25 +8,29 @@ import type {
 } from "openworkflow/internal";
 import * as z from "zod";
 
+const paginationInputShape = {
+  limit: z.number().optional(),
+  after: z.string().optional(),
+  before: z.string().optional(),
+};
+
+function getPaginationOptions(data: PaginationOptions): PaginationOptions {
+  const pagination: PaginationOptions = {};
+  if (data.limit !== undefined) pagination.limit = data.limit;
+  if (data.after !== undefined) pagination.after = data.after;
+  if (data.before !== undefined) pagination.before = data.before;
+
+  return pagination;
+}
+
 /**
  * List workflow runs from the backend with optional pagination.
  */
 export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
-  .inputValidator(
-    z.object({
-      limit: z.number().optional(),
-      after: z.string().optional(),
-      before: z.string().optional(),
-    }),
-  )
+  .inputValidator(z.object(paginationInputShape))
   .handler(async ({ data }): Promise<PaginatedResponse<WorkflowRun>> => {
     const backend = await getBackend();
-    const params: PaginationOptions = {};
-    if (data.limit !== undefined) params.limit = data.limit;
-    if (data.after !== undefined) params.after = data.after;
-    if (data.before !== undefined) params.before = data.before;
-
-    const result = await backend.listWorkflowRuns(params);
+    const result = await backend.listWorkflowRuns(getPaginationOptions(data));
     return result;
   });
 
@@ -50,19 +54,15 @@ export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
   .inputValidator(
     z.object({
       workflowRunId: z.string(),
-      limit: z.number().optional(),
-      after: z.string().optional(),
-      before: z.string().optional(),
+      ...paginationInputShape,
     }),
   )
   .handler(async ({ data }): Promise<PaginatedResponse<StepAttempt>> => {
     const backend = await getBackend();
     const params: { workflowRunId: string } & PaginationOptions = {
       workflowRunId: data.workflowRunId,
+      ...getPaginationOptions(data),
     };
-    if (data.limit !== undefined) params.limit = data.limit;
-    if (data.after !== undefined) params.after = data.after;
-    if (data.before !== undefined) params.before = data.before;
 
     const result = await backend.listStepAttempts(params);
     return result;
