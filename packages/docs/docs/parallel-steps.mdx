@@ -3,9 +3,11 @@ title: Parallel Steps
 description: Run multiple steps concurrently for better performance
 ---
 
-OpenWorkflow supports parallel execution of steps using JavaScript's native
-`Promise.all`. This lets you run independent operations concurrently while
-maintaining durability.
+When your workflow needs to perform several independent operations — like
+fetching a user profile, their subscription, and their settings — there's no
+reason to do them one at a time. OpenWorkflow lets you run steps in parallel
+using JavaScript's built-in `Promise.all`, keeping full durability for each
+step.
 
 ## Basic Usage
 
