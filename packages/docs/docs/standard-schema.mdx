@@ -3,9 +3,12 @@ title: Standard Schema
 description: Use Zod, Valibot, ArkType, and more to validate workflow inputs
 ---
 
-OpenWorkflow supports the [Standard Schema](https://standardschema.dev/) spec.
-This allows you to use your favorite validation library to define type-safe
-contracts for your workflows.
+OpenWorkflow supports the [Standard Schema](https://standardschema.dev/) spec,
+which means you can use your preferred validation library to enforce type-safe
+contracts on workflow inputs.
+
+If the input doesn't match the schema, the error is thrown before the workflow
+is even enqueued — preventing invalid data from entering your system.
 
 ## Overview
 
