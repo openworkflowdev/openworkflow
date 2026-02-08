@@ -24,37 +24,25 @@ bunx @openworkflow/cli init
 
 ## What is OpenWorkflow?
 
-OpenWorkflow is a TypeScript framework for building durable, resumable workflows
-that can pause for seconds or months, survive crashes and deploys, and resume
-exactly where they left off - all without extra servers to manage.
-
-Build your first workflow in a few lines:
+OpenWorkflow is a TypeScript framework that makes multi-step operations durable.
+Wrap each operation in a step, and OpenWorkflow remembers which steps already
+finished. If anything crashes, the workflow picks up right where it left off —
+completed steps are never re-run.
 
 ```ts
 import { defineWorkflow } from "openworkflow";
 
-export const sendWelcomeEmail = defineWorkflow(
-  { name: "send-welcome-email" },
+export const processOrder = defineWorkflow(
+  { name: "process-order" },
   async ({ input, step }) => {
-    const user = await step.run({ name: "fetch-user" }, async () => {
-      return await db.users.findOne({ id: input.userId });
+    // if the server crashes after this step, the card is NOT charged again
+    await step.run({ name: "charge-card" }, async () => {
+      await payments.charge(input.orderId);
     });
 
-    await step.run({ name: "send-email" }, async () => {
-      return await resend.emails.send({
-        from: "me@example.com",
-        to: user.email,
-        replyTo: "me@example.com",
-        subject: "Welcome!",
-        html: "<h1>Welcome to our app!</h1>",
-      });
+    await step.run({ name: "send-confirmation" }, async () => {
+      await emails.send({ to: input.email, subject: "Order confirmed!" });
     });
-
-    await step.run({ name: "mark-welcome-email-sent" }, async () => {
-      await db.users.update(input.userId, { welcomeEmailSent: true });
-    });
-
-    return { user };
   },
 );
 ```
@@ -64,15 +52,23 @@ export const sendWelcomeEmail = defineWorkflow(
 <div className="flex flex-col gap-2">
   <div>
     <Icon icon="shield-check" /> **Durable** - Workflows survive process
-    restarts and server crashes.
+    restarts and server crashes. Completed steps are never repeated.
   </div>
   <div>
-    <Icon icon="rotate-right" /> **Resumable** - Workflows resume execution from
-    the last completed step.
+    <Icon icon="rotate-right" /> **Resumable** - After a crash or deploy,
+    workflows pick up from the last completed step automatically.
+  </div>
+  <div>
+    <Icon icon="clock" /> **Pausable** - Workflows can sleep for seconds or
+    months without tying up resources.
   </div>
   <div>
     <Icon icon="code" /> **Type Safe** - First-class TypeScript support for
     inputs and outputs.
+  </div>
+  <div>
+    <Icon icon="database" /> **No Extra Servers** - Uses your existing database
+    (PostgreSQL or SQLite). No separate queue or orchestration service.
   </div>
 </div>
 
@@ -81,5 +77,8 @@ export const sendWelcomeEmail = defineWorkflow(
 <CardGroup cols={2}>
   <Card title="Quick Start" icon="bolt" href="/docs/quickstart">
     Build your first workflow in 5 minutes.
+  </Card>
+  <Card title="How It Works" icon="book" href="/docs/overview">
+    Understand the core concepts: workflows, steps, and workers.
   </Card>
 </CardGroup>
