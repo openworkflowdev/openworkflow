@@ -1,11 +1,29 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  "treatConfigHintsAsErrors": true,
+
+  "ignoreBinaries": ["mint", "open"],
+  "ignoreDependencies": [
+    "@tanstack/react-router-ssr-query",
+    "@tanstack/router-plugin",
+    "@testing-library/dom",
+    "@testing-library/react",
+    "jsdom",
+    "postgres",
+    "web-vitals"
+  ],
   "ignoreExportsUsedInFile": {
     "interface": true,
     "type": true
   },
-  "tags": ["-lintignore"],
-  "workspaces": {
-    ".": {}
+  "ignoreFiles": [
+    "**/openworkflow.config.*",
+    "openworkflow/**/*.ts",
+    "packages/dashboard/src/components/ui/*.tsx",
+    "packages/docs/style.css"
+  ],
+  "ignoreIssues": {
+    "packages/dashboard/src/components/ui/*.tsx": ["exports"],
+    "packages/openworkflow/workflow.ts": ["duplicates"]
   }
 }
