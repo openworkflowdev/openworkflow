@@ -3,9 +3,13 @@ title: Production
 description: Run OpenWorkflow in your own infrastructure
 ---
 
-OpenWorkflow runs entirely in your infrastructure. There are no external servers
-to connect to or third-party services to manage. Your database is the only
-dependency.
+OpenWorkflow runs entirely in your infrastructure. There are no external
+servers to connect to or third-party services to manage. Your database
+(PostgreSQL or SQLite) is the only dependency, and it stores all workflow
+state.
+
+This page covers what you need to know for production deployments: database
+setup, worker scaling, and monitoring.
 
 ## Architecture Overview
 
