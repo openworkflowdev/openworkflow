@@ -3,10 +3,17 @@ title: Sleeping
 description: Pause workflows for seconds, hours, or months without blocking resources
 ---
 
-Workflows can pause for any duration using `step.sleep()`. This is a durable
-pause that survives crashes and restarts. Unlike `setTimeout` or `await
-sleep()`, a workflow sleep releases the worker slot so you can pause thousands
-of workflows without tying up compute.
+Sometimes a workflow needs to wait — maybe you want to send a follow-up email
+a week after sign-up, or pause between API calls to respect rate limits.
+
+`step.sleep()` pauses a workflow for any duration (seconds to months) in a
+durable way: the resume time is stored in the database, and the worker
+slot is freed for other work. When the sleep finishes, a worker picks the
+workflow back up and continues from where it left off.
+
+This is different from `setTimeout` or a regular `await sleep()`. Those tie up
+a running process and are lost if the server restarts. With `step.sleep()`, you
+can have thousands of sleeping workflows without using any compute.
 
 ## Basic Usage
 
