@@ -189,20 +189,25 @@ A workflow run progresses through these states:
 
 ## Determinism
 
-Workflow functions should be deterministic. This means:
+<Info>
+  **New to workflow engines?** This is the most important rule to understand.
+  It's simple once you know *why* it exists.
+</Info>
 
-- Given the same inputs, the workflow should execute the same steps in the same
-  order
-- Non-deterministic operations (API calls, random numbers, current time) should
-  be wrapped in steps
+When a workflow resumes after a crash, OpenWorkflow replays it from the
+beginning. Completed steps return their saved results instantly, so no work is
+repeated. But for this to work, the workflow must take the same path every time
+it runs with the same inputs — it must be **deterministic**.
 
-When a workflow replays after a crash, it re-executes the function from the
-beginning. Completed steps return their cached results instantly. If the
-workflow encounters different steps during replay, it can cause errors.
+This means you should avoid putting non-deterministic operations (like API
+calls, random numbers, or the current time) directly in the workflow body.
+Instead, wrap them in steps so their results are saved and replayed
+consistently.
 
 <Warning>
   Avoid calling `Math.random()`, `Date.now()`, or making API calls directly in
-  the workflow function. Wrap them in steps instead.
+  the workflow function, since those change on each run, meaning they are
+  non-deterministic. Wrap them in steps instead.
 </Warning>
 
 ```ts
