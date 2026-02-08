@@ -3,9 +3,14 @@ title: Steps
 description: Durable checkpoints that don't repeat already completed work
 ---
 
-Steps are the building blocks of workflows. Each step is executed exactly once
-and its result is memoized. If a workflow restarts, completed steps return their
-cached results immediately instead of re-running.
+Steps are the building blocks inside workflows. Each step wraps a single
+operation — like calling an API, querying a database, or sending an email. When
+a step completes, its result is saved to the database. If the workflow restarts
+for any reason (a crash, a deploy, or a retry), completed steps return their
+saved results instantly instead of running again.
+
+This is the key idea behind OpenWorkflow: steps act as checkpoints that prevent
+your operations from being accidentally repeated.
 
 ## Defining Steps
 
