@@ -3,8 +3,9 @@ title: Dashboard
 description: Web interface for monitoring workflows
 ---
 
-OpenWorkflow includes a built-in dashboard for monitoring and inspecting
-workflow runs.
+OpenWorkflow includes a built-in web dashboard for monitoring and debugging your
+workflows. It lets you browse workflow runs, see which steps completed or
+failed, inspect errors, and track the state of long-running workflows.
 
 ## Starting the Dashboard
 
@@ -32,4 +33,10 @@ The dashboard requires:
 1. A valid `openworkflow.config.ts` in your project
 2. A running backend (PostgreSQL or SQLite)
 
-The dashboard connects to the same backend as your workers.
+The dashboard connects to the same backend as your workers. It shows data for
+the namespace configured in your config file.
+
+<Note>
+  The dashboard does not include built-in authentication. For production use,
+  deploy it behind a VPN, private network, or reverse proxy with Basic Auth.
+</Note>
