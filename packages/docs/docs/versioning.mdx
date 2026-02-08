@@ -3,18 +3,21 @@ title: Versioning
 description: Version workflows for backwards compatibility
 ---
 
-Workflow versioning allows you to run multiple versions of the same workflow
-simultaneously. This is essential for deploying changes without breaking
-in-progress runs.
+Workflow versioning lets you update a workflow's logic without breaking runs
+that are already in progress.
 
 ## Why Version Workflows?
 
-When you change a workflow's logic, in-flight runs might fail if the new code
-isn't compatible with their saved state. Versioning solves this by:
+Imagine you have a "process-order" workflow and you want to change how it
+validates orders. But there are already 50 order workflows running with the old
+logic. If you just swap in the new code, those in-flight runs might fail because
+their saved step history doesn't match the new code path.
 
-- Running old versions to completion with their original logic
-- Starting new runs with the updated version
-- Allowing gradual migration between versions
+Versioning solves this by letting you run both versions side by side:
+
+- Existing runs continue with the old logic
+- New runs use the updated version
+- Once all old runs finish, you remove the old version
 
 ## Specifying a Version
 
