@@ -46,7 +46,7 @@ Run development, staging, and production in the same database:
 import { defineConfig } from "@openworkflow/cli";
 import { BackendPostgres } from "openworkflow/postgres";
 
-const namespace = process.env.NAMESPACE || "development";
+const namespace = process.env.OPENWORKFLOW_NAMESPACE_ID || "development";
 
 export default defineConfig({
   backend: await BackendPostgres.connect(
@@ -63,29 +63,29 @@ Set the namespace per environment:
 <CodeGroup>
 ```bash npm
 # Development
-NAMESPACE=development npm run worker
+OPENWORKFLOW_NAMESPACE_ID=development npm run worker
 # Staging
-NAMESPACE=staging npm run worker
+OPENWORKFLOW_NAMESPACE_ID=staging npm run worker
 # Production
-NAMESPACE=production npm run worker
+OPENWORKFLOW_NAMESPACE_ID=production npm run worker
 ```
 
 ```bash pnpm
 # Development
-NAMESPACE=development pnpm run worker
+OPENWORKFLOW_NAMESPACE_ID=development pnpm run worker
 # Staging
-NAMESPACE=staging pnpm run worker
+OPENWORKFLOW_NAMESPACE_ID=staging pnpm run worker
 # Production
-NAMESPACE=production pnpm run worker
+OPENWORKFLOW_NAMESPACE_ID=production pnpm run worker
 ```
 
 ```bash bun
 # Development
-NAMESPACE=development bun run worker
+OPENWORKFLOW_NAMESPACE_ID=development bun run worker
 # Staging
-NAMESPACE=staging bun run worker
+OPENWORKFLOW_NAMESPACE_ID=staging bun run worker
 # Production
-NAMESPACE=production bun run worker
+OPENWORKFLOW_NAMESPACE_ID=production bun run worker
 ```
 
 </CodeGroup>

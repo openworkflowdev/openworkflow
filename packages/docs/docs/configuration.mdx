@@ -112,7 +112,7 @@ export default defineConfig({
   backend: await BackendPostgres.connect(
     process.env.OPENWORKFLOW_POSTGRES_URL!,
     {
-      namespaceId: process.env.NAMESPACE || "default",
+      namespaceId: process.env.OPENWORKFLOW_NAMESPACE_ID || "default",
     },
   ),
 
@@ -161,7 +161,7 @@ secrets there:
 ```bash
 # .env
 OPENWORKFLOW_POSTGRES_URL=postgresql://user:pass@localhost:5432/openworkflow
-NAMESPACE=development
+OPENWORKFLOW_NAMESPACE_ID=development
 ```
 
 ## Supported Extensions
