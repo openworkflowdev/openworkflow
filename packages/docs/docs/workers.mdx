@@ -3,9 +3,14 @@ title: Workers
 description: Long-running processes that execute your workflows
 ---
 
-Workers are long-running processes that poll your database for pending workflows
-and execute them. They are stateless and can be started, stopped, and deployed
-independently. Your database is the source of truth.
+A worker is a background process that executes your workflows. It polls the
+database for new workflow runs, picks them up, and executes them step by step.
+When it finishes one run, it looks for the next one.
+
+Workers are stateless — all workflow progress is stored in the database, not
+in the worker itself. This means you can stop a worker, restart it, or replace
+it with a new one at any time. If a worker crashes, another worker can
+seamlessly continue any in-progress workflows from the last completed step.
 
 ## Starting a Worker
 
