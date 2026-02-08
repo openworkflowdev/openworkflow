@@ -3,8 +3,12 @@ title: Configuration
 description: openworkflow.config.ts reference
 ---
 
-OpenWorkflow uses a configuration file to set up your backend, workflow
-directories, and worker options.
+OpenWorkflow uses a configuration file to connect to your database, locate your
+workflow files, and set worker options. The CLI reads this file automatically
+for all commands.
+
+If you ran `npx @openworkflow/cli init`, this file was created for you. This
+page covers all available options.
 
 If you're using the PostgreSQL backend, install the Postgres driver:
 
