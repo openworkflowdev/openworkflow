@@ -101,7 +101,9 @@ defineWorkflow({ name: "with-error-handling" }, async ({ input, step }) => {
 
 ## Permanent Failures
 
-After exhausting retries, a workflow is marked as `failed`:
+A workflow is marked as `failed` permanently when it can no longer be retried
+(for example, because `deadlineAt` is reached, or the next retry would exceed
+that deadline):
 
 - The error is stored in the workflow run record
 - No more automatic retries occur
