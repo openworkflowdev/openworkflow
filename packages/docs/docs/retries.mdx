@@ -3,9 +3,14 @@ title: Retries
 description: Automatic retry behavior for failed steps and workflows
 ---
 
-OpenWorkflow automatically retries failed steps with exponential backoff. This
-ensures transient failures (network issues, temporary outages) don't permanently
-fail your workflows.
+In any application, things fail sometimes - a third-party API returns a
+500 error, a database connection times out, or a network blip drops a request.
+These are transient failures: they go away on their own if you try again.
+
+OpenWorkflow handles this automatically. When a step throws an error, the
+workflow is rescheduled with a exponential backoff (increasing delays between
+retries). Previously completed steps aren't re-run - only the failed step is
+retried.
 
 ## How Retries Work
 
