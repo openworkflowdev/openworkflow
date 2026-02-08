@@ -1,0 +1,46 @@
+---
+title: Overview
+description: How OpenWorkflow works and how Workflows, Steps, and Workers fit together
+---
+
+This page explains the mental model behind OpenWorkflow. For setup and command
+examples, see [Quick Start](/docs/quickstart) and the linked detail pages.
+
+## Building Blocks
+
+OpenWorkflow has three core building blocks:
+
+- **Workflows**: durable functions that describe your business process
+- **Steps**: durable checkpoints that memoize results and protect side effects
+- **Workers**: stateless processes that execute and resume workflow runs
+
+Your application enqueues workflow runs. Workers pick them up. The backend
+(PostgreSQL or SQLite) stores durable state and coordinates recovery.
+
+## Lifecycle
+
+When a run starts:
+
+1. Your app calls `workflow.run()`, creating a `pending` run in the database
+2. A worker claims the run and marks it `running`
+3. The worker replays workflow code from the beginning
+4. Completed steps return cached outputs; new steps execute and persist results
+5. The run transitions to `completed`, `failed`, `sleeping`, or `canceled`
+
+Because replay is deterministic, crash recovery is reliable. A replacement
+worker can continue from the last durable checkpoint without redoing completed
+work.
+
+## Why This Is Reliable
+
+- **Memoized steps** prevent duplicate side effects on retries
+- **Durable sleep** (`step.sleep`) pauses runs without holding worker capacity
+- **Heartbeats + leases** (`availableAt`) allow automatic crash recovery
+- **Database as source of truth** avoids a separate orchestration service
+
+## Read Next
+
+- [Workflows](/docs/workflows): define and run workflows, options, and states
+- [Steps](/docs/steps): step types, naming, and retry behavior
+- [Workers](/docs/workers): execution model, concurrency, and graceful shutdown
+- [Configuration](/docs/configuration): config file and worker/backend settings

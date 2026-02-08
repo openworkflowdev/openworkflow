@@ -28,7 +28,12 @@
       },
       {
         "group": "Core Concepts",
-        "pages": ["docs/workflows", "docs/steps", "docs/workers"]
+        "pages": [
+          "docs/overview",
+          "docs/workflows",
+          "docs/steps",
+          "docs/workers"
+        ]
       },
       {
         "group": "Guides",
@@ -73,7 +78,7 @@
     },
     {
       "source": "/docs/core-concepts",
-      "destination": "/docs/workflows"
+      "destination": "/docs/overview"
     },
     {
       "source": "/docs/advanced-patterns",
