@@ -46,6 +46,28 @@ export default defineConfig({
 The CLI automatically finds this file by searching up from the current
 directory.
 
+## Verify Configuration
+
+After creating or updating the config, run:
+
+<CodeGroup>
+```bash npm
+npx @openworkflow/cli doctor
+```
+
+```bash pnpm
+pnpx @openworkflow/cli doctor
+```
+
+```bash bun
+bunx @openworkflow/cli doctor
+```
+
+</CodeGroup>
+
+This confirms that your config can be loaded, the backend can be reached, and
+your workflows can be found.
+
 ## Configuration Options
 
 ### `backend` (required)
