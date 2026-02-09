@@ -74,6 +74,27 @@ Your `package.json` should now look like:
 
 No other changes needed. The backend API is identical.
 
+## Verify the Upgrade
+
+Run the doctor command after upgrading:
+
+<CodeGroup>
+```bash npm
+npx @openworkflow/cli doctor
+```
+
+```bash pnpm
+pnpx @openworkflow/cli doctor
+```
+
+```bash bun
+bunx @openworkflow/cli doctor
+```
+
+</CodeGroup>
+
+You should see `Configuration looks good!`.
+
 ## New Projects
 
 If you're starting fresh, just run:
