@@ -3,6 +3,8 @@ title: OpenWorkflow vs Temporal
 description: A comparison of OpenWorkflow and Temporal for durable workflow orchestration
 ---
 
+import ComparisonDurableWorkflow from "/snippets/comparison-durable-workflow.mdx";
+
 ## TL;DR
 
 Temporal is a distributed workflow platform with mature multi-language SDKs.
@@ -13,44 +15,15 @@ service. Workers coordinate directly through PostgreSQL or SQLite.
 
 ## What This Looks Like in Practice
 
-A durable workflow in OpenWorkflow:
-
-```ts
-export const processOrder = defineWorkflow(
-  { name: "process-order" },
-  async ({ input, step }) => {
-    const order = await step.run({ name: "validate-order" }, async () => {
-      return await orders.validate(input.orderId);
-    });
-
-    await step.run({ name: "charge-payment" }, async () => {
-      await payments.charge(order.paymentMethod, order.total);
-    });
-
-    await step.run({ name: "fulfill-order" }, async () => {
-      await warehouse.ship(order.id, order.shippingAddress);
-    });
-
-    // Wait for delivery, then ask for a review
-    await step.sleep({ name: "wait-for-delivery" }, { days: 7 });
-
-    await step.run({ name: "request-review" }, async () => {
-      await email.send({ to: order.email, template: "review-request" });
-    });
-  },
-);
-```
-
-Each `step.run` is a durable checkpoint. If the process crashes after charging
-payment, the workflow resumes from that point and does not re-run completed
-steps. The 7-day sleep is persisted in your database and survives deploys and
-restarts.
-
-In Temporal, the equivalent usually uses a workflow definition, separate
+In Temporal, a multi-step process requires a workflow definition, separate
 Activity implementations, and a running Temporal Server connected to a
 persistence backend.
 
-## Why OpenWorkflow is Usually the Better Fit
+With OpenWorkflow, you write one function:
+
+<ComparisonDurableWorkflow />
+
+## When OpenWorkflow is the Better Fit
 
 ### No separate orchestration service
 

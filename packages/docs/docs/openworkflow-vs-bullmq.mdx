@@ -3,6 +3,8 @@ title: OpenWorkflow vs BullMQ
 description: A comparison of OpenWorkflow and BullMQ for durable background processing
 ---
 
+import ComparisonDurableWorkflow from "/snippets/comparison-durable-workflow.mdx";
+
 ## TL;DR
 
 BullMQ is a Redis queue library. OpenWorkflow is a durable workflow engine.
@@ -14,39 +16,13 @@ provides that behavior directly, backed by PostgreSQL or SQLite.
 ## What This Looks Like in Practice
 
 With BullMQ, a multi-step process means Flows, parent/child job dependencies,
-manual state tracking, and delayed jobs. With OpenWorkflow, you write one
-function:
+manual state tracking, and delayed jobs.
 
-```ts
-export const onboardUser = defineWorkflow(
-  { name: "onboard-user" },
-  async ({ input, step }) => {
-    const user = await step.run({ name: "create-account" }, async () => {
-      return await db.users.create(input);
-    });
+With OpenWorkflow, you write one function:
 
-    await step.run({ name: "send-welcome-email" }, async () => {
-      await email.send({ to: user.email, template: "welcome" });
-    });
+<ComparisonDurableWorkflow />
 
-    // Wait 3 days, then send a follow-up; survives crashes and deploys.
-    await step.sleep({ name: "wait-for-followup" }, { days: 3 });
-
-    await step.run({ name: "send-followup-email" }, async () => {
-      await email.send({ to: user.email, template: "getting-started" });
-    });
-  },
-);
-```
-
-Each `step.run` is a durable checkpoint. If your server crashes after sending
-the welcome email, the workflow resumes from that point and completed steps are
-not re-run.
-
-In BullMQ, the same flow typically means multiple jobs, Flow dependencies,
-delayed jobs, and explicit cross-job state handling.
-
-## Why OpenWorkflow is Usually the Better Fit
+## When OpenWorkflow is the Better Fit
 
 ### Native workflow semantics
 

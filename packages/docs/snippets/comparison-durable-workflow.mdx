@@ -1,0 +1,32 @@
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const processOrder = defineWorkflow(
+  { name: "process-order" },
+  async ({ input, step }) => {
+    // validate the order, charge the payment, and fulfill the order
+    const order = await step.run({ name: "validate-order" }, async () => {
+      return await orders.validate(input.orderId);
+    });
+
+    await step.run({ name: "charge-payment" }, async () => {
+      await payments.charge(order.paymentMethod, order.total);
+    });
+
+    await step.run({ name: "fulfill-order" }, async () => {
+      await warehouse.ship(order.id, order.shippingAddress);
+    });
+
+    // wait 7 days for delivery, then ask for a review
+    await step.sleep("wait-for-delivery", "7d");
+
+    await step.run({ name: "request-review" }, async () => {
+      await email.send({ to: order.email, template: "review-request" });
+    });
+  },
+);
+```
+
+Each `step.run` is a durable checkpoint. If the process crashes after charging
+payment, the workflow resumes from that point and does not re-run completed
+steps.
