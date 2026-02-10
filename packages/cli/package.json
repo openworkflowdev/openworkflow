@@ -29,7 +29,7 @@
     "@clack/prompts": "^1.0.0",
     "commander": "^14.0.3",
     "consola": "^3.4.2",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.2.4",
     "jiti": "^2.6.1",
     "nypm": "^0.6.5"
   },
