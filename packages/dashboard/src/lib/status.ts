@@ -87,6 +87,14 @@ export const STEP_STATUS_CONFIG: Record<
   },
 };
 
+/** Run statuses that represent a finished workflow (no further updates expected). */
+export const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
+  "completed",
+  "succeeded",
+  "failed",
+  "canceled",
+]);
+
 const fallbackStatusColor = "text-yellow-500";
 const fallbackStatusBadgeClass =
   "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";

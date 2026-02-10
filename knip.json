@@ -6,9 +6,6 @@
   "ignoreDependencies": [
     "@tanstack/react-router-ssr-query",
     "@tanstack/router-plugin",
-    "@testing-library/dom",
-    "@testing-library/react",
-    "jsdom",
     "postgres",
     "web-vitals"
   ],
