@@ -5,9 +5,11 @@ import { Card } from "@/components/ui/card";
 import { getWorkflowRunServerFn, listStepAttemptsServerFn } from "@/lib/api";
 import {
   STEP_STATUS_CONFIG,
+  TERMINAL_RUN_STATUSES,
   getStatusColor,
   getStatusBadgeClass,
 } from "@/lib/status";
+import { usePolling } from "@/lib/use-polling";
 import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
 import {
@@ -33,6 +35,9 @@ export const Route = createFileRoute("/runs/$runId")({
 function RunDetailsPage() {
   const { run, steps } = Route.useLoaderData();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  usePolling({
+    enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
+  });
 
   function toggleStep(stepId: string) {
     setExpandedSteps((prev) => {

@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/app-layout";
 import { RunList } from "@/components/run-list";
 import { WorkflowStats } from "@/components/workflow-stats";
 import { listWorkflowRunsServerFn } from "@/lib/api";
+import { usePolling } from "@/lib/use-polling";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/")({
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/")({
 
 function HomePage() {
   const { data: runs } = Route.useLoaderData();
+  usePolling();
 
   return (
     <AppLayout>
