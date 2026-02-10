@@ -1,0 +1,73 @@
+---
+title: OpenWorkflow vs BullMQ
+description: A comparison of OpenWorkflow and BullMQ for durable background processing
+---
+
+## TL;DR
+
+BullMQ is a Redis queue library. OpenWorkflow is a durable workflow engine.
+
+If your flow is a chain of dependent jobs with delays and retries, you usually
+end up assembling workflow behavior on top of queue primitives. OpenWorkflow
+provides that behavior directly, backed by PostgreSQL or SQLite.
+
+## What This Looks Like in Practice
+
+With BullMQ, a multi-step process means Flows, parent/child job dependencies,
+manual state tracking, and delayed jobs. With OpenWorkflow, you write one
+function:
+
+```ts
+export const onboardUser = defineWorkflow(
+  { name: "onboard-user" },
+  async ({ input, step }) => {
+    const user = await step.run({ name: "create-account" }, async () => {
+      return await db.users.create(input);
+    });
+
+    await step.run({ name: "send-welcome-email" }, async () => {
+      await email.send({ to: user.email, template: "welcome" });
+    });
+
+    // Wait 3 days, then send a follow-up; survives crashes and deploys.
+    await step.sleep({ name: "wait-for-followup" }, { days: 3 });
+
+    await step.run({ name: "send-followup-email" }, async () => {
+      await email.send({ to: user.email, template: "getting-started" });
+    });
+  },
+);
+```
+
+Each `step.run` is a durable checkpoint. If your server crashes after sending
+the welcome email, the workflow resumes from that point and completed steps are
+not re-run.
+
+In BullMQ, the same flow typically means multiple jobs, Flow dependencies,
+delayed jobs, and explicit cross-job state handling.
+
+## Why OpenWorkflow is Usually the Better Fit
+
+### Native workflow semantics
+
+BullMQ is strong for queue processing, but complex business flows require
+composing jobs into graphs and managing orchestration state yourself.
+
+OpenWorkflow treats the flow as one workflow run with durable step history and
+replay.
+
+### No separate queue infrastructure
+
+BullMQ requires Redis, a separate service to run alongside your application.
+OpenWorkflow uses PostgreSQL or SQLite, which most teams already have for their
+application data. One fewer service to provision and monitor.
+
+## When BullMQ is the Right Call
+
+- **Simple fire-and-forget jobs**: If you're sending emails or processing
+  uploads with no dependencies between jobs, a queue is the right tool. You
+  don't need workflows for that.
+- **Existing Redis investment**: If your team already runs Redis and your jobs
+  are straightforward, the adoption cost of BullMQ is genuinely low.
+- **High throughput on independent jobs**: BullMQ on Redis can push very high
+  job throughput for independent, short-lived work.

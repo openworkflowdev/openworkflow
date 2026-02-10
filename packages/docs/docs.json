@@ -61,7 +61,10 @@
       },
       {
         "group": "Comparisons",
-        "pages": ["docs/openworkflow-vs-temporal"]
+        "pages": [
+          "docs/openworkflow-vs-temporal",
+          "docs/openworkflow-vs-bullmq"
+        ]
       },
       {
         "group": "Resources",
