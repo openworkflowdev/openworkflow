@@ -40,7 +40,9 @@ export function usePolling({
       }
     }
 
-    start();
+    if (!document.hidden) {
+      start();
+    }
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {

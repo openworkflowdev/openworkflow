@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
+import { usePolling } from "./use-polling";
 import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { usePolling } from "./use-polling";
 
 const invalidate = vi.fn();
 
@@ -27,7 +27,7 @@ describe("usePolling", () => {
 
   it("calls router.invalidate on the default interval", () => {
     renderHook(() => {
-      usePolling()
+      usePolling();
     });
 
     expect(invalidate).not.toHaveBeenCalled();
@@ -40,7 +40,9 @@ describe("usePolling", () => {
   });
 
   it("respects a custom interval", () => {
-    renderHook(() => { usePolling({ interval: 5000 }); });
+    renderHook(() => {
+      usePolling({ interval: 5000 });
+    });
 
     vi.advanceTimersByTime(4999);
     expect(invalidate).not.toHaveBeenCalled();
@@ -50,14 +52,18 @@ describe("usePolling", () => {
   });
 
   it("does not poll when enabled is false", () => {
-    renderHook(() => { usePolling({ enabled: false }); });
+    renderHook(() => {
+      usePolling({ enabled: false });
+    });
 
     vi.advanceTimersByTime(10_000);
     expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("stops polling on unmount", () => {
-    const { unmount } = renderHook(() => { usePolling(); });
+    const { unmount } = renderHook(() => {
+      usePolling();
+    });
 
     vi.advanceTimersByTime(2000);
     expect(invalidate).toHaveBeenCalledTimes(1);
@@ -69,29 +75,60 @@ describe("usePolling", () => {
   });
 
   it("pauses polling when the tab is hidden", () => {
-    renderHook(() => { usePolling(); });
+    renderHook(() => {
+      usePolling();
+    });
 
     vi.advanceTimersByTime(2000);
     expect(invalidate).toHaveBeenCalledTimes(1);
 
     // Simulate tab becoming hidden
-    Object.defineProperty(document, "hidden", { value: true, writable: true, configurable: true });
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
 
     vi.advanceTimersByTime(10_000);
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
 
+  it("does not start polling when mounted with the tab already hidden", () => {
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
+
+    renderHook(() => {
+      usePolling();
+    });
+
+    vi.advanceTimersByTime(10_000);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
   it("resumes polling and immediately invalidates when the tab becomes visible", () => {
-    renderHook(() => { usePolling(); });
+    renderHook(() => {
+      usePolling();
+    });
 
     // Hide tab
-    Object.defineProperty(document, "hidden", { value: true, writable: true, configurable: true });
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      writable: true,
+      configurable: true,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
     invalidate.mockClear();
 
     // Show tab again
-    Object.defineProperty(document, "hidden", { value: false, writable: true, configurable: true });
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      writable: true,
+      configurable: true,
+    });
     document.dispatchEvent(new Event("visibilitychange"));
 
     // Should immediately invalidate on visibility restore
@@ -104,7 +141,9 @@ describe("usePolling", () => {
 
   it("starts polling when enabled changes from false to true", () => {
     const { rerender } = renderHook(
-      ({ enabled }) => { usePolling({ enabled }); },
+      ({ enabled }) => {
+        usePolling({ enabled });
+      },
       { initialProps: { enabled: false } },
     );
 
@@ -119,7 +158,9 @@ describe("usePolling", () => {
 
   it("stops polling when enabled changes from true to false", () => {
     const { rerender } = renderHook(
-      ({ enabled }) => { usePolling({ enabled }); },
+      ({ enabled }) => {
+        usePolling({ enabled });
+      },
       { initialProps: { enabled: true } },
     );
 
