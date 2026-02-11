@@ -2,6 +2,7 @@ import type { SerializedError } from "./core/error.js";
 import { JsonValue } from "./core/json.js";
 import type { StepAttempt, StepAttemptContext, StepKind } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
+import type { RetryPolicy } from "./workflow.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 
@@ -103,6 +104,7 @@ export interface FailWorkflowRunParams {
   workflowRunId: string;
   workerId: string;
   error: SerializedError;
+  retryPolicy: RetryPolicy;
 }
 
 export interface CancelWorkflowRunParams {

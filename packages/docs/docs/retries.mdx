@@ -8,7 +8,7 @@ In any application, things fail sometimes - a third-party API returns a
 These are transient failures: they go away on their own if you try again.
 
 OpenWorkflow handles this automatically. When a step throws an error, the
-workflow is rescheduled with a exponential backoff (increasing delays between
+workflow is rescheduled with an exponential backoff (increasing delays between
 retries). Previously completed steps aren't re-run - only the failed step is
 retried.
 
@@ -60,8 +60,42 @@ Failed workflows are rescheduled with increasing delays:
 
 This prevents overwhelming external services during outages.
 
-By default, retries continue indefinitely. A workflow is marked `failed` when
-its configured `deadlineAt` is reached (or the next retry would pass it).
+By default, retries continue until canceled or until `deadlineAt` is reached (or
+the next retry would pass it). If `maximumAttempts` is configured, the workflow
+is also marked `failed` once that limit is reached.
+
+## Retry Policy
+
+Retry behavior is configured per workflow using `retryPolicy` in the workflow
+spec:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const chargeCustomer = defineWorkflow(
+  {
+    name: "charge-customer",
+    retryPolicy: {
+      initialInterval: "1s",
+      backoffCoefficient: 2,
+      maximumInterval: "100s",
+      maximumAttempts: Infinity,
+    },
+  },
+  async ({ step }) => {
+    // workflow implementation
+  },
+);
+```
+
+`retryPolicy` is optional. Any omitted fields use defaults.
+
+| Field                | Description                                           |
+| -------------------- | ----------------------------------------------------- |
+| `initialInterval`    | Delay before the first retry after a failed attempt   |
+| `backoffCoefficient` | Multiplier applied to each subsequent retry delay     |
+| `maximumInterval`    | Upper bound for retry delay                           |
+| `maximumAttempts`    | Maximum total attempts, including the initial attempt |
 
 ## What Triggers a Retry
 
@@ -107,8 +141,8 @@ defineWorkflow({ name: "with-error-handling" }, async ({ input, step }) => {
 ## Permanent Failures
 
 A workflow is marked as `failed` permanently when it can no longer be retried
-(for example, because `deadlineAt` is reached, or the next retry would exceed
-that deadline):
+(for example, because `deadlineAt` is reached, the next retry would exceed that
+deadline, or `maximumAttempts` has been reached):
 
 - The error is stored in the workflow run record
 - No more automatic retries occur

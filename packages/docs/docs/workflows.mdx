@@ -153,6 +153,30 @@ defineWorkflow(
 );
 ```
 
+### Retry Policy (Optional)
+
+Control backoff and retry limits for this workflow:
+
+```ts
+defineWorkflow(
+  {
+    name: "process-order",
+    retryPolicy: {
+      initialInterval: "1s",
+      backoffCoefficient: 2,
+      maximumInterval: "30s",
+      maximumAttempts: 5,
+    },
+  },
+  async ({ input, step }) => {
+    // ...
+  },
+);
+```
+
+Any `retryPolicy` fields you omit fall back to defaults. See
+[Retries](/docs/retries) for the full behavior and defaults.
+
 ## Workflow Function Parameters
 
 The workflow function receives an object with three properties:

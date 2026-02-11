@@ -12,6 +12,7 @@ import {
   createSleepContext,
 } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
+import type { RetryPolicy } from "./workflow.js";
 
 /**
  * Config for an individual step defined with `step.run()`.
@@ -192,6 +193,7 @@ export interface ExecuteWorkflowParams {
   workflowFn: WorkflowFunction<unknown, unknown>;
   workflowVersion: string | null;
   workerId: string;
+  retryPolicy: RetryPolicy;
 }
 
 /**
@@ -295,6 +297,7 @@ export async function executeWorkflow(
       workflowRunId: workflowRun.id,
       workerId,
       error: serializeError(error),
+      retryPolicy: params.retryPolicy,
     });
   }
 }

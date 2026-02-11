@@ -1,16 +1,18 @@
 import type { Backend } from "./backend.js";
+import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
-import type { Workflow } from "./workflow.js";
+import type { RetryPolicy, Workflow } from "./workflow.js";
+import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
 import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
-const DEFAULT_POLL_BACKOFF_POLICY = {
-  initialIntervalMs: 100,
+const DEFAULT_POLL_BACKOFF_POLICY: BackoffPolicy = {
+  initialInterval: "100ms",
   backoffCoefficient: 2,
-  maximumIntervalMs: 1000,
+  maximumInterval: "1s",
 } as const;
 const DEFAULT_POLL_JITTER_FACTOR_MIN = 0.5;
 const DEFAULT_POLL_JITTER_FACTOR_MAX = 1;
@@ -163,6 +165,7 @@ export class Worker {
         error: {
           message: `Workflow "${workflowRun.workflowName}"${versionStr} is not registered`,
         },
+        retryPolicy: resolveRetryPolicy(),
       });
       return null;
     }
@@ -208,6 +211,7 @@ export class Worker {
         workflowFn: workflow.fn,
         workflowVersion: execution.workflowRun.version,
         workerId: execution.workerId,
+        retryPolicy: resolveRetryPolicy(workflow.spec.retryPolicy),
       });
     } catch (error) {
       // specifically for unexpected errors in the execution wrapper itself, not
@@ -292,14 +296,10 @@ function sleep(ms: number): Promise<void> {
  * @returns Delay in milliseconds
  */
 function getPollBackoffDelayMs(backoffAttempts: number): number {
-  const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
-    DEFAULT_POLL_BACKOFF_POLICY;
-
-  const exponentialBackoffMs =
-    initialIntervalMs *
-    Math.pow(backoffCoefficient, Math.max(0, backoffAttempts - 1));
-
-  const cappedBackoffMs = Math.min(exponentialBackoffMs, maximumIntervalMs);
+  const cappedBackoffMs = computeBackoffDelayMs(
+    DEFAULT_POLL_BACKOFF_POLICY,
+    backoffAttempts,
+  );
 
   const jitterScale = nodeCrypto.randomInt(
     Math.round(DEFAULT_POLL_JITTER_FACTOR_MIN * 1000),
@@ -307,4 +307,16 @@ function getPollBackoffDelayMs(backoffAttempts: number): number {
   );
 
   return Math.max(1, Math.round((cappedBackoffMs * jitterScale) / 1000));
+}
+
+/**
+ * Resolve a partial retry policy by merging it with the default policy.
+ * @param partial - Optional partial retry policy from a workflow spec
+ * @returns A fully resolved retry policy
+ */
+export function resolveRetryPolicy(
+  partial?: Partial<RetryPolicy>,
+): RetryPolicy {
+  if (!partial) return DEFAULT_WORKFLOW_RETRY_POLICY;
+  return { ...DEFAULT_WORKFLOW_RETRY_POLICY, ...partial };
 }

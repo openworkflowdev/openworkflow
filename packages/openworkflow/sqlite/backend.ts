@@ -19,9 +19,9 @@ import {
 } from "../backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
-import { DEFAULT_RETRY_POLICY } from "../core/retry.js";
 import { StepAttempt } from "../core/step.js";
 import { WorkflowRun } from "../core/workflow.js";
+import { computeFailedWorkflowRunUpdate } from "../workflow.js";
 import {
   newDatabase,
   Database,
@@ -366,29 +366,19 @@ export class BackendSqlite implements Backend {
 
   async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
-    const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
-      DEFAULT_RETRY_POLICY;
+    const currentTime = new Date();
+    const currentTimeIso = currentTime.toISOString();
 
-    const currentTime = now();
-
-    // Get the current workflow run to access attempts
     const workflowRun = await this.getWorkflowRun({ workflowRunId });
     if (!workflowRun) throw new Error("Workflow run not found");
 
-    // Calculate retry delay
-    const backoffMs =
-      initialIntervalMs *
-      Math.pow(backoffCoefficient, workflowRun.attempts - 1);
-    const retryDelayMs = Math.min(backoffMs, maximumIntervalMs);
-
-    // Determine if we should reschedule or permanently fail
-    const nextRetryTime = new Date(Date.now() + retryDelayMs);
-    const shouldRetry =
-      !workflowRun.deadlineAt || nextRetryTime < workflowRun.deadlineAt;
-
-    const status = shouldRetry ? "pending" : "failed";
-    const availableAt = shouldRetry ? nextRetryTime.toISOString() : null;
-    const finishedAt = shouldRetry ? null : currentTime;
+    const failureUpdate = computeFailedWorkflowRunUpdate(
+      params.retryPolicy,
+      workflowRun.attempts,
+      workflowRun.deadlineAt,
+      error,
+      currentTime,
+    );
 
     const stmt = this.db.prepare(`
       UPDATE "workflow_runs"
@@ -407,11 +397,11 @@ export class BackendSqlite implements Backend {
     `);
 
     const result = stmt.run(
-      status,
-      availableAt,
-      finishedAt,
-      toJSON(error),
-      currentTime,
+      failureUpdate.status,
+      failureUpdate.availableAt?.toISOString() ?? null,
+      failureUpdate.finishedAt?.toISOString() ?? null,
+      toJSON(failureUpdate.error),
+      currentTimeIso,
       this.namespaceId,
       workflowRunId,
       params.workerId,

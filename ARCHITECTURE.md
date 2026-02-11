@@ -233,18 +233,41 @@ execution, the replay will reach the failed step and re-execute its function.
 ### 4.2. Workflow Failures & Retries
 
 If an error is unhandled by the workflow code, the entire workflow run fails.
-The workflow run is rescheduled with backoff. By default, retries continue
-until canceled or until a configured deadline is reached. If the run can no
-longer be retried (for example, because the next retry would exceed
-`deadlineAt`), its status is set to `failed` permanently.
+The workflow run is rescheduled with backoff according to its **retry policy**.
+By default, retries continue until canceled or until a configured deadline is
+reached. If the run can no longer be retried (for example, because the next
+retry would exceed `deadlineAt` or `maximumAttempts` has been reached), its
+status is set to `failed` permanently.
 
-### 4.3. Workflow Deadlines
+### 4.3. Retry Policy
+
+A `RetryPolicy` controls the backoff and retry limits for a workflow run. They
+are defined at the workflow spec level and apply to all runs of that workflow:
+
+```ts
+const workflow = ow.defineWorkflow(
+  {
+    name: "charge-customer",
+    retryPolicy: {
+      initialInterval: "1s",
+      backoffCoefficient: 2,
+      maximumInterval: "100s",
+      maximumAttempts: Infinity, // unlimited
+    },
+  },
+  async ({ step }) => {
+    // workflow implementation
+  },
+);
+```
+
+### 4.4. Workflow Deadlines
 
 Workflow runs can include an optional `deadlineAt` timestamp, specifying the
 time by which the workflow must complete. Steps and retries are skipped if they
 would exceed the deadline, making the run permanently `failed`.
 
-### 4.4. Workflow Cancelation
+### 4.5. Workflow Cancelation
 
 Workflows can be explicitly canceled at any time via the Client API:
 

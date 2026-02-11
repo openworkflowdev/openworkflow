@@ -1,7 +1,10 @@
 import { OpenWorkflow } from "./client.js";
 import { BackendPostgres } from "./postgres.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
-import { defineWorkflowSpec } from "./workflow.js";
+import {
+  DEFAULT_WORKFLOW_RETRY_POLICY,
+  defineWorkflowSpec,
+} from "./workflow.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
@@ -224,6 +227,7 @@ describe("OpenWorkflow", () => {
       workflowRunId: claimed.id,
       workerId,
       error: { message: "boom" },
+      retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
     });
 
     const rescheduled = await backend.getWorkflowRun({
