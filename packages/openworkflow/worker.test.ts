@@ -2,8 +2,11 @@ import type { Backend } from "./backend.js";
 import { OpenWorkflow } from "./client.js";
 import { BackendPostgres } from "./postgres.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
-import { Worker } from "./worker.js";
-import { defineWorkflowSpec } from "./workflow.js";
+import { Worker, resolveRetryPolicy } from "./worker.js";
+import {
+  DEFAULT_WORKFLOW_RETRY_POLICY,
+  defineWorkflowSpec,
+} from "./workflow.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 
@@ -1324,6 +1327,81 @@ describe("Worker", () => {
       consoleErrorSpy.mockRestore();
       vi.useRealTimers();
     }
+  });
+
+  test("respects custom retry policy from spec", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let attemptCount = 0;
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "custom-retry-spec",
+        retryPolicy: { maximumAttempts: 2 },
+      },
+      () => {
+        attemptCount++;
+        throw new Error(`Attempt ${String(attemptCount)} failed`);
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first attempt - will fail and reschedule (attempt 1 < maximumAttempts 2)
+    await worker.tick();
+    await sleep(100);
+    expect(attemptCount).toBe(1);
+
+    const afterFirst = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(afterFirst?.status).toBe("pending"); // rescheduled
+
+    await sleep(1100); // wait for backoff delay
+
+    // second attempt - will fail permanently (attempt 2 >= maximumAttempts 2)
+    await worker.tick();
+    await sleep(100);
+    expect(attemptCount).toBe(2);
+
+    const afterSecond = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(afterSecond?.status).toBe("failed"); // permanently failed
+  });
+});
+
+describe("resolveRetryPolicy", () => {
+  test("returns default policy when no partial is provided", () => {
+    const result = resolveRetryPolicy();
+    expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
+  });
+
+  test("returns default policy when partial is undefined", () => {
+    const result = resolveRetryPolicy();
+    expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
+  });
+
+  test("overrides individual fields", () => {
+    const result = resolveRetryPolicy({ maximumAttempts: 5 });
+    expect(result).toEqual({
+      ...DEFAULT_WORKFLOW_RETRY_POLICY,
+      maximumAttempts: 5,
+    });
+  });
+
+  test("overrides multiple fields", () => {
+    const result = resolveRetryPolicy({
+      maximumAttempts: 3,
+      initialInterval: "5s",
+    });
+    expect(result).toEqual({
+      ...DEFAULT_WORKFLOW_RETRY_POLICY,
+      initialInterval: "5s",
+      maximumAttempts: 3,
+    });
   });
 });
 

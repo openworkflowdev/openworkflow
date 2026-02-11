@@ -7,7 +7,7 @@ export type { WorkerOptions } from "./worker.js";
 export { Worker } from "./worker.js";
 
 // workflow
-export type { Workflow } from "./workflow.js";
+export type { RetryPolicy, Workflow } from "./workflow.js";
 export {
   defineWorkflowSpec,
   defineWorkflow,

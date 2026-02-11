@@ -21,10 +21,7 @@ import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { StepAttempt } from "../core/step.js";
 import { WorkflowRun } from "../core/workflow.js";
-import {
-  computeFailedWorkflowRunUpdate,
-  DEFAULT_WORKFLOW_RETRY_POLICY,
-} from "../workflow.js";
+import { computeFailedWorkflowRunUpdate } from "../workflow.js";
 import {
   newPostgres,
   newPostgresMaxOne,
@@ -335,7 +332,7 @@ export class BackendPostgres implements Backend {
     if (!workflowRun) throw new Error("Workflow run not found");
 
     const failureUpdate = computeFailedWorkflowRunUpdate(
-      DEFAULT_WORKFLOW_RETRY_POLICY,
+      params.retryPolicy,
       workflowRun.attempts,
       workflowRun.deadlineAt,
       error,

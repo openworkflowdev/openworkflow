@@ -1,6 +1,7 @@
 import type { Backend } from "./backend.js";
 import type { StepAttempt } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
+import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
@@ -390,6 +391,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId: claimed.workerId ?? "",
           error: { message: "failed" },
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
         await expect(
           backend.sleepWorkflowRun({
@@ -460,6 +462,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error,
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
 
         // rescheduled, not permanently failed
@@ -496,6 +499,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error: { message: "first failure" },
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
 
         expect(firstFailed.status).toBe("pending");
@@ -516,6 +520,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error: { message: "second failure" },
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
 
         expect(secondFailed.status).toBe("pending");
@@ -1017,6 +1022,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: created.id,
           workerId,
           error: { message: "test error" },
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
 
         expect(failed.status).toBe("failed");
@@ -1054,6 +1060,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: created.id,
           workerId,
           error: { message: "test error" },
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
 
         expect(failed.status).toBe("pending");
@@ -1179,6 +1186,7 @@ export function testBackend(options: TestBackendOptions): void {
             workflowRunId: claimed.id,
             workerId: claimed.workerId,
             error: { message: "test error" },
+            retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
           });
         }
 

@@ -13,6 +13,8 @@ export interface WorkflowSpec<Input, Output, RawInput> {
   readonly version?: string;
   /** The schema used to validate inputs. */
   readonly schema?: StandardSchemaV1<RawInput, Input>;
+  /** The retry policy for the workflow. */
+  readonly retryPolicy?: Partial<RetryPolicy>;
   /** Phantom type carrier - won't exist at runtime. */
   readonly __types?: {
     output: Output;

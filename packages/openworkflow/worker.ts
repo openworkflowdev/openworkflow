@@ -3,7 +3,8 @@ import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
-import type { Workflow } from "./workflow.js";
+import type { RetryPolicy, Workflow } from "./workflow.js";
+import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
 import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
@@ -164,6 +165,7 @@ export class Worker {
         error: {
           message: `Workflow "${workflowRun.workflowName}"${versionStr} is not registered`,
         },
+        retryPolicy: resolveRetryPolicy(),
       });
       return null;
     }
@@ -209,6 +211,7 @@ export class Worker {
         workflowFn: workflow.fn,
         workflowVersion: execution.workflowRun.version,
         workerId: execution.workerId,
+        retryPolicy: resolveRetryPolicy(workflow.spec.retryPolicy),
       });
     } catch (error) {
       // specifically for unexpected errors in the execution wrapper itself, not
@@ -304,4 +307,16 @@ function getPollBackoffDelayMs(backoffAttempts: number): number {
   );
 
   return Math.max(1, Math.round((cappedBackoffMs * jitterScale) / 1000));
+}
+
+/**
+ * Resolve a partial retry policy by merging it with the default policy.
+ * @param partial - Optional partial retry policy from a workflow spec
+ * @returns A fully resolved retry policy
+ */
+export function resolveRetryPolicy(
+  partial?: Partial<RetryPolicy>,
+): RetryPolicy {
+  if (!partial) return DEFAULT_WORKFLOW_RETRY_POLICY;
+  return { ...DEFAULT_WORKFLOW_RETRY_POLICY, ...partial };
 }

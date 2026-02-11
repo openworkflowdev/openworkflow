@@ -39,8 +39,8 @@ const data = await step.run({ name: "fetch-external-api" }, async () => {
 ```
 
 The default retry behavior works well for most cases. Configure retry behavior
-at the workflow or step level (coming soon) or handle errors explicitly in your
-step functions for custom logic.
+at the workflow level with `retryPolicy`, or handle errors explicitly in your
+step functions for custom logic. See [Retries](/docs/retries) for details.
 
 ## Sleeping (Pausing) Workflows
 
