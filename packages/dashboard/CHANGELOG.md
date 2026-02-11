@@ -1,5 +1,9 @@
 # @openworkflow/dashboard
 
+## 0.1.3
+
+- Add real-time polling to dashboard (#272) (thanks @szokeptr!)
+
 ## 0.1.2
 
 - Suggest npx CLI command
