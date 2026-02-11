@@ -19,9 +19,12 @@ import {
 } from "../backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
-import { DEFAULT_RETRY_POLICY } from "../core/retry.js";
 import { StepAttempt } from "../core/step.js";
 import { WorkflowRun } from "../core/workflow.js";
+import {
+  computeFailedWorkflowRunUpdate,
+  DEFAULT_WORKFLOW_RETRY_POLICY,
+} from "../workflow.js";
 import {
   newPostgres,
   newPostgresMaxOne,
@@ -326,53 +329,26 @@ export class BackendPostgres implements Backend {
 
   async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
-    const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
-      DEFAULT_RETRY_POLICY;
+    const currentTime = new Date();
 
-    // this beefy query updates a workflow's status, available_at, and
-    // finished_at based on the workflow's deadline and retry policy
-    //
-    // if the next retry would exceed the deadline, the run is marked as
-    // 'failed' and finalized, otherwise, the run is rescheduled with an updated
-    // 'available_at' timestamp for the next retry
+    const workflowRun = await this.getWorkflowRun({ workflowRunId });
+    if (!workflowRun) throw new Error("Workflow run not found");
+
+    const failureUpdate = computeFailedWorkflowRunUpdate(
+      DEFAULT_WORKFLOW_RETRY_POLICY,
+      workflowRun.attempts,
+      workflowRun.deadlineAt,
+      error,
+      currentTime,
+    );
+
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE "openworkflow"."workflow_runs"
       SET
-        "status" = CASE
-          WHEN "deadline_at" IS NOT NULL AND NOW() + (
-            LEAST(
-              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
-              ${maximumIntervalMs}
-            ) * INTERVAL '1 millisecond'
-          ) >= "deadline_at" THEN 'failed'
-          ELSE 'pending'
-        END,
-
-        "available_at" = CASE
-          WHEN "deadline_at" IS NOT NULL AND NOW() + (
-            LEAST(
-              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
-              ${maximumIntervalMs}
-            ) * INTERVAL '1 millisecond'
-          ) >= "deadline_at" THEN NULL
-          ELSE NOW() + (
-            LEAST(
-              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
-              ${maximumIntervalMs}
-            ) * INTERVAL '1 millisecond'
-          )
-        END,
-
-        "finished_at" = CASE
-          WHEN "deadline_at" IS NOT NULL AND NOW() + (
-            LEAST(
-              ${initialIntervalMs} * POWER(${backoffCoefficient}, "attempts" - 1),
-              ${maximumIntervalMs}
-            ) * INTERVAL '1 millisecond'
-          ) >= "deadline_at" THEN NOW()
-          ELSE NULL
-        END,
-        "error" = ${this.pg.json(error)},
+        "status" = ${failureUpdate.status},
+        "available_at" = ${failureUpdate.availableAt},
+        "finished_at" = ${failureUpdate.finishedAt},
+        "error" = ${this.pg.json(failureUpdate.error)},
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = NOW()

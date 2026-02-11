@@ -1,4 +1,10 @@
-import { defineWorkflow, defineWorkflowSpec, isWorkflow } from "./workflow.js";
+import {
+  computeFailedWorkflowRunUpdate,
+  defineWorkflow,
+  defineWorkflowSpec,
+  isWorkflow,
+  RetryPolicy,
+} from "./workflow.js";
 import { describe, expect, test } from "vitest";
 
 describe("defineWorkflowSpec", () => {
@@ -106,4 +112,64 @@ defineWorkflow(explicitInputAndOutputTypesSpec, async ({ step }) => {
   });
 
   return { result: "done" };
+});
+
+describe("computeFailedWorkflowRunUpdate", () => {
+  const policy: RetryPolicy = {
+    initialIntervalMs: 1000,
+    backoffCoefficient: 2,
+    maximumIntervalMs: 10_000,
+    maximumAttempts: 3,
+  };
+
+  test("reschedules with backoff when retry is allowed", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    const result = computeFailedWorkflowRunUpdate(
+      policy,
+      1,
+      null,
+      { message: "boom" },
+      now,
+    );
+
+    expect(result.status).toBe("pending");
+    expect(result.availableAt?.toISOString()).toBe("2026-01-01T00:00:01.000Z");
+    expect(result.finishedAt).toBeNull();
+    expect(result.error).toEqual({ message: "boom" });
+  });
+
+  test("fails permanently when next retry would exceed deadline", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    const result = computeFailedWorkflowRunUpdate(
+      policy,
+      1,
+      new Date("2026-01-01T00:00:01.000Z"),
+      { message: "boom" },
+      now,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.availableAt).toBeNull();
+    expect(result.finishedAt).toBe(now);
+    expect(result.error).toEqual({ message: "boom" });
+  });
+
+  test("fails when maximum attempts has been reached", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    const result = computeFailedWorkflowRunUpdate(
+      policy,
+      3,
+      null,
+      { message: "boom" },
+      now,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.availableAt).toBeNull();
+    expect(result.finishedAt).toBe(now);
+    expect(result.error).toEqual({ message: "boom" });
+  });
 });

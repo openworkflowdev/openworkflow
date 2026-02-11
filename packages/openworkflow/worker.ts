@@ -1,4 +1,5 @@
 import type { Backend } from "./backend.js";
+import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
@@ -7,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
-const DEFAULT_POLL_BACKOFF_POLICY = {
+const DEFAULT_POLL_BACKOFF_POLICY: BackoffPolicy = {
   initialIntervalMs: 100,
   backoffCoefficient: 2,
   maximumIntervalMs: 1000,
@@ -292,14 +293,10 @@ function sleep(ms: number): Promise<void> {
  * @returns Delay in milliseconds
  */
 function getPollBackoffDelayMs(backoffAttempts: number): number {
-  const { initialIntervalMs, backoffCoefficient, maximumIntervalMs } =
-    DEFAULT_POLL_BACKOFF_POLICY;
-
-  const exponentialBackoffMs =
-    initialIntervalMs *
-    Math.pow(backoffCoefficient, Math.max(0, backoffAttempts - 1));
-
-  const cappedBackoffMs = Math.min(exponentialBackoffMs, maximumIntervalMs);
+  const cappedBackoffMs = computeBackoffDelayMs(
+    DEFAULT_POLL_BACKOFF_POLICY,
+    backoffAttempts,
+  );
 
   const jitterScale = nodeCrypto.randomInt(
     Math.round(DEFAULT_POLL_JITTER_FACTOR_MIN * 1000),

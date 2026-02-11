@@ -1,3 +1,5 @@
+import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
+import type { SerializedError } from "./core/error.js";
 import type { StandardSchemaV1 } from "./core/schema.js";
 import { WorkflowFunction } from "./execution.js";
 
@@ -120,4 +122,71 @@ export function isWorkflow(value: unknown) {
     typeof spec.name === "string" &&
     typeof fn === "function"
   );
+}
+
+/**
+ * A workflow retry policy.
+ */
+export type RetryPolicy = BackoffPolicy & Readonly<{ maximumAttempts: number }>;
+
+export const DEFAULT_WORKFLOW_RETRY_POLICY: RetryPolicy = {
+  initialIntervalMs: 1000, // 1s
+  backoffCoefficient: 2,
+  maximumIntervalMs: 100 * 1000, // 100s
+  maximumAttempts: Infinity, // unlimited
+};
+
+/**
+ * Computed update fields when a running workflow fails.
+ */
+export interface FailedWorkflowRunUpdate {
+  readonly status: "pending" | "failed";
+  readonly availableAt: Date | null;
+  readonly finishedAt: Date | null;
+  readonly error: SerializedError;
+}
+
+/**
+ * Compute how a workflow run should be updated after a failure.
+ * @param retryPolicy - Retry policy used for scheduling
+ * @param attempts - Current workflow attempt count
+ * @param deadlineAt - Optional workflow deadline
+ * @param error - Workflow failure error
+ * @param now - Current time used to compute retry schedule
+ * @returns Next persisted run state for the failure path
+ */
+export function computeFailedWorkflowRunUpdate(
+  retryPolicy: Readonly<RetryPolicy>,
+  attempts: number,
+  deadlineAt: Readonly<Date> | null,
+  error: Readonly<SerializedError>,
+  now: Readonly<Date>,
+): FailedWorkflowRunUpdate {
+  if (attempts >= retryPolicy.maximumAttempts) {
+    return {
+      status: "failed",
+      availableAt: null,
+      finishedAt: now,
+      error,
+    };
+  }
+
+  const retryDelayMs = computeBackoffDelayMs(retryPolicy, attempts);
+  const nextRetryAt = new Date(now.getTime() + retryDelayMs);
+
+  if (deadlineAt && nextRetryAt >= deadlineAt) {
+    return {
+      status: "failed",
+      availableAt: null,
+      finishedAt: now,
+      error,
+    };
+  }
+
+  return {
+    status: "pending",
+    availableAt: nextRetryAt,
+    finishedAt: null,
+    error,
+  };
 }
