@@ -79,11 +79,10 @@ await step.run({ name: "step-1" }, ...);
 await step.run({ name: "step-2" }, ...);
 ```
 
-<Warning>
-  Changing step names after workflows are in-flight can cause replay errors.
-  Completed steps won't be found in the history, causing them to re-execute. To
-  change logic safely, see [Versioning](/docs/versioning).
-</Warning>
+<Note>
+  If you need to create a dynamic nuumber of steps from runtime data (like
+  mapping over an array), see [Dynamic Steps](/docs/dynamic-steps).
+</Note>
 
 ## Return Values
 
@@ -184,3 +183,24 @@ await step.run({ name: "do-everything" }, async () => {
   If an operation has no side effects and is fast to compute, consider whether
   it really needs to be a step. Pure computations can happen outside of steps.
 </Tip>
+
+## Large Payloads
+
+Every step result is persisted to the database. If a step returns a large
+payload, your workflow history can become heavy — especially when you have many
+steps.
+
+A good pattern is to offload large data to external storage and return only a
+reference:
+
+```ts
+const data = await step.run({ name: "fetch-report" }, async () => {
+  const report = await analyticsApi.generate(input.reportId);
+
+  const objectKey = `reports/${input.reportId}.json`;
+  await objectStore.put(objectKey, JSON.stringify(report));
+
+  // Store only the reference, not the full report
+  return { reportId: input.reportId, objectKey };
+});
+```
