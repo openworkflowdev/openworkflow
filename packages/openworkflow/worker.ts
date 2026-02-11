@@ -9,9 +9,9 @@ import * as nodeCrypto from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
 const DEFAULT_POLL_BACKOFF_POLICY: BackoffPolicy = {
-  initialIntervalMs: 100,
+  initialInterval: "100ms",
   backoffCoefficient: 2,
-  maximumIntervalMs: 1000,
+  maximumInterval: "1s",
 } as const;
 const DEFAULT_POLL_JITTER_FACTOR_MIN = 0.5;
 const DEFAULT_POLL_JITTER_FACTOR_MAX = 1;

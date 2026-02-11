@@ -1,10 +1,13 @@
+import type { DurationString } from "./duration.js";
+import { parseDuration } from "./duration.js";
+
 /**
  * Shared exponential backoff configuration.
  */
 export interface BackoffPolicy {
-  readonly initialIntervalMs: number;
+  readonly initialInterval: DurationString;
   readonly backoffCoefficient: number;
-  readonly maximumIntervalMs: number;
+  readonly maximumInterval: DurationString;
 }
 
 /**
@@ -17,9 +20,23 @@ export function computeBackoffDelayMs(
   policy: BackoffPolicy,
   attempt: number,
 ): number {
+  const initialIntervalMs = parseBackoffIntervalMs(policy.initialInterval);
+  const maximumIntervalMs = parseBackoffIntervalMs(policy.maximumInterval);
+
   const exponentialBackoffMs =
-    policy.initialIntervalMs *
+    initialIntervalMs *
     Math.pow(policy.backoffCoefficient, Math.max(0, attempt - 1));
 
-  return Math.min(exponentialBackoffMs, policy.maximumIntervalMs);
+  return Math.min(exponentialBackoffMs, maximumIntervalMs);
+}
+
+/**
+ * Parse a backoff interval duration string into milliseconds.
+ * Invalid runtime values default to 0ms.
+ * @param interval - Duration string
+ * @returns Interval in milliseconds
+ */
+function parseBackoffIntervalMs(interval: DurationString): number {
+  const parsedInterval = parseDuration(interval);
+  return parsedInterval.ok ? parsedInterval.value : 0;
 }

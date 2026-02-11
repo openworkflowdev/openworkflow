@@ -130,9 +130,9 @@ export function isWorkflow(value: unknown) {
 export type RetryPolicy = BackoffPolicy & Readonly<{ maximumAttempts: number }>;
 
 export const DEFAULT_WORKFLOW_RETRY_POLICY: RetryPolicy = {
-  initialIntervalMs: 1000, // 1s
+  initialInterval: "1s",
   backoffCoefficient: 2,
-  maximumIntervalMs: 100 * 1000, // 100s
+  maximumInterval: "100s",
   maximumAttempts: Infinity, // unlimited
 };
 

@@ -116,9 +116,9 @@ defineWorkflow(explicitInputAndOutputTypesSpec, async ({ step }) => {
 
 describe("computeFailedWorkflowRunUpdate", () => {
   const policy: RetryPolicy = {
-    initialIntervalMs: 1000,
+    initialInterval: "1s",
     backoffCoefficient: 2,
-    maximumIntervalMs: 10_000,
+    maximumInterval: "10s",
     maximumAttempts: 3,
   };
 

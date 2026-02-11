@@ -5,9 +5,9 @@ describe("computeBackoffDelayMs", () => {
   test("treats attempt 0 like attempt 1", () => {
     const delayMs = computeBackoffDelayMs(
       {
-        initialIntervalMs: 1000,
+        initialInterval: "1s",
         backoffCoefficient: 2,
-        maximumIntervalMs: 10_000,
+        maximumInterval: "10s",
       },
       0,
     );
@@ -18,9 +18,9 @@ describe("computeBackoffDelayMs", () => {
   test("uses initial interval on attempt 1", () => {
     const delayMs = computeBackoffDelayMs(
       {
-        initialIntervalMs: 250,
+        initialInterval: "250ms",
         backoffCoefficient: 3,
-        maximumIntervalMs: 10_000,
+        maximumInterval: "10s",
       },
       1,
     );
@@ -31,9 +31,9 @@ describe("computeBackoffDelayMs", () => {
   test("stays constant when coefficient is 1", () => {
     const delayMs = computeBackoffDelayMs(
       {
-        initialIntervalMs: 750,
+        initialInterval: "750ms",
         backoffCoefficient: 1,
-        maximumIntervalMs: 10_000,
+        maximumInterval: "10s",
       },
       9,
     );
@@ -44,9 +44,9 @@ describe("computeBackoffDelayMs", () => {
   test("caps delay at maximum interval", () => {
     const delayMs = computeBackoffDelayMs(
       {
-        initialIntervalMs: 1000,
+        initialInterval: "1s",
         backoffCoefficient: 3,
-        maximumIntervalMs: 5000,
+        maximumInterval: "5s",
       },
       4,
     );
@@ -57,9 +57,9 @@ describe("computeBackoffDelayMs", () => {
   test("returns finite capped values for very large attempts", () => {
     const delayMs = computeBackoffDelayMs(
       {
-        initialIntervalMs: 100,
+        initialInterval: "100ms",
         backoffCoefficient: 2,
-        maximumIntervalMs: 60_000,
+        maximumInterval: "60s",
       },
       10_000,
     );
