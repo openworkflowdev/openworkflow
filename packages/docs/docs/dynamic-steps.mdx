@@ -1,0 +1,64 @@
+---
+title: Dynamic Steps
+description: Run a variable number of steps based on runtime data
+---
+
+Sometimes you don't know how many steps a workflow needs until it runs. You
+might need to fetch data for each item in a list, process rows from a query,
+or fan out across a set of IDs from an API response. OpenWorkflow handles
+this — you can create steps inside loops and maps, as long as each step has a
+deterministic name.
+
+## Basic Pattern
+
+Map over your data and create a step per item using `Promise.all`:
+
+```ts
+const results = await Promise.all(
+  input.items.map((item) =>
+    step.run({ name: `fetch-data:${item.id}` }, async () => {
+      return await thirdPartyApi.fetch(item.id);
+    }),
+  ),
+);
+```
+
+Each step is individually memoized. If the workflow restarts, completed steps
+return their cached results and only the remaining steps re-execute.
+
+The most important rule: **step names must be deterministic across replays**.
+Use a stable identifier from the data itself — like a database ID, a slug, or
+a unique key:
+
+```ts
+// Good — stable ID from the data
+step.run({ name: `process-order:${order.id}` }, ...)
+step.run({ name: `send-email:${user.email}` }, ...)
+
+// Bad — non-deterministic, different on every run
+step.run({ name: `task-${Date.now()}` }, ...)
+step.run({ name: `task-${crypto.randomUUID()}` }, ...)
+```
+
+<Warning>
+  Non-deterministic names (timestamps, random values, request IDs) break replay.
+  Completed steps won't be found in history, causing them to re-execute.
+</Warning>
+
+### Falling Back to Array Indexes
+
+When no stable ID exists, you can use the array index:
+
+```ts
+const results = await Promise.all(
+  input.items.map((item, index) =>
+    step.run({ name: `fetch-data:${index}` }, async () => {
+      return await thirdPartyApi.fetch(item.lookupKey);
+    }),
+  ),
+);
+```
+
+This is safe only if the array order is identical between the original run and
+any replay. If the order changes, cached results get returned for the wrong
+items.
