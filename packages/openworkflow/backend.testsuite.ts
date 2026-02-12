@@ -168,6 +168,68 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
 
+      test("allows the same idempotency key across different namespaces", async () => {
+        const backendA = await setup();
+        const backendB = await setup();
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+
+        try {
+          const firstA = await backendA.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          const firstB = await backendB.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          expect(firstA.id).not.toBe(firstB.id);
+          expect(firstA.namespaceId).not.toBe(firstB.namespaceId);
+
+          const secondA = await backendA.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          const secondB = await backendB.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          expect(secondA.id).toBe(firstA.id);
+          expect(secondB.id).toBe(firstB.id);
+        } finally {
+          await teardown(backendA);
+          await teardown(backendB);
+        }
+      });
+
       test("returns existing run when reusing key with same workflow and different version", async () => {
         const backend = await setup();
         const workflowName = randomUUID();
