@@ -164,7 +164,7 @@ export class OpenWorkflow {
  * `client.defineWorkflow` and provides the `.run()` method for scheduling
  * workflow runs.
  */
-export class RunnableWorkflow<Input, Output, RunInput = Input> {
+class RunnableWorkflow<Input, Output, RunInput = Input> {
   private readonly ow: OpenWorkflow;
   readonly workflow: Workflow<Input, Output, RunInput>;
 
@@ -255,7 +255,7 @@ export interface WorkflowRunHandleResultOptions {
  * Represents a started workflow run and provides methods to await its result.
  * Returned from `workflowDef.run()`.
  */
-export class WorkflowRunHandle<Output> {
+class WorkflowRunHandle<Output> {
   private backend: Backend;
   readonly workflowRun: WorkflowRun;
   private resultPollIntervalMs: number;
