@@ -48,7 +48,7 @@
     "eslint-plugin-functional": "^9.0.2",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "^62.5.4",
-    "eslint-plugin-sonarjs": "^3.0.6",
+    "eslint-plugin-sonarjs": "^3.0.7",
     "eslint-plugin-unicorn": "^63.0.0",
     "jscpd": "^4.0.8",
     "knip": "^5.83.0",
