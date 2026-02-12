@@ -1,5 +1,11 @@
 # openworkflow
 
+## Unreleased
+
+- Add workflow-scoped idempotency keys via
+  `ow.runWorkflow(spec, input, { idempotencyKey })`
+- Built-in run idempotency dedupe period is 24 hours from run creation time
+
 ## 0.6.7
 
 - Add support for Bun as an alternative to Node

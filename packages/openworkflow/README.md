@@ -67,6 +67,7 @@ For more details, check out our [docs](https://openworkflow.dev/docs).
 - ✅ **Long pauses** - Sleep for seconds or months
 - ✅ **Scheduled runs** - Start workflows at a specific time
 - ✅ **Parallel execution** - Run steps concurrently
+- ✅ **Idempotency keys** - Deduplicate repeated run requests (24h window)
 - ✅ **No extra servers** - Uses your existing database
 - ✅ **Dashboard included** - Monitor and debug workflows
 - ✅ **Production ready** - PostgreSQL and SQLite support

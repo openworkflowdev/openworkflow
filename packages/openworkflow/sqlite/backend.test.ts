@@ -1,5 +1,6 @@
 import { testBackend } from "../backend.testsuite.js";
 import { BackendSqlite } from "./backend.js";
+import { Database } from "./sqlite.js";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { unlinkSync, existsSync } from "node:fs";
@@ -72,5 +73,85 @@ describe("BackendSqlite.connect errors", () => {
     expect(() => BackendSqlite.connect(badPath)).toThrow(
       /SQLite backend failed to open database.*valid and writable.*:/,
     );
+  });
+});
+
+describe("BackendSqlite.createWorkflowRun error handling", () => {
+  test("rolls back and rejects with the original error when keyed insert fails", async () => {
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId: randomUUID(),
+    });
+    const internalBackend = backend as unknown as {
+      insertWorkflowRun: (params: unknown) => unknown;
+    };
+    const originalInsertWorkflowRun = internalBackend.insertWorkflowRun;
+
+    internalBackend.insertWorkflowRun = () => {
+      throw new Error("insert failed");
+    };
+
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: "failing-workflow",
+          version: "v1",
+          idempotencyKey: randomUUID(),
+          config: {},
+          context: null,
+          input: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toThrow("insert failed");
+    } finally {
+      internalBackend.insertWorkflowRun = originalInsertWorkflowRun;
+      await backend.stop();
+    }
+  });
+
+  test("swallows rollback failures and wraps non-Error thrown values", async () => {
+    type BackendSqliteCtor = new (
+      db: Database,
+      namespaceId: string,
+    ) => BackendSqlite;
+
+    const calls: string[] = [];
+    const fakeDb: Database = {
+      exec(sql: string) {
+        calls.push(sql);
+        if (sql === "BEGIN IMMEDIATE") {
+          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          throw "busy";
+        }
+        if (sql === "ROLLBACK") throw new Error("cannot rollback");
+      },
+      prepare() {
+        throw new Error("prepare should not be called when BEGIN fails");
+      },
+      close() {
+        // no-op
+      },
+    };
+
+    const backend = new (BackendSqlite as unknown as BackendSqliteCtor)(
+      fakeDb,
+      randomUUID(),
+    );
+
+    await expect(
+      backend.createWorkflowRun({
+        workflowName: "failing-workflow",
+        version: "v1",
+        idempotencyKey: randomUUID(),
+        config: {},
+        context: null,
+        input: null,
+        availableAt: null,
+        deadlineAt: null,
+      }),
+    ).rejects.toThrow("busy");
+
+    expect(calls).toEqual(["BEGIN IMMEDIATE", "ROLLBACK"]);
+    await backend.stop();
   });
 });

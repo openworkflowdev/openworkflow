@@ -1,5 +1,6 @@
 import {
   DEFAULT_NAMESPACE_ID,
+  DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   CancelWorkflowRunParams,
   ClaimWorkflowRunParams,
@@ -92,7 +93,46 @@ export class BackendPostgres implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    const [workflowRun] = await this.pg<WorkflowRun[]>`
+    if (params.idempotencyKey === null) {
+      return await this.insertWorkflowRun(this.pg, params);
+    }
+
+    const { workflowName, idempotencyKey } = params;
+    const lockScope = JSON.stringify({
+      namespaceId: this.namespaceId,
+      workflowName,
+      idempotencyKey,
+    });
+
+    return await this.pg.begin(async (_tx) => {
+      const pgTx = _tx as unknown as Postgres;
+
+      /* eslint-disable @cspell/spellchecker */
+      await pgTx.unsafe(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+        [lockScope],
+      );
+      /* eslint-enable @cspell/spellchecker */
+
+      const existing = await this.getWorkflowRunByIdempotencyKey(
+        pgTx,
+        workflowName,
+        idempotencyKey,
+        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+      );
+      if (existing) {
+        return existing;
+      }
+
+      return await this.insertWorkflowRun(pgTx, params);
+    });
+  }
+
+  private async insertWorkflowRun(
+    pg: Postgres,
+    params: CreateWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const [workflowRun] = await pg<WorkflowRun[]>`
       INSERT INTO "openworkflow"."workflow_runs" (
         "namespace_id",
         "id",
@@ -116,11 +156,11 @@ export class BackendPostgres implements Backend {
         ${params.version},
         'pending',
         ${params.idempotencyKey},
-        ${this.pg.json(params.config)},
-        ${this.pg.json(params.context)},
-        ${this.pg.json(params.input)},
+        ${pg.json(params.config)},
+        ${pg.json(params.context)},
+        ${pg.json(params.input)},
         0,
-        ${sqlDateDefaultNow(this.pg, params.availableAt)},
+        ${sqlDateDefaultNow(pg, params.availableAt)},
         ${params.deadlineAt},
         date_trunc('milliseconds', NOW()),
         NOW()
@@ -131,6 +171,26 @@ export class BackendPostgres implements Backend {
     if (!workflowRun) throw new Error("Failed to create workflow run");
 
     return workflowRun;
+  }
+
+  private async getWorkflowRunByIdempotencyKey(
+    pg: Postgres,
+    workflowName: string,
+    idempotencyKey: string,
+    createdAt: Date,
+  ): Promise<WorkflowRun | null> {
+    const [workflowRun] = await pg<WorkflowRun[]>`
+      SELECT *
+      FROM "openworkflow"."workflow_runs"
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "workflow_name" = ${workflowName}
+        AND "idempotency_key" = ${idempotencyKey}
+        AND "created_at" >= ${createdAt}
+      ORDER BY "created_at" ASC, "id" ASC
+      LIMIT 1
+    `;
+
+    return workflowRun ?? null;
   }
 
   async getWorkflowRun(

@@ -1,9 +1,10 @@
+import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
 import type { Backend } from "./backend.js";
 import type { StepAttempt } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 /**
  * Options for the Backend test suite.
@@ -103,6 +104,380 @@ export function testBackend(options: TestBackendOptions): void {
         expect(createdMin.context).toBeNull();
         expect(deltaSeconds(createdMin.availableAt)).toBeLessThan(1); // defaults to NOW()
         expect(createdMin.deadlineAt).toBeNull();
+      });
+
+      test("reuses the same run for matching idempotency key and workflow identity", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const idempotencyKey = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey,
+          input: { val: 1 },
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey,
+          input: { val: 2 },
+          config: { changed: true },
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).toBe(first.id);
+        await teardown(backend);
+      });
+
+      test("allows the same idempotency key across different workflow names", async () => {
+        const backend = await setup();
+        const idempotencyKey = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName: "workflow-a",
+          version: "v1",
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName: "workflow-b",
+          version: "v1",
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).not.toBe(first.id);
+        await teardown(backend);
+      });
+
+      test("allows the same idempotency key across different namespaces", async () => {
+        const backendA = await setup();
+        const backendB = await setup();
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+
+        try {
+          const firstA = await backendA.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          const firstB = await backendB.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          expect(firstA.id).not.toBe(firstB.id);
+          expect(firstA.namespaceId).not.toBe(firstB.namespaceId);
+
+          const secondA = await backendA.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          const secondB = await backendB.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          expect(secondA.id).toBe(firstA.id);
+          expect(secondB.id).toBe(firstB.id);
+        } finally {
+          await teardown(backendA);
+          await teardown(backendB);
+        }
+      });
+
+      test("returns existing run when reusing key with same workflow and different version", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version: "v1",
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version: "v2",
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(second.id).toBe(first.id);
+        expect(second.version).toBe("v1");
+
+        await teardown(backend);
+      });
+
+      test("creates a new run when matching key is older than the idempotency period", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const idempotencyKey = randomUUID();
+        const now = Date.now();
+        const nowSpy = vi.spyOn(Date, "now");
+
+        try {
+          nowSpy.mockReturnValue(now);
+          const first = await backend.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          nowSpy.mockReturnValue(
+            now + DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS + 60_000,
+          );
+
+          const second = await backend.createWorkflowRun({
+            workflowName,
+            version: "v1",
+            idempotencyKey,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          });
+
+          expect(second.id).not.toBe(first.id);
+        } finally {
+          nowSpy.mockRestore();
+          await teardown(backend);
+        }
+      });
+
+      test("creates distinct runs when idempotency key is null", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+
+        const first = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const second = await backend.createWorkflowRun({
+          workflowName,
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(second.id).not.toBe(first.id);
+        await teardown(backend);
+      });
+
+      test("collapses concurrent creates with same key to one run id", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const idempotencyKey = randomUUID();
+
+        const runs = await Promise.all(
+          Array.from({ length: 10 }, (_, i) =>
+            backend.createWorkflowRun({
+              workflowName,
+              version,
+              idempotencyKey,
+              input: { i },
+              config: {},
+              context: null,
+              availableAt: null,
+              deadlineAt: null,
+            }),
+          ),
+        );
+
+        const uniqueRunIds = new Set(runs.map((run) => run.id));
+        expect(uniqueRunIds.size).toBe(1);
+        await teardown(backend);
+      });
+
+      test("returns existing completed run for matching key", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const idempotencyKey = randomUUID();
+
+        const created = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const workerId = randomUUID();
+        const claimed = await backend.claimWorkflowRun({
+          workerId,
+          leaseDurationMs: 100,
+        });
+        expect(claimed?.id).toBe(created.id);
+
+        await backend.completeWorkflowRun({
+          workflowRunId: created.id,
+          workerId,
+          output: { ok: true },
+        });
+
+        const deduped = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(deduped.id).toBe(created.id);
+        expect(deduped.status).toBe("completed");
+        await teardown(backend);
+      });
+
+      test("returns existing failed and canceled runs for matching key", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+
+        const failedKey = randomUUID();
+        const failedRun = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: failedKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const failedWorkerId = randomUUID();
+        const failedClaimed = await backend.claimWorkflowRun({
+          workerId: failedWorkerId,
+          leaseDurationMs: 100,
+        });
+        expect(failedClaimed?.id).toBe(failedRun.id);
+
+        await backend.failWorkflowRun({
+          workflowRunId: failedRun.id,
+          workerId: failedWorkerId,
+          error: { message: "terminal failure" },
+          retryPolicy: { ...DEFAULT_WORKFLOW_RETRY_POLICY, maximumAttempts: 1 },
+        });
+
+        const failedDeduped = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: failedKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(failedDeduped.id).toBe(failedRun.id);
+        expect(failedDeduped.status).toBe("failed");
+
+        const canceledKey = randomUUID();
+        const canceledRun = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: canceledKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        await backend.cancelWorkflowRun({ workflowRunId: canceledRun.id });
+
+        const canceledDeduped = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: canceledKey,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(canceledDeduped.id).toBe(canceledRun.id);
+        expect(canceledDeduped.status).toBe("canceled");
+
+        await teardown(backend);
       });
     });
 

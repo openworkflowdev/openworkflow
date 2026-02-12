@@ -189,6 +189,26 @@ defineWorkflow(
 Any `retryPolicy` fields you omit fall back to defaults. See
 [Retries](/docs/retries) for the full behavior and defaults.
 
+### Idempotency Key (Optional)
+
+You can prevent duplicate run creation by providing an idempotency key, though
+there is a performance cost to checking for duplicates, so use this only when
+necessary:
+
+```ts
+const handle = await ow.runWorkflow(
+  sendWelcomeEmail.spec,
+  { userId: "user_123" },
+  { idempotencyKey: "welcome-email:user_123" },
+);
+```
+
+Within a given namespace, when an existing run matches the same
+`workflowName` + `idempotencyKey`, OpenWorkflow returns that existing run
+immediately. This dedupe window is built-in and lasts 24 hours from the original
+run creation time. The same `idempotencyKey` used in a different namespace will
+create a separate run.
+
 ## Workflow Function Parameters
 
 The workflow function receives an object with three properties:

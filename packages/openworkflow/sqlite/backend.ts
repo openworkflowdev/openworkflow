@@ -1,5 +1,6 @@
 import {
   DEFAULT_NAMESPACE_ID,
+  DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   CancelWorkflowRunParams,
   ClaimWorkflowRunParams,
@@ -91,9 +92,43 @@ export class BackendSqlite implements Backend {
     this.db.close();
   }
 
-  async createWorkflowRun(
-    params: CreateWorkflowRunParams,
-  ): Promise<WorkflowRun> {
+  createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun> {
+    const { workflowName, idempotencyKey } = params;
+
+    if (idempotencyKey === null) {
+      return Promise.resolve(this.insertWorkflowRun(params));
+    }
+
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+
+      const existing = this.getWorkflowRunByIdempotencyKey(
+        workflowName,
+        idempotencyKey,
+        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+      );
+      if (existing) {
+        this.db.exec("COMMIT");
+        return Promise.resolve(existing);
+      }
+
+      const workflowRun = this.insertWorkflowRun(params);
+      this.db.exec("COMMIT");
+      return Promise.resolve(workflowRun);
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // ignore
+      }
+
+      return Promise.reject(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
+  private insertWorkflowRun(params: CreateWorkflowRunParams): WorkflowRun {
     const id = generateUUID();
     const currentTime = now();
     const availableAt = params.availableAt
@@ -135,10 +170,44 @@ export class BackendSqlite implements Backend {
       currentTime,
     );
 
-    const workflowRun = await this.getWorkflowRun({ workflowRunId: id });
-    if (!workflowRun) throw new Error("Failed to create workflow run");
+    const row = this.db
+      .prepare(
+        `
+      SELECT *
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ? AND "id" = ?
+      LIMIT 1
+    `,
+      )
+      .get(this.namespaceId, id) as WorkflowRunRow | undefined;
+    if (!row) throw new Error("Failed to create workflow run");
 
-    return workflowRun;
+    return rowToWorkflowRun(row);
+  }
+
+  private getWorkflowRunByIdempotencyKey(
+    workflowName: string,
+    idempotencyKey: string,
+    createdAt: Date,
+  ): WorkflowRun | null {
+    const stmt = this.db.prepare(`
+      SELECT *
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+        AND "workflow_name" = ?
+        AND "idempotency_key" = ?
+        AND "created_at" >= ?
+      ORDER BY "created_at" ASC, "id" ASC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(
+      this.namespaceId,
+      workflowName,
+      idempotencyKey,
+      toISO(createdAt),
+    ) as WorkflowRunRow | undefined;
+    return row ? rowToWorkflowRun(row) : null;
   }
 
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null> {
