@@ -10,6 +10,7 @@ You can cancel workflow runs that are pending, running, or sleeping.
 Use the `cancel()` method on a workflow run handle:
 
 ```ts
+import { ow } from "./openworkflow/client";
 import { defineWorkflow } from "openworkflow";
 
 const longRunning = defineWorkflow(
@@ -21,7 +22,7 @@ const longRunning = defineWorkflow(
 );
 
 // Start the workflow
-const handle = await longRunning.run();
+const handle = await ow.runWorkflow(longRunning.spec);
 
 // Cancel it before it completes
 await handle.cancel();
@@ -67,7 +68,7 @@ no new steps will run on the next poll.
 After calling `cancel()`, you can verify the status:
 
 ```ts
-const handle = await workflow.run();
+const handle = await ow.runWorkflow(workflow.spec);
 await handle.cancel();
 
 // Waiting for result on a canceled workflow throws

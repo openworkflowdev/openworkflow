@@ -43,17 +43,25 @@ A workflow consists of:
 
 ## Running a Workflow
 
-Start a workflow by calling `.run()`:
+Start a workflow by calling `ow.runWorkflow()` with the workflow's `spec`:
 
 ```ts
+import { ow } from "./openworkflow/client";
 import { sendWelcomeEmail } from "./workflows/send-welcome-email";
 
-const handle = await sendWelcomeEmail.run({ userId: "user_123" });
+const handle = await ow.runWorkflow(sendWelcomeEmail.spec, {
+  userId: "user_123",
+});
 ```
 
-The `run()` method returns a handle immediately. The actual workflow execution
+`ow.runWorkflow()` returns a handle immediately. The actual workflow execution
 happens in a worker process. This lets your application continue without waiting
 for the workflow to complete.
+
+<Note>
+  If you define a workflow with `ow.defineWorkflow(...)` instead, it returns a
+  runnable workflow that supports `.run(...)` directly.
+</Note>
 
 ### Scheduling a Workflow Run
 
@@ -61,7 +69,8 @@ You can schedule a workflow run for a specific time by passing `availableAt`:
 
 ```ts
 const runAt = new Date("2026-02-05T15:00:00.000Z");
-const handle = await sendWelcomeEmail.run(
+const handle = await ow.runWorkflow(
+  sendWelcomeEmail.spec,
   { userId: "user_123" },
   { availableAt: runAt },
 );
@@ -71,7 +80,8 @@ You can also pass a duration string using the same [duration
 format](/docs/sleeping#duration-formats) as `step.sleep`:
 
 ```ts
-const handle = await sendWelcomeEmail.run(
+const handle = await ow.runWorkflow(
+  sendWelcomeEmail.spec,
   { userId: "user_123" },
   { availableAt: "5m" },
 );
@@ -85,7 +95,9 @@ it. If `availableAt` is in the past, the run is immediately available.
 If you need to wait for a workflow to complete, use `.result()` on the handle:
 
 ```ts
-const handle = await sendWelcomeEmail.run({ userId: "user_123" });
+const handle = await ow.runWorkflow(sendWelcomeEmail.spec, {
+  userId: "user_123",
+});
 
 // Wait for completion (polls the database)
 const result = await handle.result();
@@ -183,7 +195,7 @@ The workflow function receives an object with three properties:
 
 | Parameter | Type             | Description                                       |
 | --------- | ---------------- | ------------------------------------------------- |
-| `input`   | Generic          | The input data passed to `workflow.run()`         |
+| `input`   | Generic          | The input data passed when starting the workflow  |
 | `step`    | `StepApi`        | API for defining steps (`step.run`, `step.sleep`) |
 | `version` | `string \| null` | The workflow version, if specified                |
 

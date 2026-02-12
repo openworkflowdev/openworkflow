@@ -115,7 +115,7 @@ ow.implementWorkflow(emailSpec, async ({ input, step }) => {
 When you run a workflow, the handle is typed with the output:
 
 ```ts
-const handle = await processOrder.run({
+const handle = await ow.runWorkflow(processOrder.spec, {
   orderId: "123",
   customerId: "456",
 });
