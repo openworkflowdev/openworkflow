@@ -5,6 +5,7 @@ import type { WorkflowRun } from "./core/workflow.js";
 import type { RetryPolicy } from "./workflow.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
+export const DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Backend is the interface for backend providers to implement.

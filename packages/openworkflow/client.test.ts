@@ -1,6 +1,7 @@
+import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
 import { OpenWorkflow } from "./client.js";
 import { BackendPostgres } from "./postgres.js";
-import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
+import { DEFAULT_POSTGRES_URL, Postgres } from "./postgres/postgres.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   defineWorkflowSpec,
@@ -327,6 +328,67 @@ describe("OpenWorkflow", () => {
     const handle = await workflow.run({ value: 1 });
 
     expect(handle.workflowRun.version).toBeNull();
+  });
+
+  test("creates workflow run with idempotency key", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "idempotency-test" },
+      noopFn,
+    );
+    const key = randomUUID();
+    const handle = await workflow.run({ value: 1 }, { idempotencyKey: key });
+
+    expect(handle.workflowRun.idempotencyKey).toBe(key);
+  });
+
+  test("reuses existing workflow run for same idempotency key", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "idempotency-dedupe-test" },
+      noopFn,
+    );
+    const key = randomUUID();
+
+    const first = await workflow.run({ value: 1 }, { idempotencyKey: key });
+    const second = await workflow.run({ value: 2 }, { idempotencyKey: key });
+
+    expect(second.workflowRun.id).toBe(first.workflowRun.id);
+    expect(second.workflowRun.input).toEqual(first.workflowRun.input);
+  });
+
+  test("creates a new workflow run after the 24h idempotency window", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+    const workflow = client.defineWorkflow(
+      { name: "idempotency-expiration-test" },
+      noopFn,
+    );
+    const key = randomUUID();
+
+    const first = await workflow.run({ value: 1 }, { idempotencyKey: key });
+
+    const internalBackend = backend as unknown as {
+      pg: Postgres;
+      namespaceId: string;
+    };
+    const staleCreatedAt = new Date(
+      Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS - 60_000,
+    );
+
+    await internalBackend.pg`
+      UPDATE "openworkflow"."workflow_runs"
+      SET "created_at" = ${staleCreatedAt}
+      WHERE "namespace_id" = ${internalBackend.namespaceId}
+        AND "id" = ${first.workflowRun.id}
+    `;
+
+    const second = await workflow.run({ value: 2 }, { idempotencyKey: key });
+    expect(second.workflowRun.id).not.toBe(first.workflowRun.id);
   });
 
   test("cancels workflow run via handle", async () => {
