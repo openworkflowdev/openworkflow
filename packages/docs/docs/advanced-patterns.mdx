@@ -111,7 +111,7 @@ TypeScript will catch type errors at compile time, preventing runtime issues.
 Wait for a workflow to complete and get its result:
 
 ```ts
-const run = await myWorkflow.run({ data: "..." });
+const run = await ow.runWorkflow(myWorkflow.spec, { data: "..." });
 
 // Wait for the workflow to finish (polls the database)
 const result = await run.result();
@@ -129,7 +129,7 @@ Cancel a workflow that is pending, running, or sleeping to prevent it from
 continuing:
 
 ```ts
-const handle = await myWorkflow.run({ data: "..." });
+const handle = await ow.runWorkflow(myWorkflow.spec, { data: "..." });
 
 // Cancel the workflow
 await handle.cancel();
@@ -191,7 +191,7 @@ const summarizeDoc = defineWorkflow(
 );
 
 // Throws before enqueueing the workflow because the input isn't a URL
-await summarizeDoc.run({ docUrl: "not-a-url" });
+await ow.runWorkflow(summarizeDoc.spec, { docUrl: "not-a-url" });
 ```
 
 Any validator function works as long as it throws on invalid data. This supports

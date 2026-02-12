@@ -74,14 +74,14 @@ bun openworkflow/hello-world.run.ts
 
 </CodeGroup>
 
-This script calls `workflow.run()` to create a new workflow run in the database.
-The worker in your first terminal picks it up, executes each step, and marks it
-complete.
+This script calls `ow.runWorkflow(helloWorld.spec, {})` to create a new workflow
+run in the database. The worker in your first terminal picks it up, executes
+each step, and marks it complete.
 
 <Note>
   The `hello-world.run.ts` file is a temporary helper for testing. In a real
-  app, you'd call `workflow.run()` from your API routes, scripts, or other
-  application code.
+  app, you'd call `ow.runWorkflow(workflow.spec, input)` from your API routes,
+  scripts, or other application code.
 </Note>
 
 ## 4. View workflows in the dashboard

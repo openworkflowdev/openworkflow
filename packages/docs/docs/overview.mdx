@@ -21,7 +21,8 @@ Your application enqueues workflow runs. Workers pick them up. The backend
 
 When a run starts:
 
-1. Your app calls `workflow.run()`, creating a `pending` run in the database
+1. Your app enqueues a run (for example, with `ow.runWorkflow(workflow.spec,
+input)`), creating a `pending` run in the database
 2. A worker claims the run and marks it `running`
 3. The worker replays workflow code from the beginning
 4. Completed steps return cached outputs; new steps execute and persist results

@@ -15,9 +15,10 @@ is even enqueued — preventing invalid data from entering your system.
 When you define a workflow, you can provide a `schema`. OpenWorkflow uses this
 schema to:
 
-1. **Validate inputs at runtime**: When `workflow.run()` is called, the input is
-   validated immediately. If validation fails, an error is thrown before the
-   workflow is enqueued, preventing invalid data from entering your system.
+1. **Validate inputs at runtime**: When you start a run (for example, with
+   `ow.runWorkflow(workflow.spec, input)`), the input is validated immediately.
+   If validation fails, an error is thrown before the workflow is enqueued,
+   preventing invalid data from entering your system.
 2. **Type Safety**: The `input` parameter in your workflow function is
    automatically typed based on your schema.
 
@@ -141,10 +142,11 @@ When validation fails, OpenWorkflow throws a detailed error that includes
 information about what went wrong:
 
 ```ts
+import { ow } from "./openworkflow/client";
 import { sendEmail } from "./workflows/send-email";
 
 try {
-  await sendEmail.run({
+  await ow.runWorkflow(sendEmail.spec, {
     to: "invalid-email", // Invalid email format
     subject: "", // Too short
     body: "Hello",
