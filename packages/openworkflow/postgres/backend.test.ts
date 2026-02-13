@@ -1,6 +1,10 @@
 import { testBackend } from "../backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
-import { DEFAULT_POSTGRES_URL } from "./postgres.js";
+import {
+  DEFAULT_POSTGRES_URL,
+  dropSchema,
+  newPostgresMaxOne,
+} from "./postgres.js";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
@@ -25,5 +29,68 @@ describe("BackendPostgres.connect errors", () => {
     await expect(BackendPostgres.connect("not-a-valid-url")).rejects.toThrow(
       /Postgres backend failed to connect.*postgresql:\/\/user:pass@host:port\/db.*:/,
     );
+  });
+
+  test("throws a clear error for invalid schema names", async () => {
+    await expect(
+      BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+        schema: "invalid-schema",
+      }),
+    ).rejects.toThrow(/Invalid schema name/);
+  });
+
+  test("throws for schema names longer than 63 bytes", async () => {
+    await expect(
+      BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+        schema: "a".repeat(64),
+      }),
+    ).rejects.toThrow(/at most 63 bytes/i);
+  });
+});
+
+describe("BackendPostgres schema option", () => {
+  test("stores workflow data in the configured schema", async () => {
+    const schema = `test_schema_${randomUUID().replaceAll("-", "_")}`;
+    const namespaceId = randomUUID();
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId,
+      schema,
+    });
+
+    try {
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "schema-test",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(schema)}.${pg("workflow_runs")}`;
+
+        const [record] = await pg<{ id: string }[]>`
+          SELECT "id"
+          FROM ${workflowRunsTable}
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${workflowRun.id}
+          LIMIT 1
+        `;
+
+        expect(record?.id).toBe(workflowRun.id);
+      } finally {
+        await pg.end();
+      }
+    } finally {
+      await backend.stop();
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      await dropSchema(pg, schema);
+      await pg.end();
+    }
   });
 });
