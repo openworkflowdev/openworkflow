@@ -225,10 +225,11 @@ await step.sleep("wait-one-hour", "1h");
 ### 4.1. Step Failures & Retries
 
 When a step's function throws an error, the framework records the error in the
-`step_attempt` and sets its status to `failed`. The error then propagates up. If
-the run is retryable, the entire workflow run is rescheduled with exponential
-backoff by setting its `availableAt` timestamp to a future time. On the next
-execution, the replay will reach the failed step and re-execute its function.
+`step_attempt` and sets its status to `failed`. The error then propagates up.
+Retry scheduling for that failure is driven by the failed-attempt count for that
+specific `stepName` in the workflow run. If retryable, the workflow run is
+rescheduled by setting `availableAt` to the computed backoff time. On the next
+execution, replay reaches the failed step and re-executes its function.
 
 ### 4.2. Workflow Failures & Retries
 
@@ -241,25 +242,12 @@ status is set to `failed` permanently.
 
 ### 4.3. Retry Policy
 
-A `RetryPolicy` controls the backoff and retry limits for a workflow run. They
-are defined at the workflow spec level and apply to all runs of that workflow:
+OpenWorkflow uses the same `RetryPolicy` shape for two separate concerns:
 
-```ts
-const workflow = ow.defineWorkflow(
-  {
-    name: "charge-customer",
-    retryPolicy: {
-      initialInterval: "1s",
-      backoffCoefficient: 2,
-      maximumInterval: "100s",
-      maximumAttempts: Infinity, // unlimited
-    },
-  },
-  async ({ step }) => {
-    // workflow implementation
-  },
-);
-```
+- **Step retry policy** (`step.run({ retryPolicy })` or step defaults) for
+  step-function failures. Budgets/backoff are tracked per step name.
+- **Workflow retry policy** (`workflow.spec.retryPolicy`) for workflow-level
+  failures outside step execution.
 
 ### 4.4. Workflow Deadlines
 

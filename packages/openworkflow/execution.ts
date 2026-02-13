@@ -4,7 +4,6 @@ import { serializeError } from "./core/error.js";
 import type { JsonValue } from "./core/json.js";
 import type { StepAttempt, StepAttemptCache } from "./core/step.js";
 import {
-  createStepAttemptCacheFromAttempts,
   getCachedStepAttempt,
   addToStepAttemptCache,
   normalizeStepOutput,
@@ -12,7 +11,10 @@ import {
   createSleepContext,
 } from "./core/step.js";
 import type { WorkflowRun } from "./core/workflow.js";
-import type { RetryPolicy } from "./workflow.js";
+import {
+  computeFailedWorkflowRunUpdate,
+  type RetryPolicy,
+} from "./workflow.js";
 
 /**
  * Config for an individual step defined with `step.run()`.
@@ -22,6 +24,10 @@ export interface StepFunctionConfig {
    * The name of the step.
    */
   name: string;
+  /**
+   * Optional retry policy override for this step.
+   */
+  retryPolicy?: Partial<RetryPolicy>;
 }
 
 /**
@@ -77,6 +83,95 @@ class SleepSignal extends Error {
 }
 
 /**
+ * Error wrapper used to pass step failure metadata to executeWorkflow.
+ */
+class StepError extends Error {
+  readonly stepName: string;
+  readonly stepFailedAttempts: number;
+  readonly retryPolicy: RetryPolicy;
+  readonly originalError: unknown;
+
+  constructor(
+    options: Readonly<{
+      stepName: string;
+      stepFailedAttempts: number;
+      retryPolicy: RetryPolicy;
+      error: unknown;
+    }>,
+  ) {
+    const serialized = serializeError(options.error);
+    super(serialized.message, { cause: options.error });
+    this.name = "StepError";
+    this.stepName = options.stepName;
+    this.stepFailedAttempts = options.stepFailedAttempts;
+    this.retryPolicy = options.retryPolicy;
+    this.originalError = options.error;
+  }
+}
+
+/**
+ * Retry defaults for step failures.
+ */
+const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
+  initialInterval: "1s",
+  backoffCoefficient: 2,
+  maximumInterval: "100s",
+  maximumAttempts: Infinity, // unlimited
+};
+
+const TERMINAL_RETRY_POLICY: RetryPolicy = {
+  ...DEFAULT_STEP_RETRY_POLICY,
+  maximumAttempts: 0,
+};
+
+/**
+ * Resolve a partial step retry policy by merging it with step defaults.
+ * @param partial - Optional partial retry policy
+ * @returns Fully resolved step retry policy
+ */
+function resolveStepRetryPolicy(partial?: Partial<RetryPolicy>): RetryPolicy {
+  if (!partial) return DEFAULT_STEP_RETRY_POLICY;
+  return { ...DEFAULT_STEP_RETRY_POLICY, ...partial };
+}
+
+/**
+ * Derived in-memory step state for a single workflow execution pass.
+ */
+export interface StepExecutionState {
+  cache: StepAttemptCache;
+  failedCountsByStepName: ReadonlyMap<string, number>;
+}
+
+/**
+ * Build step execution state from loaded attempts in one pass.
+ * @param attempts - Loaded step attempts for the workflow run
+ * @returns Successful cache plus failed-attempt counts by step name
+ */
+export function createStepExecutionStateFromAttempts(
+  attempts: readonly StepAttempt[],
+): StepExecutionState {
+  const cache = new Map<string, StepAttempt>();
+  const failedCountsByStepName = new Map<string, number>();
+
+  for (const attempt of attempts) {
+    if (attempt.status === "completed" || attempt.status === "succeeded") {
+      cache.set(attempt.stepName, attempt);
+      continue;
+    }
+
+    if (attempt.status === "failed") {
+      const previousCount = failedCountsByStepName.get(attempt.stepName) ?? 0;
+      failedCountsByStepName.set(attempt.stepName, previousCount + 1);
+    }
+  }
+
+  return {
+    cache,
+    failedCountsByStepName,
+  };
+}
+
+/**
  * Configures the options for a StepExecutor.
  */
 export interface StepExecutorOptions {
@@ -95,20 +190,23 @@ class StepExecutor implements StepApi {
   private readonly workflowRunId: string;
   private readonly workerId: string;
   private cache: StepAttemptCache;
+  private readonly failedCountsByStepName: Map<string, number>;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
 
-    this.cache = createStepAttemptCacheFromAttempts(options.attempts);
+    const state = createStepExecutionStateFromAttempts(options.attempts);
+    this.cache = state.cache;
+    this.failedCountsByStepName = new Map(state.failedCountsByStepName);
   }
 
   async run<Output>(
     config: Readonly<StepFunctionConfig>,
     fn: StepFunction<Output>,
   ): Promise<Output> {
-    const { name } = config;
+    const { name, retryPolicy: retryPolicyOverride } = config;
 
     // return cached result if available
     const existingAttempt = getCachedStepAttempt(this.cache, name);
@@ -151,7 +249,17 @@ class StepExecutor implements StepApi {
         workerId: this.workerId,
         error: serializeError(error),
       });
-      throw error;
+
+      const previousFailedAttempts = this.failedCountsByStepName.get(name) ?? 0;
+      const stepFailedAttempts = previousFailedAttempts + 1;
+      this.failedCountsByStepName.set(name, stepFailedAttempts);
+
+      throw new StepError({
+        stepName: name,
+        stepFailedAttempts,
+        retryPolicy: resolveStepRetryPolicy(retryPolicyOverride),
+        error,
+      });
     }
   }
 
@@ -205,6 +313,7 @@ export interface ExecuteWorkflowParams {
  * - Completing, failing, or sleeping the workflow run based on the outcome
  * @param params - The execution parameters
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function executeWorkflow(
   params: Readonly<ExecuteWorkflowParams>,
 ): Promise<void> {
@@ -289,6 +398,40 @@ export async function executeWorkflow(
         availableAt: error.resumeAt,
       });
 
+      return;
+    }
+
+    // handle step error
+    if (error instanceof StepError) {
+      const serializedError = serializeError(error.originalError);
+      const retryDecision = computeFailedWorkflowRunUpdate(
+        error.retryPolicy,
+        error.stepFailedAttempts,
+        workflowRun.deadlineAt,
+        serializedError,
+        new Date(),
+      );
+
+      if (retryDecision.status === "failed") {
+        await backend.failWorkflowRun({
+          workflowRunId: workflowRun.id,
+          workerId,
+          error: serializedError,
+          retryPolicy: TERMINAL_RETRY_POLICY,
+        });
+        return;
+      }
+
+      if (!retryDecision.availableAt) {
+        throw new Error("Step retry decision missing availableAt");
+      }
+
+      await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+        workflowRunId: workflowRun.id,
+        workerId,
+        error: serializedError,
+        availableAt: retryDecision.availableAt,
+      });
       return;
     }
 

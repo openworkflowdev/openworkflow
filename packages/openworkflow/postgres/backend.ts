@@ -15,6 +15,7 @@ import {
   FailStepAttemptParams,
   CompleteStepAttemptParams,
   FailWorkflowRunParams,
+  RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
 } from "../backend.js";
@@ -417,6 +418,35 @@ export class BackendPostgres implements Backend {
     `;
 
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    return updated;
+  }
+
+  async rescheduleWorkflowRunAfterFailedStepAttempt(
+    params: RescheduleWorkflowRunAfterFailedStepAttemptParams,
+  ): Promise<WorkflowRun> {
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE "openworkflow"."workflow_runs"
+      SET
+        "status" = 'pending',
+        "available_at" = ${params.availableAt},
+        "finished_at" = NULL,
+        "error" = ${this.pg.json(params.error)},
+        "worker_id" = NULL,
+        "started_at" = NULL,
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" = 'running'
+      AND "worker_id" = ${params.workerId}
+      RETURNING *
+    `;
+
+    if (!updated) {
+      throw new Error(
+        "Failed to reschedule workflow run after failed step attempt",
+      );
+    }
 
     return updated;
   }

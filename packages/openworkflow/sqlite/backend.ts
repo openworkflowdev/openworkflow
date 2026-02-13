@@ -15,6 +15,7 @@ import {
   FailStepAttemptParams,
   CompleteStepAttemptParams,
   FailWorkflowRunParams,
+  RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
 } from "../backend.js";
@@ -482,6 +483,54 @@ export class BackendSqlite implements Backend {
 
     const updated = await this.getWorkflowRun({ workflowRunId });
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    return updated;
+  }
+
+  async rescheduleWorkflowRunAfterFailedStepAttempt(
+    params: RescheduleWorkflowRunAfterFailedStepAttemptParams,
+  ): Promise<WorkflowRun> {
+    const currentTime = now();
+
+    const stmt = this.db.prepare(`
+      UPDATE "workflow_runs"
+      SET
+        "status" = 'pending',
+        "available_at" = ?,
+        "finished_at" = NULL,
+        "error" = ?,
+        "worker_id" = NULL,
+        "started_at" = NULL,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+      AND "worker_id" = ?
+    `);
+
+    const result = stmt.run(
+      toISO(params.availableAt),
+      toJSON(params.error),
+      currentTime,
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    );
+
+    if (result.changes === 0) {
+      throw new Error(
+        "Failed to reschedule workflow run after failed step attempt",
+      );
+    }
+
+    const updated = await this.getWorkflowRun({
+      workflowRunId: params.workflowRunId,
+    });
+    if (!updated) {
+      throw new Error(
+        "Failed to reschedule workflow run after failed step attempt",
+      );
+    }
 
     return updated;
   }

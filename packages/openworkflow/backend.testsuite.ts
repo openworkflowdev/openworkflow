@@ -910,6 +910,44 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
+    describe("rescheduleWorkflowRunAfterFailedStepAttempt()", () => {
+      test("reschedules a running workflow run with explicit availableAt", async () => {
+        const claimed = await createClaimedWorkflowRun(backend);
+        const availableAt = new Date(Date.now() + 5000);
+        const error = { message: "step failed" };
+
+        const updated =
+          await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+            workflowRunId: claimed.id,
+            workerId: claimed.workerId ?? "",
+            error,
+            availableAt,
+          });
+
+        expect(updated.status).toBe("pending");
+        expect(updated.availableAt?.getTime()).toBe(availableAt.getTime());
+        expect(updated.error).toEqual(error);
+        expect(updated.workerId).toBeNull();
+        expect(updated.startedAt).toBeNull();
+        expect(updated.finishedAt).toBeNull();
+      });
+
+      test("fails if the worker does not own the run", async () => {
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+            workflowRunId: claimed.id,
+            workerId: randomUUID(),
+            error: { message: "step failed" },
+            availableAt: new Date(Date.now() + 1000),
+          }),
+        ).rejects.toThrow(
+          "Failed to reschedule workflow run after failed step attempt",
+        );
+      });
+    });
+
     describe("createStepAttempt()", () => {
       test("creates a step attempt", async () => {
         const workflowRun = await createClaimedWorkflowRun(backend);
