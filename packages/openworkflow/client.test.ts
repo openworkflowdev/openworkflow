@@ -375,13 +375,15 @@ describe("OpenWorkflow", () => {
     const internalBackend = backend as unknown as {
       pg: Postgres;
       namespaceId: string;
+      schema: string;
     };
     const staleCreatedAt = new Date(
       Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS - 60_000,
     );
+    const workflowRunsTable = internalBackend.pg`${internalBackend.pg(internalBackend.schema)}.${internalBackend.pg("workflow_runs")}`;
 
     await internalBackend.pg`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET "created_at" = ${staleCreatedAt}
       WHERE "namespace_id" = ${internalBackend.namespaceId}
         AND "id" = ${first.workflowRun.id}
