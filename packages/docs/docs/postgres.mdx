@@ -71,8 +71,7 @@ const backend = await BackendPostgres.connect(url, {
 ## Migrations
 
 By default, `BackendPostgres.connect()` runs database migrations automatically.
-This creates the configured schema (default: `openworkflow`) and required
-tables.
+This creates the configured schema (default: `openworkflow`) and required tables.
 
 To disable automatic migrations:
 
@@ -86,8 +85,7 @@ When disabled, ensure you run migrations separately before starting workers.
 
 ## Schema
 
-OpenWorkflow creates tables in the configured schema (default:
-`openworkflow`):
+OpenWorkflow creates tables in the configured schema (default: `openworkflow`):
 
 - `<schema>.workflow_runs` - Stores workflow run state
 - `<schema>.step_attempts` - Stores step execution history
