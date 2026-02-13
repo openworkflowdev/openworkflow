@@ -422,10 +422,6 @@ export async function executeWorkflow(
         return;
       }
 
-      if (!retryDecision.availableAt) {
-        throw new Error("Step retry decision missing availableAt");
-      }
-
       await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
         workflowRunId: workflowRun.id,
         workerId,
