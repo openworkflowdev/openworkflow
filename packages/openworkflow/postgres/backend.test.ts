@@ -2,7 +2,6 @@ import { testBackend } from "../backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
   DEFAULT_POSTGRES_URL,
-  Postgres,
   dropSchema,
   newPostgresMaxOne,
 } from "./postgres.js";
@@ -62,21 +61,22 @@ describe("BackendPostgres schema option", () => {
         deadlineAt: null,
       });
 
-      const internalBackend = backend as unknown as {
-        pg: Postgres;
-        schema: string;
-      };
-      const workflowRunsTable = internalBackend.pg`${internalBackend.pg(internalBackend.schema)}.${internalBackend.pg("workflow_runs")}`;
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(schema)}.${pg("workflow_runs")}`;
 
-      const [record] = await internalBackend.pg<{ id: string }[]>`
-        SELECT "id"
-        FROM ${workflowRunsTable}
-        WHERE "namespace_id" = ${namespaceId}
-          AND "id" = ${workflowRun.id}
-        LIMIT 1
-      `;
+        const [record] = await pg<{ id: string }[]>`
+          SELECT "id"
+          FROM ${workflowRunsTable}
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${workflowRun.id}
+          LIMIT 1
+        `;
 
-      expect(record?.id).toBe(workflowRun.id);
+        expect(record?.id).toBe(workflowRun.id);
+      } finally {
+        await pg.end();
+      }
     } finally {
       await backend.stop();
 

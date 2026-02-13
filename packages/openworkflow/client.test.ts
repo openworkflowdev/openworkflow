@@ -1,7 +1,11 @@
 import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
 import { OpenWorkflow } from "./client.js";
 import { BackendPostgres } from "./postgres.js";
-import { DEFAULT_POSTGRES_URL, Postgres } from "./postgres/postgres.js";
+import {
+  DEFAULT_POSTGRES_URL,
+  DEFAULT_SCHEMA,
+  newPostgresMaxOne,
+} from "./postgres/postgres.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   defineWorkflowSpec,
@@ -372,22 +376,21 @@ describe("OpenWorkflow", () => {
 
     const first = await workflow.run({ value: 1 }, { idempotencyKey: key });
 
-    const internalBackend = backend as unknown as {
-      pg: Postgres;
-      namespaceId: string;
-      schema: string;
-    };
     const staleCreatedAt = new Date(
       Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS - 60_000,
     );
-    const workflowRunsTable = internalBackend.pg`${internalBackend.pg(internalBackend.schema)}.${internalBackend.pg("workflow_runs")}`;
-
-    await internalBackend.pg`
-      UPDATE ${workflowRunsTable}
-      SET "created_at" = ${staleCreatedAt}
-      WHERE "namespace_id" = ${internalBackend.namespaceId}
-        AND "id" = ${first.workflowRun.id}
-    `;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    try {
+      const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
+      await pg`
+        UPDATE ${workflowRunsTable}
+        SET "created_at" = ${staleCreatedAt}
+        WHERE "namespace_id" = ${first.workflowRun.namespaceId}
+          AND "id" = ${first.workflowRun.id}
+      `;
+    } finally {
+      await pg.end();
+    }
 
     const second = await workflow.run({ value: 2 }, { idempotencyKey: key });
     expect(second.workflowRun.id).not.toBe(first.workflowRun.id);
@@ -533,10 +536,12 @@ describe("OpenWorkflow", () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
-      const workflow = client.defineWorkflow(
-        { name: "define-wrap-test" },
-        ({ input }) => ({ doubled: (input as { n: number }).n * 2 }),
-      );
+      const workflow = client.defineWorkflow<
+        { n: number },
+        { doubled: number }
+      >({ name: "define-wrap-test" }, ({ input }) => ({
+        doubled: input.n * 2,
+      }));
 
       const handle = await workflow.run({ n: 21 });
       const worker = client.newWorker();
