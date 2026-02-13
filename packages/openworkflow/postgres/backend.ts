@@ -29,6 +29,7 @@ import {
   Postgres,
   migrate,
   DEFAULT_SCHEMA,
+  assertValidSchemaName,
 } from "./postgres.js";
 
 const DEFAULT_PAGINATION_PAGE_SIZE = 100;
@@ -36,6 +37,7 @@ const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 interface BackendPostgresOptions {
   namespaceId?: string;
   runMigrations?: boolean;
+  schema?: string;
 }
 
 /**
@@ -44,10 +46,12 @@ interface BackendPostgresOptions {
 export class BackendPostgres implements Backend {
   private pg: Postgres;
   private namespaceId: string;
+  private schema: string;
 
-  private constructor(pg: Postgres, namespaceId: string) {
+  private constructor(pg: Postgres, namespaceId: string, schema: string) {
     this.pg = pg;
     this.namespaceId = namespaceId;
+    this.schema = schema;
   }
 
   /**
@@ -63,21 +67,23 @@ export class BackendPostgres implements Backend {
     url: string,
     options?: BackendPostgresOptions,
   ): Promise<BackendPostgres> {
-    const { namespaceId, runMigrations } = {
+    const { namespaceId, runMigrations, schema } = {
       namespaceId: DEFAULT_NAMESPACE_ID,
       runMigrations: true,
+      schema: DEFAULT_SCHEMA,
       ...options,
     };
+    assertValidSchemaName(schema);
 
     try {
       if (runMigrations) {
         const pgForMigrate = newPostgresMaxOne(url);
-        await migrate(pgForMigrate, DEFAULT_SCHEMA);
+        await migrate(pgForMigrate, schema);
         await pgForMigrate.end();
       }
 
       const pg = newPostgres(url);
-      return new BackendPostgres(pg, namespaceId);
+      return new BackendPostgres(pg, namespaceId, schema);
     } catch (error) {
       throw wrapError(
         'Postgres backend failed to connect. Check the connection URL (e.g. "postgresql://user:pass@host:port/db").',
@@ -132,8 +138,10 @@ export class BackendPostgres implements Backend {
     pg: Postgres,
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable(pg);
+
     const [workflowRun] = await pg<WorkflowRun[]>`
-      INSERT INTO "openworkflow"."workflow_runs" (
+      INSERT INTO ${workflowRunsTable} (
         "namespace_id",
         "id",
         "workflow_name",
@@ -179,9 +187,11 @@ export class BackendPostgres implements Backend {
     idempotencyKey: string,
     createdAt: Date,
   ): Promise<WorkflowRun | null> {
+    const workflowRunsTable = this.workflowRunsTable(pg);
+
     const [workflowRun] = await pg<WorkflowRun[]>`
       SELECT *
-      FROM "openworkflow"."workflow_runs"
+      FROM ${workflowRunsTable}
       WHERE "namespace_id" = ${this.namespaceId}
         AND "workflow_name" = ${workflowName}
         AND "idempotency_key" = ${idempotencyKey}
@@ -196,9 +206,11 @@ export class BackendPostgres implements Backend {
   async getWorkflowRun(
     params: GetWorkflowRunParams,
   ): Promise<WorkflowRun | null> {
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [workflowRun] = await this.pg<WorkflowRun[]>`
       SELECT *
-      FROM "openworkflow"."workflow_runs"
+      FROM ${workflowRunsTable}
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       LIMIT 1
@@ -224,10 +236,11 @@ export class BackendPostgres implements Backend {
     const order = before
       ? this.pg`ORDER BY "created_at" ASC, "id" ASC`
       : this.pg`ORDER BY "created_at" DESC, "id" DESC`;
+    const workflowRunsTable = this.workflowRunsTable();
 
     const rows = await this.pg<WorkflowRun[]>`
       SELECT *
-      FROM "openworkflow"."workflow_runs"
+      FROM ${workflowRunsTable}
       WHERE ${whereClause}
       ${order}
       LIMIT ${limit + 1}
@@ -268,9 +281,11 @@ export class BackendPostgres implements Backend {
     // 1. mark any deadline-expired workflow runs as failed
     // 2. find an available workflow run to claim
     // 3. claim the workflow run
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [claimed] = await this.pg<WorkflowRun[]>`
       WITH expired AS (
-        UPDATE "openworkflow"."workflow_runs"
+        UPDATE ${workflowRunsTable}
         SET
           "status" = 'failed',
           "error" = ${this.pg.json({ message: "Workflow run deadline exceeded" })},
@@ -286,7 +301,7 @@ export class BackendPostgres implements Backend {
       ),
       candidate AS (
         SELECT "id"
-        FROM "openworkflow"."workflow_runs"
+        FROM ${workflowRunsTable}
         WHERE "namespace_id" = ${this.namespaceId}
           AND "status" IN ('pending', 'running', 'sleeping')
           AND "available_at" <= NOW()
@@ -298,7 +313,7 @@ export class BackendPostgres implements Backend {
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      UPDATE "openworkflow"."workflow_runs" AS wr
+      UPDATE ${workflowRunsTable} AS wr
       SET
         "status" = 'running',
         "attempts" = "attempts" + 1,
@@ -318,8 +333,10 @@ export class BackendPostgres implements Backend {
   async extendWorkflowRunLease(
     params: ExtendWorkflowRunLeaseParams,
   ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "available_at" = ${this.pg`NOW() + ${params.leaseDurationMs} * INTERVAL '1 millisecond'`},
         "updated_at" = NOW()
@@ -337,8 +354,10 @@ export class BackendPostgres implements Backend {
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
     // 'succeeded' status is deprecated
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "status" = 'sleeping',
         "available_at" = ${params.availableAt},
@@ -362,8 +381,10 @@ export class BackendPostgres implements Backend {
   async completeWorkflowRun(
     params: CompleteWorkflowRunParams,
   ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
@@ -399,8 +420,10 @@ export class BackendPostgres implements Backend {
       currentTime,
     );
 
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "status" = ${failureUpdate.status},
         "available_at" = ${failureUpdate.availableAt},
@@ -424,8 +447,10 @@ export class BackendPostgres implements Backend {
   async cancelWorkflowRun(
     params: CancelWorkflowRunParams,
   ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "status" = 'canceled',
         "worker_id" = NULL,
@@ -469,8 +494,10 @@ export class BackendPostgres implements Backend {
   async createStepAttempt(
     params: CreateStepAttemptParams,
   ): Promise<StepAttempt> {
+    const stepAttemptsTable = this.stepAttemptsTable();
+
     const [stepAttempt] = await this.pg<StepAttempt[]>`
-      INSERT INTO "openworkflow"."step_attempts" (
+      INSERT INTO ${stepAttemptsTable} (
         "namespace_id",
         "id",
         "workflow_run_id",
@@ -507,9 +534,11 @@ export class BackendPostgres implements Backend {
   async getStepAttempt(
     params: GetStepAttemptParams,
   ): Promise<StepAttempt | null> {
+    const stepAttemptsTable = this.stepAttemptsTable();
+
     const [stepAttempt] = await this.pg<StepAttempt[]>`
       SELECT *
-      FROM "openworkflow"."step_attempts"
+      FROM ${stepAttemptsTable}
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.stepAttemptId}
       LIMIT 1
@@ -534,10 +563,11 @@ export class BackendPostgres implements Backend {
     const order = before
       ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
       : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+    const stepAttemptsTable = this.stepAttemptsTable();
 
     const rows = await this.pg<StepAttempt[]>`
       SELECT *
-      FROM "openworkflow"."step_attempts"
+      FROM ${stepAttemptsTable}
       WHERE ${whereClause}
       ${order}
       LIMIT ${limit + 1}
@@ -619,15 +649,18 @@ export class BackendPostgres implements Backend {
   async completeStepAttempt(
     params: CompleteStepAttemptParams,
   ): Promise<StepAttempt> {
+    const stepAttemptsTable = this.stepAttemptsTable();
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<StepAttempt[]>`
-      UPDATE "openworkflow"."step_attempts" sa
+      UPDATE ${stepAttemptsTable} sa
       SET
         "status" = 'completed',
         "output" = ${this.pg.json(params.output)},
         "error" = NULL,
         "finished_at" = NOW(),
         "updated_at" = NOW()
-      FROM "openworkflow"."workflow_runs" wr
+      FROM ${workflowRunsTable} wr
       WHERE sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
@@ -645,15 +678,18 @@ export class BackendPostgres implements Backend {
   }
 
   async failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt> {
+    const stepAttemptsTable = this.stepAttemptsTable();
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<StepAttempt[]>`
-      UPDATE "openworkflow"."step_attempts" sa
+      UPDATE ${stepAttemptsTable} sa
       SET
         "status" = 'failed',
         "output" = NULL,
         "error" = ${this.pg.json(params.error)},
         "finished_at" = NOW(),
         "updated_at" = NOW()
-      FROM "openworkflow"."workflow_runs" wr
+      FROM ${workflowRunsTable} wr
       WHERE sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
@@ -668,6 +704,14 @@ export class BackendPostgres implements Backend {
     if (!updated) throw new Error("Failed to mark step attempt failed");
 
     return updated;
+  }
+
+  private workflowRunsTable(pg: Postgres = this.pg) {
+    return pg`${pg(this.schema)}.${pg("workflow_runs")}`;
+  }
+
+  private stepAttemptsTable(pg: Postgres = this.pg) {
+    return pg`${pg(this.schema)}.${pg("step_attempts")}`;
   }
 }
 

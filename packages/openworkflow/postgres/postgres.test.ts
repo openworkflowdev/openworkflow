@@ -38,6 +38,10 @@ describe("postgres", () => {
         expect(mig).not.toContain(`"openworkflow"`);
       }
     });
+
+    test("throws for invalid schema names", () => {
+      expect(() => migrations("invalid-schema")).toThrow(/Invalid schema name/);
+    });
   });
 
   describe("migrate()", () => {

@@ -40,7 +40,7 @@ For most production use cases, use PostgreSQL 14 or later:
 
 - The connecting user needs permissions to create schemas and tables (for
   migrations)
-- Workflow state is stored in the `openworkflow` schema
+- Workflow state is stored in the configured schema (default: `openworkflow`)
 
 For single-server deployments, SQLite works well.
 
@@ -63,6 +63,7 @@ export default defineConfig({
     process.env.OPENWORKFLOW_POSTGRES_URL!,
     {
       namespaceId: process.env.OPENWORKFLOW_NAMESPACE_ID || "production",
+      schema: process.env.OPENWORKFLOW_SCHEMA || "openworkflow",
     },
   ),
   dirs: ["./openworkflow"],
@@ -72,16 +73,17 @@ export default defineConfig({
 });
 ```
 
-In this example, we use the `OPENWORKFLOW_POSTGRES_URL` and
-`OPENWORKFLOW_NAMESPACE_ID` env vars to dynamically set the Postgres URL and
-namespace, but you can set this up however you'd like.
+In this example, we use `OPENWORKFLOW_POSTGRES_URL`,
+`OPENWORKFLOW_NAMESPACE_ID`, and `OPENWORKFLOW_SCHEMA` env vars to dynamically
+set the Postgres URL, namespace, and schema, but you can set this up however
+you'd like.
 
 ### 3. Migrations
 
 Migrations run automatically when the backend connects. OpenWorkflow creates:
 
-- `openworkflow.workflow_runs` - Stores workflow run state
-- `openworkflow.step_attempts` - Stores step execution history
+- `<schema>.workflow_runs` - Stores workflow run state
+- `<schema>.step_attempts` - Stores step execution history
 
 ### 4. Deploy Workers
 
