@@ -44,7 +44,11 @@ export default defineConfig({
 ```
 
 The CLI automatically finds this file by searching up from the current
-directory.
+directory. If your config lives somewhere else, pass an explicit path:
+
+```bash
+npx @openworkflow/cli worker start --config src/openworkflow.config.ts
+```
 
 ## Verify Configuration
 

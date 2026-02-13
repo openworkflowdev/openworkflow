@@ -46,6 +46,22 @@ const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
 const jiti = createJiti(import.meta.url);
 
 /**
+ * Load OpenWorkflow config from an explicit path.
+ * @param configPath - Explicit config file path
+ * @param startDir - Optional base directory for resolving relative paths
+ * @returns The loaded configuration and metadata
+ */
+export async function loadConfigFromPath(
+  configPath: string,
+  startDir?: string,
+): Promise<LoadedConfig> {
+  const filePath = path.resolve(startDir ?? process.cwd(), configPath);
+  return existsSync(filePath)
+    ? importConfigFile(filePath)
+    : getEmptyLoadedConfig();
+}
+
+/**
  * Load the OpenWorkflow config at openworkflow.config.{ts,mts,cts,js,mjs,cjs}.
  * Searches up the directory tree from the starting directory to find the
  * nearest config file.
@@ -64,22 +80,7 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
       const filePath = path.join(currentDir, fileName);
 
       if (existsSync(filePath)) {
-        try {
-          const fileUrl = pathToFileURL(filePath).href;
-
-          const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
-            default: true,
-          });
-
-          return {
-            config,
-            configFile: filePath,
-          };
-        } catch (error: unknown) {
-          throw new Error(
-            `Failed to load config file ${filePath}: ${String(error)}`,
-          );
-        }
+        return await importConfigFile(filePath);
       }
     }
 
@@ -92,6 +93,35 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
     currentDir = parentDir;
   }
 
+  return getEmptyLoadedConfig();
+}
+
+/**
+ * Import a config file and wrap load errors with a stable message.
+ * @param filePath - Absolute config file path.
+ * @returns Loaded config metadata.
+ */
+async function importConfigFile(filePath: string): Promise<LoadedConfig> {
+  try {
+    const fileUrl = pathToFileURL(filePath).href;
+    const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
+      default: true,
+    });
+
+    return {
+      config,
+      configFile: filePath,
+    };
+  } catch (error: unknown) {
+    throw new Error(`Failed to load config file ${filePath}: ${String(error)}`);
+  }
+}
+
+/**
+ * Return an empty config result when no config file is found.
+ * @returns Empty config metadata.
+ */
+function getEmptyLoadedConfig(): LoadedConfig {
   return {
     // not great, but meant to match the c12 api since that is what was used in
     // the initial implementation of loadConfig

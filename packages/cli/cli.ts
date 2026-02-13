@@ -15,18 +15,21 @@ const program = new Command();
 program
   .name("openworkflow")
   .description("OpenWorkflow CLI - learn more at https://openworkflow.dev")
+  .usage("<command> [options]")
   .version(getVersion());
 
 // init
 program
   .command("init")
   .description("initialize OpenWorkflow")
+  .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(init));
 
 // doctor
 program
   .command("doctor")
   .description("check configuration and list available workflows")
+  .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(doctor));
 
 // worker
@@ -41,12 +44,14 @@ workerCmd
     "number of concurrent workflows to process",
     Number.parseInt,
   )
+  .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(workerStart));
 
 // dashboard
 program
   .command("dashboard")
   .description("start the dashboard to view workflow runs")
+  .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(dashboard));
 
 await program.parseAsync(process.argv);
