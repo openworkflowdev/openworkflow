@@ -422,12 +422,14 @@ export async function executeWorkflow(
         return;
       }
 
+      /* v8 ignore start -- defensive invariant */
       if (!retryDecision.availableAt) {
         // this should not happen when retry decision isn't failed
         // throw error to avoid silently swallowing retries, which we should
         // catch in tests if anything goes wrong
         throw new Error("Step retry decision missing availableAt");
       }
+      /* v8 ignore stop */
 
       await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
         workflowRunId: workflowRun.id,
