@@ -1,10 +1,12 @@
 # openworkflow
 
-## Unreleased
+## 0.7.0
 
-- Add workflow-scoped idempotency keys via
+- Add configurable workflow and step retry policies (#279, #294)
+- Add workflow-scoped idempotency keys (#287)
   `ow.runWorkflow(spec, input, { idempotencyKey })`
-- Built-in run idempotency dedupe period is 24 hours from run creation time
+- Switch worker polling to exponential backoff with jitter (#263)
+- Add support for custom database schemas (#293)
 
 ## 0.6.7
 

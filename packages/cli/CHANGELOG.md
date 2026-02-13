@@ -1,5 +1,11 @@
 # @openworkflow/cli
 
+## 0.4.1
+
+- Add support for `openworkflow` v0.7.0
+- Add `--config <path>` flag to specify a config file (#295)
+- Improve database connection and loading error messages (#256)
+
 ## 0.4.0
 
 - Remove `ow` alias in favor of `openworkflow`

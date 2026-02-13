@@ -1,5 +1,9 @@
 # @openworkflow/backend-sqlite
 
+## 0.6.1
+
+- Add support for `openworkflow` v0.7.0
+
 ## 0.6.0
 
 - This package is now a thin compatibility shim. Prefer importing

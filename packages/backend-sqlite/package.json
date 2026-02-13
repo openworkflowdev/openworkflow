@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/backend-sqlite",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "exports": {
     ".": {
@@ -19,7 +19,7 @@
     "openworkflow": "*"
   },
   "peerDependencies": {
-    "openworkflow": "^0.6.0"
+    "openworkflow": "^0.6.0 || ^0.7.0"
   },
   "engines": {
     "node": ">=22.5.0"
