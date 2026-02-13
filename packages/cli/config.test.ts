@@ -1,4 +1,4 @@
-import { defineConfig, loadConfig } from "./config.js";
+import { defineConfig, loadConfig, loadConfigFromPath } from "./config.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -106,5 +106,31 @@ describe("loadConfig", () => {
     } finally {
       process.chdir(originalCwd);
     }
+  });
+
+  test("loads an explicit config path", async () => {
+    const filePath = path.join(tmpDir, "src", "openworkflow.config.js");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `export default { name: "explicit" };`);
+
+    const { config, configFile } = await loadConfigFromPath(
+      "src/openworkflow.config.js",
+      tmpDir,
+    );
+    const cfg = config as unknown as TestConfig;
+    expect(cfg.name).toBe("explicit");
+    expect(configFile).toBe(filePath);
+  });
+
+  test("does not fallback to discovered config when explicit path is missing", async () => {
+    const filePath = path.join(tmpDir, "openworkflow.config.js");
+    fs.writeFileSync(filePath, `export default { name: "discovered" };`);
+
+    const { config, configFile } = await loadConfigFromPath(
+      "src/openworkflow.config.js",
+      tmpDir,
+    );
+    expect(config).toEqual({});
+    expect(configFile).toBeUndefined();
   });
 });

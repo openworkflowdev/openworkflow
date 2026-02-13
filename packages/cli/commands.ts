@@ -1,4 +1,4 @@
-import { WorkerConfig, loadConfig } from "./config.js";
+import { WorkerConfig, loadConfig, loadConfigFromPath } from "./config.js";
 import { CLIError } from "./errors.js";
 import {
   CONFIG,
@@ -31,6 +31,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type BackendChoice = "sqlite" | "postgres" | "both";
 
+interface CommandOptions {
+  config?: string;
+}
+
 /**
  * openworkflow -V | --version
  * @returns the version string, or "-" if it cannot be determined
@@ -57,11 +61,15 @@ export function getVersion(): string {
   return "-";
 }
 
-/** openworkflow init */
-export async function init(): Promise<void> {
+/**
+ * openworkflow init
+ * @param options - Command options
+ */
+export async function init(options: CommandOptions = {}): Promise<void> {
+  const configPath = options.config;
   p.intro("Initializing OpenWorkflow...");
 
-  const { configFile } = await loadConfigWithEnv();
+  const { configFile } = await loadConfigWithEnv(configPath);
   let configFileToDelete: string | null = null;
 
   if (configFile) {
@@ -123,7 +131,7 @@ export async function init(): Promise<void> {
     );
   }
 
-  const configFileName = getConfigFileName(packageJson);
+  const configFileName = configPath ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
   const runFileName = getRunFileName(packageJson);
@@ -191,11 +199,15 @@ export async function init(): Promise<void> {
   p.outro("✅ Setup complete!");
 }
 
-/** openworkflow doctor */
-export async function doctor(): Promise<void> {
+/**
+ * openworkflow doctor
+ * @param options - Command options
+ */
+export async function doctor(options: CommandOptions = {}): Promise<void> {
+  const configPath = options.config;
   consola.start("Running OpenWorkflow doctor...");
 
-  const { config, configFile } = await loadConfigWithEnv();
+  const { config, configFile } = await loadConfigWithEnv(configPath);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -244,14 +256,19 @@ export async function doctor(): Promise<void> {
   }
 }
 
+export type WorkerStartOptions = WorkerConfig & CommandOptions;
+
 /**
  * openworkflow worker start
- * @param cliOptions - Worker config overrides
+ * @param options - Worker config and command options
  */
-export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
+export async function workerStart(
+  options: WorkerStartOptions = {},
+): Promise<void> {
+  const { config: configPath, ...workerConfig } = options;
   consola.start("Starting worker...");
 
-  const { config, configFile } = await loadConfigWithEnv();
+  const { config, configFile } = await loadConfigWithEnv(configPath);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -297,7 +314,7 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
 
     assertNoDuplicateWorkflows(workflows);
 
-    const workerOptions = mergeDefinedOptions(config.worker, cliOptions);
+    const workerOptions = mergeDefinedOptions(config.worker, workerConfig);
     if (workerOptions.concurrency !== undefined) {
       assertPositiveInteger("concurrency", workerOptions.concurrency);
     }
@@ -323,11 +340,13 @@ export async function workerStart(cliOptions: WorkerConfig): Promise<void> {
 /**
  * openworkflow dashboard
  * Starts the dashboard by delegating to `@openworkflow/dashboard` via npx.
+ * @param options - Command options
  */
-export async function dashboard(): Promise<void> {
+export async function dashboard(options: CommandOptions = {}): Promise<void> {
+  const configPath = options.config;
   consola.start("Starting dashboard...");
 
-  const { configFile } = await loadConfigWithEnv();
+  const { configFile } = await loadConfigWithEnv(configPath);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -808,7 +827,11 @@ function getDevDependenciesToInstall(): string[] {
 function createConfigFile(configFileName: string): void {
   const spinner = p.spinner();
   spinner.start("Writing config...");
-  const configDestPath = path.join(process.cwd(), configFileName);
+  const configDestPath = path.resolve(process.cwd(), configFileName);
+
+  // mkdir if the user specified a config file, and they want it in a dir
+  mkdirSync(path.dirname(configDestPath), { recursive: true });
+
   writeFileSync(configDestPath, CONFIG, "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 }
@@ -1001,12 +1024,15 @@ function updateEnvForPostgres(): void {
 
 /**
  * Load CLI config after loading .env, and wrap errors for user-facing output.
+ * @param configPath - Optional explicit config file path
  * @returns Loaded config and metadata.
  */
-async function loadConfigWithEnv() {
+async function loadConfigWithEnv(configPath?: string) {
   loadDotenv({ quiet: true });
   try {
-    return await loadConfig();
+    return configPath
+      ? await loadConfigFromPath(configPath)
+      : await loadConfig();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CLIError("Failed to load OpenWorkflow config.", message);
