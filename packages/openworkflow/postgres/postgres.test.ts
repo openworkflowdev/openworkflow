@@ -42,6 +42,10 @@ describe("postgres", () => {
     test("throws for invalid schema names", () => {
       expect(() => migrations("invalid-schema")).toThrow(/Invalid schema name/);
     });
+
+    test("throws for schema names longer than 63 bytes", () => {
+      expect(() => migrations("a".repeat(64))).toThrow(/at most 63 bytes/i);
+    });
   });
 
   describe("migrate()", () => {

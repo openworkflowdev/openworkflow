@@ -38,6 +38,14 @@ describe("BackendPostgres.connect errors", () => {
       }),
     ).rejects.toThrow(/Invalid schema name/);
   });
+
+  test("throws for schema names longer than 63 bytes", async () => {
+    await expect(
+      BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+        schema: "a".repeat(64),
+      }),
+    ).rejects.toThrow(/at most 63 bytes/i);
+  });
 });
 
 describe("BackendPostgres schema option", () => {

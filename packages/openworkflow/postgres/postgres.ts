@@ -10,6 +10,7 @@ export type Postgres = ReturnType<typeof postgres>;
 export type PostgresOptions = Parameters<typeof postgres>[1];
 
 const SCHEMA_NAME_PATTERN = /^[a-zA-Z_]\w*$/;
+const MAX_POSTGRES_IDENTIFIER_BYTES = 63;
 
 /**
  * newPostgres creates a new Postgres client.
@@ -271,6 +272,12 @@ export function assertValidSchemaName(schema: string): void {
   if (!SCHEMA_NAME_PATTERN.test(schema)) {
     throw new Error(
       `Invalid schema name "${schema}". Use a Postgres identifier (letters, numbers, underscores; cannot start with a number).`,
+    );
+  }
+
+  if (Buffer.byteLength(schema, "utf8") > MAX_POSTGRES_IDENTIFIER_BYTES) {
+    throw new Error(
+      `Invalid schema name "${schema}". Postgres identifiers must be at most ${String(MAX_POSTGRES_IDENTIFIER_BYTES)} bytes.`,
     );
   }
 }
