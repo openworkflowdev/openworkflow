@@ -919,7 +919,7 @@ export function testBackend(options: TestBackendOptions): void {
         const updated =
           await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
             workflowRunId: claimed.id,
-            workerId: claimed.workerId ?? "",
+            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
             error,
             availableAt,
           });

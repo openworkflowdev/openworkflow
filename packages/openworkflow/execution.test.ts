@@ -610,13 +610,15 @@ function sleep(ms: number): Promise<void> {
 function createMockStepAttempt(
   overrides: Partial<StepAttempt> = {},
 ): StepAttempt {
+  const status = overrides.status ?? "completed";
+
   return {
     namespaceId: "default",
     id: "step-attempt-id",
     workflowRunId: "workflow-run-id",
     stepName: "step",
     kind: "function",
-    status: "completed",
+    status,
     config: {},
     context: null,
     output: null,
@@ -624,7 +626,8 @@ function createMockStepAttempt(
     childWorkflowRunNamespaceId: null,
     childWorkflowRunId: null,
     startedAt: new Date("2026-01-01T00:00:00.000Z"),
-    finishedAt: new Date("2026-01-01T00:00:01.000Z"),
+    finishedAt:
+      status === "running" ? null : new Date("2026-01-01T00:00:01.000Z"),
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:01.000Z"),
     ...overrides,
