@@ -45,9 +45,13 @@ Each retry:
 - Returns cached results for completed steps
 - Re-executes the failed step
 
-## Exponential Backoff
+## Retry Policy
 
-Failed workflows are rescheduled with increasing delays:
+Both steps and workflows use the same retry policy shape. A retry policy
+controls exponential backoff — how long to wait between retries, how fast delays
+grow, and when to stop retrying.
+
+With the defaults, retry delays look like this:
 
 | Attempt | Delay     |
 | ------- | --------- |
@@ -58,28 +62,58 @@ Failed workflows are rescheduled with increasing delays:
 | 5       | ~8s       |
 | ...     | ...       |
 
-This prevents overwhelming external services during outages.
+This prevents overwhelming external services during outages. Retries continue
+until canceled, until `deadlineAt` is reached (or the next retry would pass it),
+or until `maximumAttempts` is exhausted.
 
-By default, retries continue until canceled or until `deadlineAt` is reached (or
-the next retry would pass it). If `maximumAttempts` is configured, the workflow
-is also marked `failed` once that limit is reached.
+Retry policies have the following fields:
 
-## Retry Policy
+| Field                | Default    | Description                                         |
+| -------------------- | ---------- | --------------------------------------------------- |
+| `initialInterval`    | `"1s"`     | Delay before the first retry after a failed attempt |
+| `backoffCoefficient` | `2`        | Multiplier applied to each subsequent retry delay   |
+| `maximumInterval`    | `"100s"`   | Upper bound for retry delay                         |
+| `maximumAttempts`    | `Infinity` | Maximum attempts, including the initial one         |
 
-Retry behavior is configured per workflow using `retryPolicy` in the workflow
-spec:
+### Step Retry Policy
+
+Each `step.run(...)` can define its own retry policy. If you omit `retryPolicy`,
+OpenWorkflow uses the defaults shown above.
+
+```ts
+await step.run(
+  {
+    name: "call-api",
+    retryPolicy: {
+      initialInterval: "500ms",
+      backoffCoefficient: 2,
+      maximumInterval: "30s",
+      maximumAttempts: 5,
+    },
+  },
+  async () => {
+    // step logic
+  },
+);
+```
+
+### Workflow Retry Policy
+
+Workflow-level `retryPolicy` applies to non-step failures — for example, missing
+workflow definitions or errors thrown outside `step.run`. If you omit
+`retryPolicy` (or individual fields), OpenWorkflow uses the same defaults.
 
 ```ts
 import { defineWorkflow } from "openworkflow";
 
-export const chargeCustomer = defineWorkflow(
+defineWorkflow(
   {
     name: "charge-customer",
     retryPolicy: {
-      initialInterval: "1s",
+      initialInterval: "500ms",
       backoffCoefficient: 2,
-      maximumInterval: "100s",
-      maximumAttempts: Infinity,
+      maximumInterval: "30s",
+      maximumAttempts: 5,
     },
   },
   async ({ step }) => {
@@ -87,15 +121,6 @@ export const chargeCustomer = defineWorkflow(
   },
 );
 ```
-
-`retryPolicy` is optional. Any omitted fields use defaults.
-
-| Field                | Description                                           |
-| -------------------- | ----------------------------------------------------- |
-| `initialInterval`    | Delay before the first retry after a failed attempt   |
-| `backoffCoefficient` | Multiplier applied to each subsequent retry delay     |
-| `maximumInterval`    | Upper bound for retry delay                           |
-| `maximumAttempts`    | Maximum total attempts, including the initial attempt |
 
 ## What Triggers a Retry
 

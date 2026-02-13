@@ -1,4 +1,6 @@
 import { OpenWorkflow } from "./client.js";
+import type { StepAttempt } from "./core/step.js";
+import { createStepExecutionStateFromAttempts } from "./execution.js";
 import { BackendPostgres } from "./postgres.js";
 import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
 import { randomUUID } from "node:crypto";
@@ -540,6 +542,61 @@ describe("executeWorkflow", () => {
   });
 });
 
+describe("createStepExecutionStateFromAttempts", () => {
+  test("builds successful cache and failed-count map from mixed history", () => {
+    const completed = createMockStepAttempt({
+      id: "completed-a",
+      stepName: "step-a",
+      status: "completed",
+      output: "a",
+    });
+    const failedA1 = createMockStepAttempt({
+      id: "failed-a-1",
+      stepName: "step-a",
+      status: "failed",
+    });
+    const failedA2 = createMockStepAttempt({
+      id: "failed-a-2",
+      stepName: "step-a",
+      status: "failed",
+    });
+    const failedB = createMockStepAttempt({
+      id: "failed-b",
+      stepName: "step-b",
+      status: "failed",
+    });
+    const running = createMockStepAttempt({
+      id: "running-c",
+      stepName: "step-c",
+      status: "running",
+    });
+
+    const state = createStepExecutionStateFromAttempts([
+      completed,
+      failedA1,
+      failedA2,
+      failedB,
+      running,
+    ]);
+
+    expect(state.cache.size).toBe(1);
+    expect(state.cache.get("step-a")).toBe(completed);
+    expect(state.cache.has("step-b")).toBe(false);
+    expect(state.cache.has("step-c")).toBe(false);
+
+    expect(state.failedCountsByStepName.get("step-a")).toBe(2);
+    expect(state.failedCountsByStepName.get("step-b")).toBe(1);
+    expect(state.failedCountsByStepName.has("step-c")).toBe(false);
+  });
+
+  test("returns empty cache and counts for empty history", () => {
+    const state = createStepExecutionStateFromAttempts([]);
+
+    expect(state.cache.size).toBe(0);
+    expect(state.failedCountsByStepName.size).toBe(0);
+  });
+});
+
 async function createBackend(): Promise<BackendPostgres> {
   return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(),
@@ -548,4 +605,31 @@ async function createBackend(): Promise<BackendPostgres> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createMockStepAttempt(
+  overrides: Partial<StepAttempt> = {},
+): StepAttempt {
+  const status = overrides.status ?? "completed";
+
+  return {
+    namespaceId: "default",
+    id: "step-attempt-id",
+    workflowRunId: "workflow-run-id",
+    stepName: "step",
+    kind: "function",
+    status,
+    config: {},
+    context: null,
+    output: null,
+    error: null,
+    childWorkflowRunNamespaceId: null,
+    childWorkflowRunId: null,
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    finishedAt:
+      status === "running" ? null : new Date("2026-01-01T00:00:01.000Z"),
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:01.000Z"),
+    ...overrides,
+  };
 }

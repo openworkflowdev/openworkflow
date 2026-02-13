@@ -1371,6 +1371,311 @@ describe("Worker", () => {
     });
     expect(afterSecond?.status).toBe("failed"); // permanently failed
   });
+
+  test("falls back to step retry defaults, independent from workflow retry policy", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepAttempts = 0;
+    const workflow = client.defineWorkflow(
+      {
+        name: "step-default-retry-policy",
+        retryPolicy: {
+          initialInterval: "10s",
+          backoffCoefficient: 2,
+          maximumInterval: "10s",
+          maximumAttempts: 10,
+        },
+      },
+      async ({ step }) => {
+        return await step.run({ name: "flaky-default" }, () => {
+          stepAttempts++;
+          if (stepAttempts === 1) {
+            throw new Error("first failure");
+          }
+          return "ok";
+        });
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    const beforeFail = Date.now();
+    await worker.tick();
+    await sleep(100);
+
+    const afterFirst = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(afterFirst?.status).toBe("pending");
+    expect(afterFirst?.availableAt).not.toBeNull();
+    if (!afterFirst?.availableAt) throw new Error("Expected availableAt");
+    const retryDelayMs = afterFirst.availableAt.getTime() - beforeFail;
+    expect(retryDelayMs).toBeGreaterThanOrEqual(900);
+    expect(retryDelayMs).toBeLessThan(1500);
+
+    await sleep(1100);
+    await worker.tick();
+    await sleep(100);
+
+    expect(stepAttempts).toBe(2);
+    const result = await handle.result();
+    expect(result).toBe("ok");
+  });
+
+  test("uses step-level retry overrides and terminal step limits", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepAttempts = 0;
+    const workflow = client.defineWorkflow(
+      {
+        name: "step-override-retry-policy",
+        retryPolicy: {
+          initialInterval: "10s",
+          backoffCoefficient: 2,
+          maximumInterval: "10s",
+          maximumAttempts: 10,
+        },
+      },
+      async ({ step }) => {
+        await step.run(
+          {
+            name: "always-fails",
+            retryPolicy: {
+              initialInterval: "50ms",
+              backoffCoefficient: 2,
+              maximumInterval: "50ms",
+              maximumAttempts: 2,
+            },
+          },
+          () => {
+            stepAttempts++;
+            throw new Error("boom");
+          },
+        );
+        return "unreachable";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    const beforeFirstFail = Date.now();
+    await worker.tick();
+    await sleep(100);
+
+    const afterFirst = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(afterFirst?.status).toBe("pending");
+    expect(afterFirst?.availableAt).not.toBeNull();
+    if (!afterFirst?.availableAt) throw new Error("Expected availableAt");
+    const firstDelayMs = afterFirst.availableAt.getTime() - beforeFirstFail;
+    expect(firstDelayMs).toBeGreaterThanOrEqual(30);
+    expect(firstDelayMs).toBeLessThan(180);
+
+    await sleep(100);
+    await worker.tick();
+    await sleep(100);
+
+    const afterSecond = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(afterSecond?.status).toBe("failed");
+    expect(stepAttempts).toBe(2);
+  });
+
+  test("keeps retry budgets isolated per step name", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const executionCounts = {
+      stepA: 0,
+      stepB: 0,
+    };
+
+    const stepPolicy = {
+      initialInterval: "100ms",
+      backoffCoefficient: 2,
+      maximumInterval: "1s",
+      maximumAttempts: 5,
+    } as const;
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "step-budget-isolation",
+        retryPolicy: { initialInterval: "10s" },
+      },
+      async ({ step }) => {
+        const a = await step.run(
+          { name: "step-a", retryPolicy: stepPolicy },
+          () => {
+            executionCounts.stepA++;
+            if (executionCounts.stepA < 3) {
+              throw new Error("step-a failed");
+            }
+            return "a";
+          },
+        );
+
+        const b = await step.run(
+          { name: "step-b", retryPolicy: stepPolicy },
+          () => {
+            executionCounts.stepB++;
+            if (executionCounts.stepB < 2) {
+              throw new Error("step-b failed");
+            }
+            return "b";
+          },
+        );
+
+        return { a, b };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    const beforeFirst = Date.now();
+    await worker.tick();
+    await sleep(100);
+    let run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("pending");
+    if (!run?.availableAt) throw new Error("Expected availableAt");
+    const firstDelayMs = run.availableAt.getTime() - beforeFirst;
+    expect(firstDelayMs).toBeGreaterThanOrEqual(80);
+    expect(firstDelayMs).toBeLessThan(220);
+
+    await sleep(180);
+    const beforeSecond = Date.now();
+    await worker.tick();
+    await sleep(100);
+    run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("pending");
+    if (!run?.availableAt) throw new Error("Expected availableAt");
+    const secondDelayMs = run.availableAt.getTime() - beforeSecond;
+    expect(secondDelayMs).toBeGreaterThanOrEqual(180);
+    expect(secondDelayMs).toBeLessThan(350);
+
+    await sleep(260);
+    const beforeThird = Date.now();
+    await worker.tick();
+    await sleep(100);
+    run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("pending");
+    if (!run?.availableAt) throw new Error("Expected availableAt");
+    const thirdDelayMs = run.availableAt.getTime() - beforeThird;
+    expect(thirdDelayMs).toBeGreaterThanOrEqual(80);
+    expect(thirdDelayMs).toBeLessThan(220);
+
+    await sleep(180);
+    await worker.tick();
+    await sleep(100);
+
+    const result = await handle.result();
+    expect(result).toEqual({ a: "a", b: "b" });
+    expect(executionCounts).toEqual({
+      stepA: 3,
+      stepB: 2,
+    });
+  });
+
+  test("sleep and lease churn do not consume step retry budget", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let stepAttempts = 0;
+    const stepPolicy = {
+      initialInterval: "100ms",
+      backoffCoefficient: 2,
+      maximumInterval: "1s",
+      maximumAttempts: 4,
+    } as const;
+
+    const workflow = client.defineWorkflow(
+      { name: "step-budget-sleep-and-lease" },
+      async ({ step }) => {
+        await step.sleep("pause", "50ms");
+
+        return await step.run(
+          { name: "flaky", retryPolicy: stepPolicy },
+          () => {
+            stepAttempts++;
+            if (stepAttempts < 3) {
+              throw new Error("failed");
+            }
+            return "ok";
+          },
+        );
+      },
+    );
+
+    const handle = await workflow.run();
+
+    // consume one workflow claim without executing any step
+    const staleClaim = await backend.claimWorkflowRun({
+      workerId: randomUUID(),
+      leaseDurationMs: 30,
+    });
+    expect(staleClaim?.id).toBe(handle.workflowRun.id);
+    await sleep(60); // wait for lease expiration
+
+    const worker = client.newWorker();
+
+    // first worker tick: enter sleep
+    await worker.tick();
+    await sleep(100);
+    let run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("sleeping");
+
+    await sleep(80); // wait for sleep step to elapse
+
+    // first failed step attempt should still use attempt 1 backoff (100ms)
+    const beforeFirstFail = Date.now();
+    await worker.tick();
+    await sleep(100);
+    run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("pending");
+    if (!run?.availableAt) throw new Error("Expected availableAt");
+    const firstDelayMs = run.availableAt.getTime() - beforeFirstFail;
+    expect(firstDelayMs).toBeGreaterThanOrEqual(80);
+    expect(firstDelayMs).toBeLessThan(230);
+
+    await sleep(220);
+
+    // second failed step attempt should use attempt 2 backoff (200ms)
+    const beforeSecondFail = Date.now();
+    await worker.tick();
+    await sleep(100);
+    run = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(run?.status).toBe("pending");
+    if (!run?.availableAt) throw new Error("Expected availableAt");
+    const secondDelayMs = run.availableAt.getTime() - beforeSecondFail;
+    expect(secondDelayMs).toBeGreaterThanOrEqual(180);
+    expect(secondDelayMs).toBeLessThan(360);
+
+    await sleep(280);
+    await worker.tick();
+    await sleep(100);
+
+    const result = await handle.result();
+    expect(result).toBe("ok");
+    expect(stepAttempts).toBe(3);
+  });
 });
 
 describe("resolveRetryPolicy", () => {

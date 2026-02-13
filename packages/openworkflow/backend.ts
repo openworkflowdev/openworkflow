@@ -36,6 +36,9 @@ export interface Backend {
   failWorkflowRun(
     params: Readonly<FailWorkflowRunParams>,
   ): Promise<WorkflowRun>;
+  rescheduleWorkflowRunAfterFailedStepAttempt(
+    params: Readonly<RescheduleWorkflowRunAfterFailedStepAttemptParams>,
+  ): Promise<WorkflowRun>;
   cancelWorkflowRun(
     params: Readonly<CancelWorkflowRunParams>,
   ): Promise<WorkflowRun>;
@@ -106,6 +109,13 @@ export interface FailWorkflowRunParams {
   workerId: string;
   error: SerializedError;
   retryPolicy: RetryPolicy;
+}
+
+export interface RescheduleWorkflowRunAfterFailedStepAttemptParams {
+  workflowRunId: string;
+  workerId: string;
+  error: SerializedError;
+  availableAt: Date;
 }
 
 export interface CancelWorkflowRunParams {

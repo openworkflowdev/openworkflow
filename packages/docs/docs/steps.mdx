@@ -22,9 +22,9 @@ const result = await step.run({ name: "fetch-user" }, async () => {
 });
 ```
 
-The first argument is a config object with the step name. The second argument is
-the async function to execute. The function's return value is stored and
-returned on subsequent replays.
+The first argument is a config object with the step name (and optional
+`retryPolicy`). The second argument is the async function to execute. The
+function's return value is stored and returned on subsequent replays.
 
 ## Why Steps Matter
 
@@ -137,6 +137,31 @@ Pauses the workflow until a specified duration has elapsed. See
 ```ts
 await step.sleep("wait-one-hour", "1h");
 ```
+
+## Retry Policy (Optional)
+
+Control backoff and retry limits for an individual step:
+
+```ts
+await step.run(
+  {
+    name: "charge-card",
+    retryPolicy: {
+      initialInterval: "1s",
+      backoffCoefficient: 2,
+      maximumInterval: "30s",
+      maximumAttempts: 5,
+    },
+  },
+  async () => {
+    await payments.charge();
+  },
+);
+```
+
+Any `retryPolicy` fields you omit fall back to defaults. Step retry policies
+are independent from the workflow-level retry policy. See
+[Retries](/docs/retries) for the full behavior and defaults.
 
 ## Error Handling
 
