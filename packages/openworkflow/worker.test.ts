@@ -1816,6 +1816,17 @@ describe("resolveRetryPolicy", () => {
       maximumAttempts: 3,
     });
   });
+
+  test("falls back to defaults for invalid runtime values", () => {
+    const result = resolveRetryPolicy({
+      maximumAttempts: Number.NaN,
+      backoffCoefficient: -1,
+      initialInterval: "-1s" as "1s",
+      maximumInterval: "invalid" as "1s",
+    });
+
+    expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
+  });
 });
 
 async function createBackend(): Promise<BackendPostgres> {
