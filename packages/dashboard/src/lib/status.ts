@@ -22,46 +22,46 @@ export const STATUS_CONFIG: Record<
 > = {
   completed: {
     icon: CheckCircleIcon,
-    color: "text-green-500",
+    color: "text-success",
     label: "Completed",
-    badgeClass: "bg-green-500/10 text-green-500 border-green-500/20",
+    badgeClass: "bg-success/10 border-success/20 text-success",
   },
   succeeded: {
     icon: CheckCircleIcon,
-    color: "text-green-500",
+    color: "text-success",
     label: "Completed",
-    badgeClass: "bg-green-500/10 text-green-500 border-green-500/20",
+    badgeClass: "bg-success/10 border-success/20 text-success",
   },
   running: {
     // use the spinning notch for running states to match existing UI patterns
     icon: CircleNotchIcon,
-    color: "text-blue-500",
+    color: "text-info",
     label: "Running",
-    badgeClass: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    badgeClass: "bg-info/10 border-info/20 text-info",
   },
   failed: {
     icon: XCircleIcon,
-    color: "text-red-500",
+    color: "text-destructive",
     label: "Failed",
-    badgeClass: "bg-red-500/10 text-red-500 border-red-500/20",
+    badgeClass: "bg-destructive/10 border-destructive/20 text-destructive",
   },
   pending: {
     icon: ClockIcon,
-    color: "text-yellow-500",
+    color: "text-warning",
     label: "Pending",
-    badgeClass: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    badgeClass: "bg-warning/10 border-warning/20 text-warning",
   },
   sleeping: {
     icon: HourglassIcon,
-    color: "text-purple-500",
+    color: "text-sleeping",
     label: "Sleeping",
-    badgeClass: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    badgeClass: "bg-sleeping/10 border-sleeping/20 text-sleeping",
   },
   canceled: {
     icon: ProhibitIcon,
-    color: "text-gray-500",
+    color: "text-neutral",
     label: "Canceled",
-    badgeClass: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+    badgeClass: "bg-neutral/10 border-neutral/20 text-neutral",
   },
 };
 
@@ -95,9 +95,8 @@ export const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
   "canceled",
 ]);
 
-const fallbackStatusColor = "text-yellow-500";
-const fallbackStatusBadgeClass =
-  "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
+const fallbackStatusColor = "text-warning";
+const fallbackStatusBadgeClass = "bg-warning/10 border-warning/20 text-warning";
 
 function getStatusConfig(status: string) {
   if (!(status in STATUS_CONFIG)) {

@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { STATUS_CONFIG } from "@/lib/status";
+import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
@@ -57,7 +58,11 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex flex-1 items-center gap-4">
                     <StatusIcon
-                      className={`size-5 ${config.color} ${run.status === "running" ? "animate-spin" : ""}`}
+                      className={cn(
+                        "size-5",
+                        config.color,
+                        run.status === "running" && "animate-spin",
+                      )}
                     />
 
                     <div className="min-w-0 flex-1">
@@ -78,7 +83,10 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
                       <div className="text-muted-foreground flex items-center gap-4 text-xs">
                         <Badge
                           variant="outline"
-                          className={`text-xs capitalize ${config.badgeClass}`}
+                          className={cn(
+                            "text-xs capitalize",
+                            config.badgeClass,
+                          )}
                         >
                           {config.label}
                         </Badge>
