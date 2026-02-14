@@ -93,4 +93,76 @@ describe("BackendPostgres schema option", () => {
       await pg.end();
     }
   });
+
+  test("reschedules workflow runs in the configured schema", async () => {
+    const schema = `test_schema_${randomUUID().replaceAll("-", "_")}`;
+    const namespaceId = randomUUID();
+    const workerId = randomUUID();
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId,
+      schema,
+    });
+
+    try {
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "schema-reschedule-test",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 60_000,
+      });
+
+      expect(claimed?.id).toBe(workflowRun.id);
+
+      const availableAt = new Date(Date.now() + 60_000);
+      const rescheduled =
+        await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+          workflowRunId: workflowRun.id,
+          workerId,
+          availableAt,
+          error: { message: "step failed" },
+        });
+
+      expect(rescheduled.id).toBe(workflowRun.id);
+      expect(rescheduled.status).toBe("pending");
+      expect(rescheduled.workerId).toBeNull();
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(schema)}.${pg("workflow_runs")}`;
+
+        const [record] = await pg<
+          {
+            id: string;
+            status: string;
+          }[]
+        >`
+          SELECT "id", "status"
+          FROM ${workflowRunsTable}
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${workflowRun.id}
+          LIMIT 1
+        `;
+
+        expect(record?.id).toBe(workflowRun.id);
+        expect(record?.status).toBe("pending");
+      } finally {
+        await pg.end();
+      }
+    } finally {
+      await backend.stop();
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      await dropSchema(pg, schema);
+      await pg.end();
+    }
+  });
 });
