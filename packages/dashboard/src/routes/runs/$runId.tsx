@@ -92,7 +92,10 @@ function RunDetailsPage() {
               )}
               <Badge
                 variant="outline"
-                className={`border-border capitalize ${getStatusBadgeClass(run.status)}`}
+                className={cn(
+                  "border-border capitalize",
+                  getStatusBadgeClass(run.status),
+                )}
               >
                 {run.status}
               </Badge>
@@ -140,11 +143,11 @@ function RunDetailsPage() {
                           <div className="flex flex-1 items-center gap-3">
                             <div className="flex flex-col items-center gap-2">
                               <StatusIcon
-                                className={`size-5 ${iconColor} ${
-                                  step.status === "running"
-                                    ? "animate-spin"
-                                    : ""
-                                }`}
+                                className={cn(
+                                  "size-5",
+                                  iconColor,
+                                  step.status === "running" && "animate-spin",
+                                )}
                               />
                               {index < steps.length - 1 && (
                                 <div className="bg-border h-8 w-0.5" />
@@ -158,7 +161,10 @@ function RunDetailsPage() {
                                 </span>
                                 <Badge
                                   variant="outline"
-                                  className={`border-border text-xs capitalize ${getStatusBadgeClass(step.status)}`}
+                                  className={cn(
+                                    "border-border text-xs capitalize",
+                                    getStatusBadgeClass(step.status),
+                                  )}
                                 >
                                   {step.status}
                                 </Badge>
@@ -179,7 +185,10 @@ function RunDetailsPage() {
                           </div>
 
                           <CaretDownIcon
-                            className={`text-muted-foreground size-5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                            className={cn(
+                              "text-muted-foreground size-5 transition-transform",
+                              isExpanded && "rotate-180",
+                            )}
                           />
                         </button>
 
