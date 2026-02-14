@@ -1,7 +1,8 @@
 # openworkflow
 
-## Unreleased
+## 0.7.1
 
+- Fix hardcoded schema in Postgres reschedule query (thanks @thomasjiangcy)
 - Fix to prevent workflows retrying indefinitely on default policies
 - Unbounded retries are still supported by setting `retryPolicy.maximumAttempts`
   to `Infinity` or 0
@@ -14,7 +15,7 @@
 - Add workflow-scoped idempotency keys (#287)
   `ow.runWorkflow(spec, input, { idempotencyKey })`
 - Switch worker polling to exponential backoff with jitter (#263)
-- Add support for custom database schemas (#293)
+- Add support for custom database schemas (#293) (thanks @thomasjiangcy)
 
 ## 0.6.7
 
