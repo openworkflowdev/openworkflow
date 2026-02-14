@@ -1,5 +1,6 @@
 import type { Backend } from "./backend.js";
 import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
+import { parseDuration } from "./core/duration.js";
 import type { WorkflowRun } from "./core/workflow.js";
 import { executeWorkflow } from "./execution.js";
 import { WorkflowRegistry } from "./registry.js";
@@ -325,5 +326,39 @@ export function resolveRetryPolicy(
   partial?: Partial<RetryPolicy>,
 ): RetryPolicy {
   if (!partial) return DEFAULT_WORKFLOW_RETRY_POLICY;
-  return { ...DEFAULT_WORKFLOW_RETRY_POLICY, ...partial };
+
+  const merged = { ...DEFAULT_WORKFLOW_RETRY_POLICY, ...partial };
+  return {
+    initialInterval: resolveDuration(
+      merged.initialInterval,
+      DEFAULT_WORKFLOW_RETRY_POLICY.initialInterval,
+    ),
+    backoffCoefficient:
+      Number.isFinite(merged.backoffCoefficient) &&
+      merged.backoffCoefficient > 0
+        ? merged.backoffCoefficient
+        : DEFAULT_WORKFLOW_RETRY_POLICY.backoffCoefficient,
+    maximumInterval: resolveDuration(
+      merged.maximumInterval,
+      DEFAULT_WORKFLOW_RETRY_POLICY.maximumInterval,
+    ),
+    maximumAttempts:
+      Number.isInteger(merged.maximumAttempts) && merged.maximumAttempts >= 0
+        ? merged.maximumAttempts
+        : DEFAULT_WORKFLOW_RETRY_POLICY.maximumAttempts,
+  };
+}
+
+/**
+ * Return a duration string when it parses to a positive value, otherwise fallback.
+ * @param value - Duration string to validate
+ * @param fallback - Default duration string to use when invalid
+ * @returns Valid duration string
+ */
+function resolveDuration(
+  value: RetryPolicy["initialInterval"],
+  fallback: RetryPolicy["initialInterval"],
+): RetryPolicy["initialInterval"] {
+  const parsed = parseDuration(value);
+  return parsed.ok && parsed.value > 0 ? value : fallback;
 }
