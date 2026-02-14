@@ -26,6 +26,11 @@ export interface TestBackendOptions {
  */
 export function testBackend(options: TestBackendOptions): void {
   const { setup, teardown } = options;
+  const RESCHEDULING_RETRY_POLICY = {
+    ...DEFAULT_WORKFLOW_RETRY_POLICY,
+    maximumAttempts: 3,
+  } as const;
+
   describe("Backend", () => {
     let backend: Backend;
 
@@ -837,7 +842,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error,
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
         });
 
         // rescheduled, not permanently failed
@@ -874,7 +879,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error: { message: "first failure" },
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
         });
 
         expect(firstFailed.status).toBe("pending");
@@ -895,7 +900,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: claimed.id,
           workerId,
           error: { message: "second failure" },
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
         });
 
         expect(secondFailed.status).toBe("pending");
@@ -1435,7 +1440,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: created.id,
           workerId,
           error: { message: "test error" },
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
         });
 
         expect(failed.status).toBe("failed");
@@ -1473,7 +1478,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: created.id,
           workerId,
           error: { message: "test error" },
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
         });
 
         expect(failed.status).toBe("pending");

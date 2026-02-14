@@ -135,7 +135,7 @@ export const DEFAULT_WORKFLOW_RETRY_POLICY: RetryPolicy = {
   initialInterval: "1s",
   backoffCoefficient: 2,
   maximumInterval: "100s",
-  maximumAttempts: Infinity, // unlimited
+  maximumAttempts: 1,
 };
 
 /**
@@ -164,7 +164,10 @@ export function computeFailedWorkflowRunUpdate(
   error: Readonly<SerializedError>,
   now: Readonly<Date>,
 ): FailedWorkflowRunUpdate {
-  if (attempts >= retryPolicy.maximumAttempts) {
+  if (
+    retryPolicy.maximumAttempts > 0 && // 0 = unlimited attempts
+    attempts >= retryPolicy.maximumAttempts
+  ) {
     return {
       status: "failed",
       availableAt: null,

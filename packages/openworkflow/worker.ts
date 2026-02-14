@@ -18,6 +18,13 @@ const DEFAULT_POLL_JITTER_FACTOR_MIN = 0.5;
 const DEFAULT_POLL_JITTER_FACTOR_MAX = 1;
 const DEFAULT_CONCURRENCY = 1;
 
+const MISSING_DEFINITION_RETRY_POLICY: RetryPolicy = {
+  initialInterval: "5s",
+  backoffCoefficient: 2,
+  maximumInterval: "5m",
+  maximumAttempts: 0, // unlimited – keep retrying until the right worker picks it up
+};
+
 /**
  * Configures how a Worker polls the backend, leases workflow runs, and
  * registers workflows.
@@ -165,7 +172,7 @@ export class Worker {
         error: {
           message: `Workflow "${workflowRun.workflowName}"${versionStr} is not registered`,
         },
-        retryPolicy: resolveRetryPolicy(),
+        retryPolicy: MISSING_DEFINITION_RETRY_POLICY,
       });
       return null;
     }

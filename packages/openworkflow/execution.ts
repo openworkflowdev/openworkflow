@@ -13,6 +13,7 @@ import {
 import type { WorkflowRun } from "./core/workflow.js";
 import {
   computeFailedWorkflowRunUpdate,
+  DEFAULT_WORKFLOW_RETRY_POLICY,
   type RetryPolicy,
 } from "./workflow.js";
 
@@ -116,12 +117,7 @@ const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
   initialInterval: "1s",
   backoffCoefficient: 2,
   maximumInterval: "100s",
-  maximumAttempts: Infinity, // unlimited
-};
-
-const TERMINAL_RETRY_POLICY: RetryPolicy = {
-  ...DEFAULT_STEP_RETRY_POLICY,
-  maximumAttempts: 0,
+  maximumAttempts: 10,
 };
 
 /**
@@ -417,7 +413,7 @@ export async function executeWorkflow(
           workflowRunId: workflowRun.id,
           workerId,
           error: serializedError,
-          retryPolicy: TERMINAL_RETRY_POLICY,
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
         });
         return;
       }

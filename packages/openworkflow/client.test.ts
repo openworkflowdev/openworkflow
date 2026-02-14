@@ -227,7 +227,7 @@ describe("OpenWorkflow", () => {
     expect(claimed).not.toBeNull();
     if (!claimed) throw new Error("workflow run was not claimed");
 
-    // mark as failed (should reschedule))
+    // mark as failed (terminal by default)
     await backend.failWorkflowRun({
       workflowRunId: claimed.id,
       workerId,
@@ -235,11 +235,11 @@ describe("OpenWorkflow", () => {
       retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
     });
 
-    const rescheduled = await backend.getWorkflowRun({
+    const failedRun = await backend.getWorkflowRun({
       workflowRunId: claimed.id,
     });
-    expect(rescheduled?.status).toBe("pending");
-    expect(rescheduled?.error).toEqual({ message: "boom" });
+    expect(failedRun?.status).toBe("failed");
+    expect(failedRun?.error).toEqual({ message: "boom" });
   });
 
   test("creates workflow run with deadline", async () => {
