@@ -1,5 +1,10 @@
 # @openworkflow/dashboard
 
+## 0.1.4
+
+- Add create run form
+- Improve workflow stats layout
+
 ## 0.1.3
 
 - Add real-time polling to dashboard (#272) (thanks @szokeptr!)
