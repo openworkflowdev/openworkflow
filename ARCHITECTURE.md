@@ -234,11 +234,20 @@ execution, replay reaches the failed step and re-executes its function.
 ### 4.2. Workflow Failures & Retries
 
 If an error is unhandled by the workflow code, the entire workflow run fails.
-The workflow run is rescheduled with backoff according to its **retry policy**.
-By default, retries continue until canceled or until a configured deadline is
-reached. If the run can no longer be retried (for example, because the next
+Workflow-level retries are **disabled by default** (`maximumAttempts: 1`): an
+unhandled error immediately marks the run as `failed`. To enable automatic
+workflow-level retries, supply a `retryPolicy` when defining the workflow.
+Set `maximumAttempts: 0` for unlimited retries.
+If the run can no longer be retried (for example, because the next
 retry would exceed `deadlineAt` or `maximumAttempts` has been reached), its
 status is set to `failed` permanently.
+
+When a worker claims a run but does not have the matching workflow definition
+in its registry, this is treated as a deployment concern rather than an
+application failure. The run is rescheduled with its own generous backoff
+policy (5s initial, 5min cap, unlimited attempts) so it remains available
+for a worker that does have the definition — for example during a rolling
+deploy.
 
 ### 4.3. Retry Policy
 

@@ -1,5 +1,13 @@
 # openworkflow
 
+## Unreleased
+
+- Fix to prevent workflows retrying indefinitely on default policies
+- Unbounded retries are still supported by setting `retryPolicy.maximumAttempts`
+  to `Infinity` or 0
+- Unregistered workflows are still rescheduled infinitely with backoff instead
+  of failing terminally so runs survive long rolling deploys
+
 ## 0.7.0
 
 - Add configurable workflow and step retry policies (#279, #294)

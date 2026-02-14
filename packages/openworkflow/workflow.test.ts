@@ -172,4 +172,21 @@ describe("computeFailedWorkflowRunUpdate", () => {
     expect(result.finishedAt).toBe(now);
     expect(result.error).toEqual({ message: "boom" });
   });
+
+  test("retries indefinitely when maximumAttempts is 0", () => {
+    const unlimitedPolicy: RetryPolicy = { ...policy, maximumAttempts: 0 };
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    const result = computeFailedWorkflowRunUpdate(
+      unlimitedPolicy,
+      100,
+      null,
+      { message: "boom" },
+      now,
+    );
+
+    expect(result.status).toBe("pending");
+    expect(result.availableAt).not.toBeNull();
+    expect(result.finishedAt).toBeNull();
+  });
 });

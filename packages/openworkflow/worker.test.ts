@@ -76,7 +76,7 @@ describe("Worker", () => {
     expect(executionCount).toBe(1);
   });
 
-  test("marks workflow for retry when definition is missing", async () => {
+  test("reschedules workflow when definition is missing", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -99,23 +99,31 @@ describe("Worker", () => {
     });
 
     expect(updated?.status).toBe("pending");
-    expect(updated?.error).toBeDefined();
+    expect(updated?.error).toEqual({
+      message: 'Workflow "missing" is not registered',
+    });
     expect(updated?.availableAt).not.toBeNull();
   });
 
-  test("retries failed workflows automatically", async () => {
+  test("retries failed workflows when workflow retry policy allows it", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     let attemptCount = 0;
 
-    const workflow = client.defineWorkflow({ name: "retry-test" }, () => {
-      attemptCount++;
-      if (attemptCount < 2) {
-        throw new Error(`Attempt ${String(attemptCount)} failed`);
-      }
-      return { success: true, attempts: attemptCount };
-    });
+    const workflow = client.defineWorkflow(
+      {
+        name: "retry-test",
+        retryPolicy: { maximumAttempts: 2 },
+      },
+      () => {
+        attemptCount++;
+        if (attemptCount < 2) {
+          throw new Error(`Attempt ${String(attemptCount)} failed`);
+        }
+        return { success: true, attempts: attemptCount };
+      },
+    );
 
     const worker = client.newWorker();
 
@@ -136,6 +144,33 @@ describe("Worker", () => {
 
     const result = await handle.result();
     expect(result).toEqual({ success: true, attempts: 2 });
+  });
+
+  test("fails non-step workflow errors terminally by default", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let attemptCount = 0;
+    const workflow = client.defineWorkflow(
+      { name: "default-workflow-retry-terminal" },
+      () => {
+        attemptCount++;
+        throw new Error("always fails");
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    await worker.tick();
+    await sleep(100);
+
+    expect(attemptCount).toBe(1);
+    const failed = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(failed?.status).toBe("failed");
+    expect(failed?.availableAt).toBeNull();
   });
 
   test("tick is a no-op when no work is available", async () => {
@@ -678,7 +713,8 @@ describe("Worker", () => {
       workflowRunId: handle.workflowRun.id,
     });
 
-    expect(failed?.status).toBe("pending"); // should be retrying
+    expect(failed?.status).toBe("failed");
+    expect(failed?.availableAt).toBeNull();
     expect(failed?.error).toBeDefined();
     expect(failed?.error?.message).toContain("Invalid duration format");
   });
@@ -1129,7 +1165,7 @@ describe("Worker", () => {
       expect(resultV2).toBe("v2-result");
     });
 
-    test("worker fails workflow run when version is not registered", async () => {
+    test("worker reschedules workflow run when version is not registered", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
@@ -1161,6 +1197,7 @@ describe("Worker", () => {
       expect(updated?.error).toEqual({
         message: 'Workflow "version-check" (version: v2) is not registered',
       });
+      expect(updated?.availableAt).not.toBeNull();
     });
 
     test("unversioned workflow does not match versioned run", async () => {
@@ -1195,6 +1232,7 @@ describe("Worker", () => {
       expect(updated?.error).toEqual({
         message: 'Workflow "version-mismatch" (version: v1) is not registered',
       });
+      expect(updated?.availableAt).not.toBeNull();
     });
 
     test("versioned workflow does not match unversioned run", async () => {
@@ -1229,6 +1267,7 @@ describe("Worker", () => {
       expect(updated?.error).toEqual({
         message: 'Workflow "version-required" is not registered',
       });
+      expect(updated?.availableAt).not.toBeNull();
     });
 
     test("workflow receives run's version, not registered version", async () => {
@@ -1422,6 +1461,75 @@ describe("Worker", () => {
     expect(stepAttempts).toBe(2);
     const result = await handle.result();
     expect(result).toBe("ok");
+  });
+
+  test("fails a step after the default maximum attempts (10)", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "default-step-max-attempts" },
+      async ({ step }) => {
+        await step.run({ name: "always-fails" }, () => {
+          throw new Error("boom");
+        });
+        return "unreachable";
+      },
+    );
+
+    const handle = await workflow.run();
+
+    const seedWorkerId = randomUUID();
+    const seededRun = await backend.claimWorkflowRun({
+      workerId: seedWorkerId,
+      leaseDurationMs: 1000,
+    });
+    expect(seededRun?.id).toBe(handle.workflowRun.id);
+    if (!seededRun) throw new Error("Expected workflow run to be claimed");
+
+    for (let index = 0; index < 9; index++) {
+      const seededAttempt = await backend.createStepAttempt({
+        workflowRunId: seededRun.id,
+        workerId: seedWorkerId,
+        stepName: "always-fails",
+        kind: "function",
+        config: {},
+        context: null,
+      });
+
+      await backend.failStepAttempt({
+        workflowRunId: seededRun.id,
+        stepAttemptId: seededAttempt.id,
+        workerId: seedWorkerId,
+        error: { message: `seeded failure ${String(index + 1)}` },
+      });
+    }
+
+    await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+      workflowRunId: seededRun.id,
+      workerId: seedWorkerId,
+      error: { message: "seeded step failures" },
+      availableAt: new Date(Date.now() - 1000),
+    });
+
+    const worker = client.newWorker();
+    await worker.tick();
+    await sleep(100);
+
+    const failedRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(failedRun?.status).toBe("failed");
+    expect(failedRun?.availableAt).toBeNull();
+
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    const failedAttempts = attempts.data.filter(
+      (attempt) =>
+        attempt.stepName === "always-fails" && attempt.status === "failed",
+    );
+    expect(failedAttempts).toHaveLength(10);
   });
 
   test("uses step-level retry overrides and terminal step limits", async () => {
