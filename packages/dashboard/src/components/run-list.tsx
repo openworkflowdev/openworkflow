@@ -10,18 +10,27 @@ import type { WorkflowRun } from "openworkflow/internal";
 export interface RunListProps {
   runs: WorkflowRun[];
   title?: string;
+  showHeader?: boolean;
+  showCount?: boolean;
 }
 
-export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
+export function RunList({
+  runs,
+  title = "Workflow Runs",
+  showHeader = true,
+  showCount = true,
+}: RunListProps) {
   if (runs.length === 0) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-2xl font-semibold">{title}</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
-            No workflow runs found
-          </p>
-        </div>
+        {showHeader && (
+          <div>
+            <h2 className="text-2xl font-semibold">{title}</h2>
+            <p className="text-muted-foreground mt-1 text-sm">
+              No workflow runs found
+            </p>
+          </div>
+        )}
         <Card className="bg-card border-border p-8 text-center">
           <p className="text-muted-foreground">
             No workflow runs have been created yet.
@@ -33,12 +42,16 @@ export function RunList({ runs, title = "Workflow Runs" }: RunListProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-2xl font-semibold">{title}</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {runs.length} workflow run{runs.length === 1 ? "" : "s"}
-        </p>
-      </div>
+      {showHeader && (
+        <div>
+          <h2 className="text-2xl font-semibold">{title}</h2>
+          {showCount && (
+            <p className="text-muted-foreground mt-1 text-sm">
+              {runs.length} workflow run{runs.length === 1 ? "" : "s"}
+            </p>
+          )}
+        </div>
+      )}
 
       <Card className="bg-card border-border overflow-hidden py-0">
         <div className="divide-border divide-y">
