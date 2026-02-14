@@ -448,8 +448,10 @@ export class BackendPostgres implements Backend {
   async rescheduleWorkflowRunAfterFailedStepAttempt(
     params: RescheduleWorkflowRunAfterFailedStepAttemptParams,
   ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable();
+
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE "openworkflow"."workflow_runs"
+      UPDATE ${workflowRunsTable}
       SET
         "status" = 'pending',
         "available_at" = ${params.availableAt},
