@@ -434,9 +434,9 @@ describe("OpenWorkflow", () => {
 
     const nonExistentId = randomUUID();
 
-    await expect(
-      client.cancelWorkflowRun(nonExistentId),
-    ).rejects.toThrow(`Workflow run ${nonExistentId} does not exist`);
+    await expect(client.cancelWorkflowRun(nonExistentId)).rejects.toThrow(
+      `Workflow run ${nonExistentId} does not exist`,
+    );
   });
 
   describe("defineWorkflowSpec / implementWorkflow API", () => {
