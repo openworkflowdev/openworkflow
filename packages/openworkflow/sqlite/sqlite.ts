@@ -212,8 +212,7 @@ export function migrations(): string[] {
       "status",
       "available_at"
     )
-    WHERE "concurrency_key" IS NOT NULL
-      AND "concurrency_limit" IS NOT NULL;
+    WHERE "concurrency_limit" IS NOT NULL;
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
     VALUES (5);

@@ -329,9 +329,11 @@ defineWorkflow(
 ```
 
 `key` and `limit` can each be either static values (`string`/`number`) or
-functions of the validated workflow input. They are resolved once when the run
-is created and persisted on `workflow_runs`.
+functions of the validated workflow input, and `key` is optional. They are
+resolved once when the run is created and persisted on `workflow_runs`.
 Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
+When `key` is omitted, the run uses the default bucket for
+`namespace_id + workflow_name + version`.
 
 During claim/dequeue, a run is claimable only when the number of active leased
 `running` runs in the same bucket is below the run's `limit`. The bucket scope
@@ -340,7 +342,7 @@ is:
 - `namespace_id`
 - `workflow_name`
 - `version` (version-aware buckets)
-- `concurrency_key`
+- `concurrency_key` (nullable for the default bucket)
 
 `pending`, `sleeping`, and expired-lease `running` runs do not consume
 concurrency slots.

@@ -270,25 +270,6 @@ function resolveWorkflowConcurrency<Input>(
     };
   }
 
-  let keyValue: unknown;
-  try {
-    keyValue =
-      typeof concurrency.key === "function"
-        ? concurrency.key({ input })
-        : concurrency.key;
-  } catch (error) {
-    throw new Error(
-      `Failed to resolve concurrency key for workflow "${workflowName}"`,
-      { cause: error },
-    );
-  }
-
-  if (typeof keyValue !== "string" || keyValue.trim().length === 0) {
-    throw new Error(
-      `Invalid concurrency key for workflow "${workflowName}": expected a non-empty string`,
-    );
-  }
-
   let limitValue: unknown;
   try {
     limitValue =
@@ -310,6 +291,29 @@ function resolveWorkflowConcurrency<Input>(
     throw new Error(
       `Invalid concurrency limit for workflow "${workflowName}": expected a positive integer`,
     );
+  }
+
+  let keyValue: string | null = null;
+  if (concurrency.key !== undefined) {
+    let resolvedKey: unknown;
+    try {
+      resolvedKey =
+        typeof concurrency.key === "function"
+          ? concurrency.key({ input })
+          : concurrency.key;
+    } catch (error) {
+      throw new Error(
+        `Failed to resolve concurrency key for workflow "${workflowName}"`,
+        { cause: error },
+      );
+    }
+
+    if (typeof resolvedKey !== "string" || resolvedKey.trim().length === 0) {
+      throw new Error(
+        `Invalid concurrency key for workflow "${workflowName}": expected a non-empty string`,
+      );
+    }
+    keyValue = resolvedKey;
   }
 
   return {

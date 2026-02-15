@@ -9,7 +9,7 @@ const INVALID_CONCURRENCY_LIMIT_TYPE_ERROR =
 export const INVALID_CONCURRENCY_LIMIT_VALUE_ERROR =
   'Invalid workflow concurrency metadata: "concurrencyLimit" must be a positive integer or null.';
 const INVALID_CONCURRENCY_PAIR_ERROR =
-  'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.';
+  'Invalid workflow concurrency metadata: "concurrencyLimit" must be set when "concurrencyKey" is provided.';
 export const CONCURRENCY_LIMIT_MISMATCH_ERROR =
   'Invalid workflow concurrency metadata: active runs in the same bucket must use the same "concurrencyLimit".';
 
@@ -19,7 +19,7 @@ export const CONCURRENCY_LIMIT_MISMATCH_ERROR =
 export interface ConcurrencyBucket {
   workflowName: string;
   version: string | null;
-  key: string;
+  key: string | null;
   limit: number;
 }
 
@@ -66,7 +66,7 @@ export function normalizeCreateWorkflowRunParams(
   const concurrencyLimit =
     rawConcurrencyLimit === undefined ? null : rawConcurrencyLimit;
 
-  if ((concurrencyKey === null) !== (concurrencyLimit === null)) {
+  if (concurrencyKey !== null && concurrencyLimit === null) {
     throw new Error(INVALID_CONCURRENCY_PAIR_ERROR);
   }
 
@@ -101,7 +101,7 @@ export function normalizeCreateWorkflowRunParams(
 export function toConcurrencyBucket(
   params: CreateWorkflowRunParams,
 ): ConcurrencyBucket | null {
-  if (params.concurrencyKey === null || params.concurrencyLimit === null) {
+  if (params.concurrencyLimit === null) {
     return null;
   }
 

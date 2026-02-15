@@ -234,7 +234,7 @@ export class BackendSqlite implements Backend {
   private assertNoActiveBucketConcurrencyLimitMismatch(params: {
     workflowName: string;
     version: string | null;
-    key: string;
+    key: string | null;
     limit: number;
   }): void {
     const stmt = this.db.prepare(`
@@ -246,7 +246,10 @@ export class BackendSqlite implements Backend {
           "version" = ?
           OR ("version" IS NULL AND ? IS NULL)
         )
-        AND "concurrency_key" = ?
+        AND (
+          "concurrency_key" = ?
+          OR ("concurrency_key" IS NULL AND ? IS NULL)
+        )
         -- Sleeping runs are excluded so long sleeps do not pin historical
         -- limits and block new run creation after config changes.
         AND "status" IN ('pending', 'running')
@@ -261,6 +264,7 @@ export class BackendSqlite implements Backend {
       params.workflowName,
       params.version,
       params.version,
+      params.key,
       params.key,
       params.limit,
     ) as { id: string } | undefined;
@@ -329,8 +333,7 @@ export class BackendSqlite implements Backend {
           AND wr."available_at" <= ?
           AND (wr."deadline_at" IS NULL OR wr."deadline_at" > ?)
           AND (
-            wr."concurrency_key" IS NULL
-            OR wr."concurrency_limit" IS NULL
+            wr."concurrency_limit" IS NULL
             OR (
               -- TODO: If claim latency becomes a hot spot, replace this
               -- correlated count with precomputed bucket counts via a CTE.
@@ -345,7 +348,13 @@ export class BackendSqlite implements Backend {
                     AND wr."version" IS NULL
                   )
                 )
-                AND active."concurrency_key" = wr."concurrency_key"
+                AND (
+                  active."concurrency_key" = wr."concurrency_key"
+                  OR (
+                    active."concurrency_key" IS NULL
+                    AND wr."concurrency_key" IS NULL
+                  )
+                )
                 AND active."status" = 'running'
                 -- Candidates require available_at <= now; active leased runs
                 -- require available_at > now. Keep explicit self-exclusion

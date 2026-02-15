@@ -198,7 +198,7 @@ defineWorkflow(
   {
     name: "process-order",
     concurrency: {
-      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      key: ({ input }) => `tenant:${input.tenantId}`, // optional
       limit: ({ input }) => input.maxConcurrentOrders, // or: 5
     },
   },
@@ -208,9 +208,9 @@ defineWorkflow(
 );
 ```
 
-- `key` can be a string or a function `({ input }) => string`
+- `key` is optional; when set it can be a string or `({ input }) => string`
 - `limit` can be a number or a function `({ input }) => number`
-- key must resolve to a non-empty string
+- if provided, key must resolve to a non-empty string
 - limit must resolve to a positive integer
 - resolved keys are stored verbatim; only empty/all-whitespace keys are rejected
 - within active runs (`pending`/`running`) for the same
@@ -221,7 +221,7 @@ When concurrency is configured, runs in the same bucket are constrained by:
 - namespace
 - workflow name
 - workflow version
-- resolved `key`
+- resolved `key` (or the default bucket when key is omitted)
 
 Only actively leased `running` runs consume slots. `pending`, `sleeping`, and
 expired-lease runs do not.

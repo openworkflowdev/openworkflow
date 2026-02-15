@@ -83,9 +83,12 @@ describe("postgres", () => {
         const indexes = await pg<
           {
             indexName: string;
+            indexDef: string;
           }[]
         >`
-          SELECT indexname AS "indexName"
+          SELECT
+            indexname AS "indexName",
+            indexdef AS "indexDef"
           FROM pg_indexes
           WHERE schemaname = ${schema}
             AND tablename = 'workflow_runs'
@@ -93,6 +96,9 @@ describe("postgres", () => {
         `;
         /* cspell:enable */
         expect(indexes).toHaveLength(1);
+        expect(indexes[0]?.indexDef).toMatch(
+          /WHERE\s+\((?:"concurrency_limit"|concurrency_limit)\s+IS\s+NOT\s+NULL\)/i,
+        );
       } finally {
         await dropSchema(pg, schema);
       }

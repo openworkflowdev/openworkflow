@@ -354,6 +354,25 @@ describe("OpenWorkflow", () => {
     expect(handle.workflowRun.concurrencyLimit).toBe(3);
   });
 
+  test("resolves literal workflow concurrency limit without key", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-literal-limit-only-test",
+        concurrency: {
+          limit: 3,
+        },
+      },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.concurrencyKey).toBeNull();
+    expect(handle.workflowRun.concurrencyLimit).toBe(3);
+  });
+
   test("resolves function workflow concurrency values from parsed input", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
@@ -381,6 +400,33 @@ describe("OpenWorkflow", () => {
     });
 
     expect(handle.workflowRun.concurrencyKey).toBe("tenant:acme");
+    expect(handle.workflowRun.concurrencyLimit).toBe(4);
+  });
+
+  test("resolves function workflow concurrency limit from parsed input without key", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const schema = z.object({
+      limit: z.coerce.number().int().positive(),
+    });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-function-limit-only-test",
+        schema,
+        concurrency: {
+          limit: ({ input }) => Number(input.limit),
+        },
+      },
+      noopFn,
+    );
+
+    const handle = await workflow.run({
+      limit: "4",
+    });
+
+    expect(handle.workflowRun.concurrencyKey).toBeNull();
     expect(handle.workflowRun.concurrencyLimit).toBe(4);
   });
 

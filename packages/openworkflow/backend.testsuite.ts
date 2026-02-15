@@ -173,7 +173,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(created.concurrencyLimit).toBeNull();
       });
 
-      test("rejects mismatched workflow concurrency metadata pairs", async () => {
+      test("rejects key-only workflow concurrency metadata", async () => {
         const base = {
           workflowName: randomUUID(),
           version: null,
@@ -193,19 +193,30 @@ export function testBackend(options: TestBackendOptions): void {
         await expect(
           Promise.resolve().then(() => backend.createWorkflowRun(keyOnly)),
         ).rejects.toThrow(
-          'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
+          'Invalid workflow concurrency metadata: "concurrencyLimit" must be set when "concurrencyKey" is provided.',
         );
+      });
+
+      test("accepts limit-only workflow concurrency metadata as default bucket", async () => {
+        const base = {
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        };
 
         const limitOnly = {
           ...base,
           concurrencyKey: null,
           concurrencyLimit: 1,
         };
-        await expect(
-          Promise.resolve().then(() => backend.createWorkflowRun(limitOnly)),
-        ).rejects.toThrow(
-          'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
-        );
+        const created = await backend.createWorkflowRun(limitOnly);
+        expect(created.concurrencyKey).toBeNull();
+        expect(created.concurrencyLimit).toBe(1);
       });
 
       test("rejects invalid workflow concurrency limit values", async () => {
@@ -277,6 +288,35 @@ export function testBackend(options: TestBackendOptions): void {
             version,
             idempotencyKey: null,
             concurrencyKey,
+            concurrencyLimit: 2,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          }),
+        ).rejects.toThrow(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+
+        await teardown(backend);
+      });
+
+      test("rejects mixed concurrency limits for the same active default bucket", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyLimit: 1,
+        });
+
+        await expect(
+          backend.createWorkflowRun({
+            workflowName,
+            version,
+            idempotencyKey: null,
+            concurrencyKey: null,
             concurrencyLimit: 2,
             input: null,
             config: {},
@@ -1034,6 +1074,40 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
 
+      test("enforces concurrency limit for default workflow-version bucket when key is omitted", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const concurrencyLimit = 1;
+
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyLimit,
+        });
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyLimit,
+        });
+
+        const firstClaimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        expect(firstClaimed).not.toBeNull();
+        expect(firstClaimed?.concurrencyKey).toBeNull();
+        expect(firstClaimed?.concurrencyLimit).toBe(concurrencyLimit);
+
+        const blocked = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        expect(blocked).toBeNull();
+
+        await teardown(backend);
+      });
+
       test("supports limits greater than one", async () => {
         const backend = await setup();
         const workflowName = randomUUID();
@@ -1192,6 +1266,37 @@ export function testBackend(options: TestBackendOptions): void {
           version: "v2",
           concurrencyKey,
           concurrencyLimit,
+        });
+
+        const firstClaimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+        const secondClaimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+
+        expect(firstClaimed).not.toBeNull();
+        expect(secondClaimed).not.toBeNull();
+        expect(secondClaimed?.id).not.toBe(firstClaimed?.id);
+
+        await teardown(backend);
+      });
+
+      test("allows claims for different versions in default bucket when key is omitted", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version: "v1",
+          concurrencyLimit: 1,
+        });
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version: "v2",
+          concurrencyLimit: 1,
         });
 
         const firstClaimed = await backend.claimWorkflowRun({

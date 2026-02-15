@@ -209,6 +209,17 @@ describe("sqlite", () => {
         .all() as { name: string }[];
       const indexNames = indexRows.map((index) => index.name);
       expect(indexNames).toContain("workflow_runs_concurrency_active_idx");
+
+      const concurrencyIndex = db
+        .prepare(
+          `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`,
+        )
+        .get("workflow_runs_concurrency_active_idx") as
+        | { sql: string | null }
+        | undefined;
+      expect(concurrencyIndex?.sql).toContain(
+        'WHERE "concurrency_limit" IS NOT NULL',
+      );
     });
   });
 

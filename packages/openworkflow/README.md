@@ -67,7 +67,7 @@ For more details, check out our [docs](https://openworkflow.dev/docs).
 - ✅ **Long pauses** - Sleep for seconds or months
 - ✅ **Scheduled runs** - Start workflows at a specific time
 - ✅ **Parallel execution** - Run steps concurrently
-- ✅ **Workflow concurrency** - Limit active runs by key (static or input-based)
+- ✅ **Workflow concurrency** - Limit active runs by bucket (optional key)
 - ✅ **Idempotency keys** - Deduplicate repeated run requests (24h window)
 - ✅ **No extra servers** - Uses your existing database
 - ✅ **Dashboard included** - Monitor and debug workflows
@@ -82,7 +82,7 @@ const workflow = defineWorkflow(
   {
     name: "process-order",
     concurrency: {
-      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      key: ({ input }) => `tenant:${input.tenantId}`, // optional
       limit: ({ input }) => input.maxConcurrentOrders, // or: 5
     },
   },
@@ -92,8 +92,10 @@ const workflow = defineWorkflow(
 );
 ```
 
-`key` must resolve to a non-empty string and `limit` must resolve to a positive
-integer. Invalid values fail run creation.
+`limit` must resolve to a positive integer. If `key` is provided, it must
+resolve to a non-empty string. Invalid values fail run creation.
+When `key` is omitted, runs use the default bucket for
+`namespace + workflow + version`.
 Keys are stored verbatim (for example, `" foo "` and `"foo"` are different
 concurrency keys); only empty or all-whitespace keys are rejected.
 Sleeping runs do not consume workflow-concurrency slots until they are claimed
