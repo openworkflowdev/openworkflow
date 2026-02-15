@@ -3,6 +3,7 @@
 [![npm](https://img.shields.io/npm/v/openworkflow)](https://www.npmjs.com/package/openworkflow)
 [![build](https://img.shields.io/github/actions/workflow/status/openworkflowdev/openworkflow/ci.yaml)](https://github.com/openworkflowdev/openworkflow/actions/workflows/ci.yaml)
 [![coverage](https://img.shields.io/codecov/c/github/openworkflowdev/openworkflow)](https://codecov.io/github/openworkflowdev/openworkflow)
+[![pkg.pr.new](https://pkg.pr.new/badge/openworkflowdev/openworkflow)](https://pkg.pr.new/~/openworkflowdev/openworkflow)
 
 OpenWorkflow is a TypeScript framework for building durable, resumable workflows
 that can pause for seconds or months, survive crashes and deploys, and resume
