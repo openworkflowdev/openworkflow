@@ -95,6 +95,13 @@ export const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
   "canceled",
 ]);
 
+/** Run statuses that can be canceled from the dashboard. */
+const CANCELABLE_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
+  "pending",
+  "running",
+  "sleeping",
+]);
+
 const fallbackStatusColor = "text-warning";
 const fallbackStatusBadgeClass = "bg-warning/10 border-warning/20 text-warning";
 
@@ -112,4 +119,8 @@ export function getStatusColor(status: string): string {
 
 export function getStatusBadgeClass(status: string): string {
   return getStatusConfig(status)?.badgeClass ?? fallbackStatusBadgeClass;
+}
+
+export function isRunCancelableStatus(status: string): boolean {
+  return CANCELABLE_RUN_STATUSES.has(status as WorkflowRunStatus);
 }

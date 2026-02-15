@@ -70,6 +70,16 @@ export const getWorkflowRunServerFn = createServerFn({ method: "GET" })
   });
 
 /**
+ * Cancel a workflow run by ID.
+ */
+export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ workflowRunId: z.string() }))
+  .handler(async ({ data }): Promise<WorkflowRun> => {
+    const backend = await getBackend();
+    return backend.cancelWorkflowRun({ workflowRunId: data.workflowRunId });
+  });
+
+/**
  * List step attempts for a workflow run.
  */
 export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
