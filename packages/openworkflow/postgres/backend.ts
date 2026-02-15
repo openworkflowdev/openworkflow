@@ -1,4 +1,9 @@
 import {
+  CONCURRENCY_LIMIT_MISMATCH_ERROR,
+  normalizeCreateWorkflowRunParams,
+  toConcurrencyBucket,
+} from "../backend-concurrency.js";
+import {
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -101,36 +106,44 @@ export class BackendPostgres implements Backend {
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const normalizedParams = normalizeCreateWorkflowRunParams(params);
+    const concurrencyBucket = toConcurrencyBucket(normalizedParams);
 
-    if (normalizedParams.idempotencyKey === null) {
+    if (
+      normalizedParams.idempotencyKey === null &&
+      concurrencyBucket === null
+    ) {
       return await this.insertWorkflowRun(this.pg, normalizedParams);
     }
-
-    const { workflowName, idempotencyKey } = normalizedParams;
-    const lockScope = JSON.stringify({
-      namespaceId: this.namespaceId,
-      workflowName,
-      idempotencyKey,
-    });
 
     return await this.pg.begin(async (_tx) => {
       const pgTx = _tx as unknown as Postgres;
 
-      /* eslint-disable @cspell/spellchecker */
-      await pgTx.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
-        [lockScope],
-      );
-      /* eslint-enable @cspell/spellchecker */
+      if (normalizedParams.idempotencyKey !== null) {
+        // Acquire/check idempotency first so duplicate create requests can
+        // return early without taking a bucket lock.
+        await this.acquireIdempotencyCreateLock(
+          pgTx,
+          normalizedParams.workflowName,
+          normalizedParams.idempotencyKey,
+        );
 
-      const existing = await this.getWorkflowRunByIdempotencyKey(
-        pgTx,
-        workflowName,
-        idempotencyKey,
-        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-      );
-      if (existing) {
-        return existing;
+        const existing = await this.getWorkflowRunByIdempotencyKey(
+          pgTx,
+          normalizedParams.workflowName,
+          normalizedParams.idempotencyKey,
+          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+        );
+        if (existing) {
+          return existing;
+        }
+      }
+
+      if (concurrencyBucket) {
+        await this.acquireConcurrencyCreateLock(pgTx, concurrencyBucket);
+        await this.assertNoActiveBucketConcurrencyLimitMismatch(
+          pgTx,
+          concurrencyBucket,
+        );
       }
 
       return await this.insertWorkflowRun(pgTx, normalizedParams);
@@ -208,6 +221,74 @@ export class BackendPostgres implements Backend {
     `;
 
     return workflowRun ?? null;
+  }
+
+  private async acquireConcurrencyCreateLock(
+    pg: Postgres,
+    params: { workflowName: string; version: string | null; key: string },
+  ): Promise<void> {
+    // Intentionally uses a different lock payload shape than claim-time locks.
+    // Create-time lock serializes concurrent creates in the bucket, while
+    // claim-time lock serializes concurrent claim gate evaluation.
+    const lockScope = JSON.stringify({
+      namespaceId: this.namespaceId,
+      workflowName: params.workflowName,
+      version: params.version,
+      concurrencyKey: params.key,
+    });
+
+    // Hash collisions are extremely unlikely; if they happen, unrelated
+    // buckets may serialize, but correctness is preserved.
+    await pg.unsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+      [lockScope],
+    );
+  }
+
+  private async acquireIdempotencyCreateLock(
+    pg: Postgres,
+    workflowName: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const lockScope = JSON.stringify({
+      namespaceId: this.namespaceId,
+      workflowName,
+      idempotencyKey,
+    });
+
+    await pg.unsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+      [lockScope],
+    );
+  }
+
+  private async assertNoActiveBucketConcurrencyLimitMismatch(
+    pg: Postgres,
+    params: {
+      workflowName: string;
+      version: string | null;
+      key: string;
+      limit: number;
+    },
+  ): Promise<void> {
+    const workflowRunsTable = this.workflowRunsTable(pg);
+    const [conflict] = await pg<{ id: string }[]>`
+      SELECT "id"
+      FROM ${workflowRunsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "workflow_name" = ${params.workflowName}
+        AND "version" IS NOT DISTINCT FROM ${params.version}
+        AND "concurrency_key" = ${params.key}
+        -- Sleeping runs are excluded so long sleeps do not pin historical
+        -- limits and block new run creation after config changes.
+        AND "status" IN ('pending', 'running')
+        AND "concurrency_limit" IS DISTINCT FROM ${params.limit}
+      LIMIT 1
+    `;
+
+    if (conflict) {
+      throw new Error(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+    }
   }
 
   async getWorkflowRun(
@@ -316,22 +397,43 @@ export class BackendPostgres implements Backend {
           AND (
             wr."concurrency_key" IS NULL
             OR wr."concurrency_limit" IS NULL
-            OR (
-              -- TODO: If claim latency becomes a hot spot, replace this
-              -- correlated count with precomputed bucket counts via a CTE.
-              SELECT COUNT(*)
-              FROM ${workflowRunsTable} AS active
-              WHERE active."namespace_id" = wr."namespace_id"
-                AND active."workflow_name" = wr."workflow_name"
-                AND active."version" IS NOT DISTINCT FROM wr."version"
-                AND active."concurrency_key" = wr."concurrency_key"
-                AND active."status" = 'running'
-                -- Candidates require available_at <= NOW(); active leased runs
-                -- require available_at > NOW(). Keep explicit self-exclusion
-                -- for readability/safety.
-                AND active."id" <> wr."id"
-                AND active."available_at" > NOW()
-            ) < wr."concurrency_limit"
+            OR CASE
+              -- cspell:ignore xact hashtextextended
+              -- Serialize constrained claims per bucket. pg_try_advisory lock
+              -- intentionally skips busy buckets (non-blocking) to avoid
+              -- over-claim races without stalling claim loops. This lock key
+              -- shape intentionally differs from create-time locking because
+              -- claims and creates are serialized within their own hot paths.
+              -- Hash collisions can over-serialize unrelated buckets
+              -- (throughput impact only).
+              WHEN pg_try_advisory_xact_lock(
+                hashtextextended(
+                  json_build_array(
+                    wr."namespace_id",
+                    wr."workflow_name",
+                    wr."version",
+                    wr."concurrency_key"
+                  )::text,
+                  0::bigint
+                )
+              ) THEN (
+                -- TODO: If claim latency becomes a hot spot, replace this
+                -- correlated count with precomputed bucket counts via a CTE.
+                SELECT COUNT(*)
+                FROM ${workflowRunsTable} AS active
+                WHERE active."namespace_id" = wr."namespace_id"
+                  AND active."workflow_name" = wr."workflow_name"
+                  AND active."version" IS NOT DISTINCT FROM wr."version"
+                  AND active."concurrency_key" = wr."concurrency_key"
+                  AND active."status" = 'running'
+                  -- Candidates require available_at <= NOW(); active leased runs
+                  -- require available_at > NOW(). Keep explicit self-exclusion
+                  -- for readability/safety.
+                  AND active."id" <> wr."id"
+                  AND active."available_at" > NOW()
+              ) < wr."concurrency_limit"
+              ELSE FALSE
+            END
           )
         ORDER BY
           CASE WHEN wr."status" = 'pending' THEN 0 ELSE 1 END,
@@ -817,64 +919,5 @@ function decodeCursor(cursor: string): Cursor {
   return {
     createdAt: new Date(parsed.createdAt),
     id: parsed.id,
-  };
-}
-
-/**
- * Normalize and validate workflow concurrency metadata passed to create calls.
- * @param params - Workflow run creation params
- * @returns Params with normalized concurrency fields
- * @throws {Error} When concurrency metadata has invalid shape or types
- */
-function normalizeCreateWorkflowRunParams(
-  params: CreateWorkflowRunParams,
-): CreateWorkflowRunParams {
-  const rawParams = params as unknown as Record<string, unknown>;
-  const rawConcurrencyKey = rawParams["concurrencyKey"];
-  const rawConcurrencyLimit = rawParams["concurrencyLimit"];
-
-  if (rawConcurrencyKey === undefined && rawConcurrencyLimit === undefined) {
-    return {
-      ...params,
-      concurrencyKey: null,
-      concurrencyLimit: null,
-    };
-  }
-
-  if (
-    rawConcurrencyKey !== undefined &&
-    rawConcurrencyKey !== null &&
-    typeof rawConcurrencyKey !== "string"
-  ) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyKey" must be a string or null.',
-    );
-  }
-
-  if (
-    rawConcurrencyLimit !== undefined &&
-    rawConcurrencyLimit !== null &&
-    typeof rawConcurrencyLimit !== "number"
-  ) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyLimit" must be a number or null.',
-    );
-  }
-
-  const concurrencyKey =
-    rawConcurrencyKey === undefined ? null : rawConcurrencyKey;
-  const concurrencyLimit =
-    rawConcurrencyLimit === undefined ? null : rawConcurrencyLimit;
-
-  if ((concurrencyKey === null) !== (concurrencyLimit === null)) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
-    );
-  }
-
-  return {
-    ...params,
-    concurrencyKey,
-    concurrencyLimit,
   };
 }

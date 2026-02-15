@@ -1,3 +1,8 @@
+import {
+  CONCURRENCY_LIMIT_MISMATCH_ERROR,
+  INVALID_CONCURRENCY_KEY_VALUE_ERROR,
+  INVALID_CONCURRENCY_LIMIT_VALUE_ERROR,
+} from "./backend-concurrency.js";
 import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
 import type { Backend, CreateWorkflowRunParams } from "./backend.js";
 import type { StepAttempt } from "./core/step.js";
@@ -201,6 +206,173 @@ export function testBackend(options: TestBackendOptions): void {
         ).rejects.toThrow(
           'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
         );
+      });
+
+      test("rejects invalid workflow concurrency limit values", async () => {
+        const base = {
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          concurrencyKey: "tenant:acme",
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        };
+
+        const invalidLimits = [
+          0,
+          -1,
+          1.5,
+          Number.NaN,
+          Number.POSITIVE_INFINITY,
+        ];
+        for (const invalidLimit of invalidLimits) {
+          const invalid = {
+            ...base,
+            concurrencyLimit: invalidLimit,
+          } as unknown as CreateWorkflowRunParams;
+          await expect(
+            Promise.resolve().then(() => backend.createWorkflowRun(invalid)),
+          ).rejects.toThrow(INVALID_CONCURRENCY_LIMIT_VALUE_ERROR);
+        }
+      });
+
+      test("rejects whitespace-only workflow concurrency keys", async () => {
+        const invalid = {
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          concurrencyKey: "   ",
+          concurrencyLimit: 1,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        } as unknown as CreateWorkflowRunParams;
+
+        await expect(
+          Promise.resolve().then(() => backend.createWorkflowRun(invalid)),
+        ).rejects.toThrow(INVALID_CONCURRENCY_KEY_VALUE_ERROR);
+      });
+
+      test("rejects mixed concurrency limits for the same active bucket", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const concurrencyKey = "tenant:acme";
+
+        await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyKey,
+          concurrencyLimit: 1,
+        });
+
+        await expect(
+          backend.createWorkflowRun({
+            workflowName,
+            version,
+            idempotencyKey: null,
+            concurrencyKey,
+            concurrencyLimit: 2,
+            input: null,
+            config: {},
+            context: null,
+            availableAt: null,
+            deadlineAt: null,
+          }),
+        ).rejects.toThrow(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+
+        await teardown(backend);
+      });
+
+      test("allows changing concurrency limit after terminal runs leave active states", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const concurrencyKey = "tenant:acme";
+
+        const first = await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyKey,
+          concurrencyLimit: 1,
+        });
+        const workerId = randomUUID();
+
+        const claimed = await backend.claimWorkflowRun({
+          workerId,
+          leaseDurationMs: 100,
+        });
+        expect(claimed?.id).toBe(first.id);
+
+        await backend.completeWorkflowRun({
+          workflowRunId: first.id,
+          workerId,
+          output: null,
+        });
+
+        const next = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: null,
+          concurrencyKey,
+          concurrencyLimit: 2,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(next.concurrencyLimit).toBe(2);
+
+        await teardown(backend);
+      });
+
+      test("allows changing concurrency limit when only sleeping runs remain", async () => {
+        const backend = await setup();
+        const workflowName = randomUUID();
+        const version = "v1";
+        const concurrencyKey = "tenant:acme";
+
+        const first = await createPendingWorkflowRun(backend, {
+          workflowName,
+          version,
+          concurrencyKey,
+          concurrencyLimit: 1,
+        });
+        const workerId = randomUUID();
+
+        const claimed = await backend.claimWorkflowRun({
+          workerId,
+          leaseDurationMs: 100,
+        });
+        expect(claimed?.id).toBe(first.id);
+
+        await backend.sleepWorkflowRun({
+          workflowRunId: first.id,
+          workerId,
+          availableAt: new Date(Date.now() + 60_000),
+        });
+
+        const next = await backend.createWorkflowRun({
+          workflowName,
+          version,
+          idempotencyKey: null,
+          concurrencyKey,
+          concurrencyLimit: 2,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(next.concurrencyLimit).toBe(2);
+
+        await teardown(backend);
       });
 
       test("reuses the same run for matching idempotency key and workflow identity", async () => {
@@ -1107,10 +1279,13 @@ export function testBackend(options: TestBackendOptions): void {
           workerId,
           leaseDurationMs: 200,
         });
-        expect(firstClaimed?.id).toBe(firstRun.id);
+        expect(firstClaimed).not.toBeNull();
+        if (!firstClaimed) throw new Error("Expected first claim");
+        const secondRunId =
+          firstClaimed.id === firstRun.id ? secondRun.id : firstRun.id;
 
         const sleeping = await backend.sleepWorkflowRun({
-          workflowRunId: firstRun.id,
+          workflowRunId: firstClaimed.id,
           workerId,
           availableAt: new Date(Date.now() + 200),
         });
@@ -1120,7 +1295,7 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: randomUUID(),
           leaseDurationMs: 200,
         });
-        expect(secondClaimed?.id).toBe(secondRun.id);
+        expect(secondClaimed?.id).toBe(secondRunId);
 
         await teardown(backend);
       });
@@ -1150,10 +1325,13 @@ export function testBackend(options: TestBackendOptions): void {
           workerId,
           leaseDurationMs: 200,
         });
-        expect(firstClaimed?.id).toBe(firstRun.id);
+        expect(firstClaimed).not.toBeNull();
+        if (!firstClaimed) throw new Error("Expected first claim");
+        const secondRunId =
+          firstClaimed.id === firstRun.id ? secondRun.id : firstRun.id;
 
         const failed = await backend.failWorkflowRun({
-          workflowRunId: firstRun.id,
+          workflowRunId: firstClaimed.id,
           workerId,
           error: { message: "terminal failure" },
           retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
@@ -1164,7 +1342,7 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: randomUUID(),
           leaseDurationMs: 200,
         });
-        expect(secondClaimed?.id).toBe(secondRun.id);
+        expect(secondClaimed?.id).toBe(secondRunId);
 
         await teardown(backend);
       });
@@ -1194,10 +1372,13 @@ export function testBackend(options: TestBackendOptions): void {
           workerId,
           leaseDurationMs: 200,
         });
-        expect(firstClaimed?.id).toBe(firstRun.id);
+        expect(firstClaimed).not.toBeNull();
+        if (!firstClaimed) throw new Error("Expected first claim");
+        const secondRunId =
+          firstClaimed.id === firstRun.id ? secondRun.id : firstRun.id;
 
         const failed = await backend.failWorkflowRun({
-          workflowRunId: firstRun.id,
+          workflowRunId: firstClaimed.id,
           workerId,
           error: { message: "retry me" },
           retryPolicy: SHORT_WORKFLOW_RETRY_POLICY,
@@ -1209,7 +1390,7 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: randomUUID(),
           leaseDurationMs: 200,
         });
-        expect(secondClaimed?.id).toBe(secondRun.id);
+        expect(secondClaimed?.id).toBe(secondRunId);
 
         await teardown(backend);
       });
@@ -1239,10 +1420,13 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: firstWorkerId,
           leaseDurationMs: 200,
         });
-        expect(firstClaimed?.id).toBe(firstRun.id);
+        expect(firstClaimed).not.toBeNull();
+        if (!firstClaimed) throw new Error("Expected first claim");
+        const secondRunId =
+          firstClaimed.id === firstRun.id ? secondRun.id : firstRun.id;
 
         const failed = await backend.failWorkflowRun({
-          workflowRunId: firstRun.id,
+          workflowRunId: firstClaimed.id,
           workerId: firstWorkerId,
           error: { message: "retry later" },
           retryPolicy: SHORT_WORKFLOW_RETRY_POLICY,
@@ -1253,7 +1437,7 @@ export function testBackend(options: TestBackendOptions): void {
           workerId: randomUUID(),
           leaseDurationMs: 200,
         });
-        expect(secondClaimed?.id).toBe(secondRun.id);
+        expect(secondClaimed?.id).toBe(secondRunId);
 
         await sleep(60); // allow first retry to become due while second is leased
 

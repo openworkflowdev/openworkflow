@@ -301,9 +301,12 @@ attempt is persisted individually as a `step_attempt`.
 
 Workers are configured with a concurrency limit (e.g., 10). A worker will
 maintain up to 10 in-flight workflow runs simultaneously. It polls for new work
-only when it has available capacity. The Backend's atomic `dequeue` operation
-(`FOR UPDATE SKIP LOCKED`) ensures that multiple workers can poll the same table
-without race conditions or processing the same run twice.
+only when it has available capacity. Claim atomicity is backend-specific:
+
+- Postgres uses `FOR UPDATE SKIP LOCKED` plus advisory locks for constrained
+  buckets.
+- SQLite uses transaction-level single-writer locking (`BEGIN IMMEDIATE`) to
+  serialize claim writes.
 
 ### 5.3. Workflow-Run Concurrency
 
@@ -327,7 +330,7 @@ defineWorkflow(
 
 `key` and `limit` can each be either static values (`string`/`number`) or
 functions of the validated workflow input. They are resolved once when the run
-is created and persisted on the `workflow_run`.
+is created and persisted on `workflow_runs`.
 Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
 
 During claim/dequeue, a run is claimable only when the number of active leased
@@ -341,6 +344,9 @@ is:
 
 `pending`, `sleeping`, and expired-lease `running` runs do not consume
 concurrency slots.
+For active runs in a bucket (`pending`, `running`), the resolved
+`concurrency_limit` is required to be consistent; conflicting limits are
+rejected at run creation.
 
 ### 5.4. Handling Crashes During Parallel Execution
 

@@ -119,6 +119,8 @@ Only active leased `running` runs consume workflow-concurrency slots.
 Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
 Sleeping runs are non-consuming until they are claimed again as actively leased
 `running` runs.
+Within active `pending` and actively leased `running` runs for the same
+workflow+version+key bucket, the resolved `limit` must remain consistent.
 
 ## Heartbeats and Crash Recovery
 
@@ -166,6 +168,8 @@ Workers coordinate through the database:
 - Each workflow run is claimed by exactly one worker at a time
 - Workers use atomic database operations to prevent duplicate processing
 - If a worker crashes, its workflows become available to other workers
+- SQLite relies on transaction-level single-writer locking (`BEGIN IMMEDIATE`)
+  while Postgres uses row locks plus advisory locks for constrained buckets
 
 ## Graceful Shutdown
 

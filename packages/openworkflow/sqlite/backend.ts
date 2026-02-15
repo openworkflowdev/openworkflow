@@ -1,4 +1,9 @@
 import {
+  CONCURRENCY_LIMIT_MISMATCH_ERROR,
+  normalizeCreateWorkflowRunParams,
+  toConcurrencyBucket,
+} from "../backend-concurrency.js";
+import {
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -95,23 +100,33 @@ export class BackendSqlite implements Backend {
 
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun> {
     const normalizedParams = normalizeCreateWorkflowRunParams(params);
+    const concurrencyBucket = toConcurrencyBucket(normalizedParams);
     const { workflowName, idempotencyKey } = normalizedParams;
 
-    if (idempotencyKey === null) {
+    if (idempotencyKey === null && concurrencyBucket === null) {
       return Promise.resolve(this.insertWorkflowRun(normalizedParams));
     }
 
     try {
+      // BEGIN IMMEDIATE takes a RESERVED write lock up-front. This serializes
+      // create checks/writes across writers, which is the SQLite consistency
+      // model we rely on (instead of row/advisory locks).
       this.db.exec("BEGIN IMMEDIATE");
 
-      const existing = this.getWorkflowRunByIdempotencyKey(
-        workflowName,
-        idempotencyKey,
-        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-      );
-      if (existing) {
-        this.db.exec("COMMIT");
-        return Promise.resolve(existing);
+      if (idempotencyKey !== null) {
+        const existing = this.getWorkflowRunByIdempotencyKey(
+          workflowName,
+          idempotencyKey,
+          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+        );
+        if (existing) {
+          this.db.exec("COMMIT");
+          return Promise.resolve(existing);
+        }
+      }
+
+      if (concurrencyBucket) {
+        this.assertNoActiveBucketConcurrencyLimitMismatch(concurrencyBucket);
       }
 
       const workflowRun = this.insertWorkflowRun(normalizedParams);
@@ -216,6 +231,45 @@ export class BackendSqlite implements Backend {
     return row ? rowToWorkflowRun(row) : null;
   }
 
+  private assertNoActiveBucketConcurrencyLimitMismatch(params: {
+    workflowName: string;
+    version: string | null;
+    key: string;
+    limit: number;
+  }): void {
+    const stmt = this.db.prepare(`
+      SELECT "id"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+        AND "workflow_name" = ?
+        AND (
+          "version" = ?
+          OR ("version" IS NULL AND ? IS NULL)
+        )
+        AND "concurrency_key" = ?
+        -- Sleeping runs are excluded so long sleeps do not pin historical
+        -- limits and block new run creation after config changes.
+        AND "status" IN ('pending', 'running')
+        -- "params.limit" is always non-null because this is called only when
+        -- toConcurrencyBucket() returns a constrained bucket.
+        AND ("concurrency_limit" <> ? OR "concurrency_limit" IS NULL)
+      LIMIT 1
+    `);
+
+    const conflict = stmt.get(
+      this.namespaceId,
+      params.workflowName,
+      params.version,
+      params.version,
+      params.key,
+      params.limit,
+    ) as { id: string } | undefined;
+
+    if (conflict) {
+      throw new Error(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+    }
+  }
+
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null> {
     const stmt = this.db.prepare(`
       SELECT *
@@ -237,7 +291,8 @@ export class BackendSqlite implements Backend {
     const currentTime = now();
     const newAvailableAt = addMilliseconds(currentTime, params.leaseDurationMs);
 
-    // SQLite doesn't have SKIP LOCKED, so we need to handle claims differently
+    // SQLite doesn't have SKIP LOCKED. BEGIN IMMEDIATE serializes writers with
+    // the database's single-writer lock, which is the intended claim model.
     this.db.exec("BEGIN IMMEDIATE");
 
     try {
@@ -1122,64 +1177,5 @@ function decodeCursor(cursor: string): Cursor {
   return {
     createdAt: new Date(parsed.createdAt),
     id: parsed.id,
-  };
-}
-
-/**
- * Normalize and validate workflow concurrency metadata passed to create calls.
- * @param params - Workflow run creation params
- * @returns Params with normalized concurrency fields
- * @throws {Error} When concurrency metadata has invalid shape or types
- */
-function normalizeCreateWorkflowRunParams(
-  params: CreateWorkflowRunParams,
-): CreateWorkflowRunParams {
-  const rawParams = params as unknown as Record<string, unknown>;
-  const rawConcurrencyKey = rawParams["concurrencyKey"];
-  const rawConcurrencyLimit = rawParams["concurrencyLimit"];
-
-  if (rawConcurrencyKey === undefined && rawConcurrencyLimit === undefined) {
-    return {
-      ...params,
-      concurrencyKey: null,
-      concurrencyLimit: null,
-    };
-  }
-
-  if (
-    rawConcurrencyKey !== undefined &&
-    rawConcurrencyKey !== null &&
-    typeof rawConcurrencyKey !== "string"
-  ) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyKey" must be a string or null.',
-    );
-  }
-
-  if (
-    rawConcurrencyLimit !== undefined &&
-    rawConcurrencyLimit !== null &&
-    typeof rawConcurrencyLimit !== "number"
-  ) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyLimit" must be a number or null.',
-    );
-  }
-
-  const concurrencyKey =
-    rawConcurrencyKey === undefined ? null : rawConcurrencyKey;
-  const concurrencyLimit =
-    rawConcurrencyLimit === undefined ? null : rawConcurrencyLimit;
-
-  if ((concurrencyKey === null) !== (concurrencyLimit === null)) {
-    throw new Error(
-      'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
-    );
-  }
-
-  return {
-    ...params,
-    concurrencyKey,
-    concurrencyLimit,
   };
 }

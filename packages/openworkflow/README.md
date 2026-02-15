@@ -98,6 +98,8 @@ Keys are stored verbatim (for example, `" foo "` and `"foo"` are different
 concurrency keys); only empty or all-whitespace keys are rejected.
 Sleeping runs do not consume workflow-concurrency slots until they are claimed
 again as actively leased `running` runs.
+For a given active bucket (`workflow + version + key`), the resolved `limit`
+must stay consistent across `pending`/`running` runs.
 
 ## Documentation
 
