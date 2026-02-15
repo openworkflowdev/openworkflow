@@ -98,7 +98,7 @@ defineWorkflow(
   {
     name: "process-order",
     concurrency: {
-      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      key: ({ input }) => `tenant:${input.tenantId}`, // optional
       limit: ({ input }) => input.maxConcurrentOrders, // or: 5
     },
   },
@@ -113,7 +113,7 @@ Workers will only claim a run when the bucket has capacity. Bucket scope is:
 - namespace
 - workflow name
 - workflow version
-- resolved concurrency key
+- resolved concurrency key (or default bucket when key is omitted)
 
 Only active leased `running` runs consume workflow-concurrency slots.
 Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.

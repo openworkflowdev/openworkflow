@@ -235,7 +235,11 @@ export class BackendPostgres implements Backend {
 
   private async acquireConcurrencyCreateLock(
     pg: Postgres,
-    params: { workflowName: string; version: string | null; key: string },
+    params: {
+      workflowName: string;
+      version: string | null;
+      key: string | null;
+    },
   ): Promise<void> {
     // Intentionally uses a different lock payload shape than claim-time locks.
     // Create-time lock serializes concurrent creates in the bucket, while
@@ -277,7 +281,7 @@ export class BackendPostgres implements Backend {
     params: {
       workflowName: string;
       version: string | null;
-      key: string;
+      key: string | null;
       limit: number;
     },
   ): Promise<void> {
@@ -288,7 +292,7 @@ export class BackendPostgres implements Backend {
       WHERE "namespace_id" = ${this.namespaceId}
         AND "workflow_name" = ${params.workflowName}
         AND "version" IS NOT DISTINCT FROM ${params.version}
-        AND "concurrency_key" = ${params.key}
+        AND "concurrency_key" IS NOT DISTINCT FROM ${params.key}
         -- Sleeping runs are excluded so long sleeps do not pin historical
         -- limits and block new run creation after config changes.
         AND "status" IN ('pending', 'running')
@@ -418,8 +422,7 @@ export class BackendPostgres implements Backend {
           AND wr."available_at" <= NOW()
           AND (wr."deadline_at" IS NULL OR wr."deadline_at" > NOW())
           AND (
-            wr."concurrency_key" IS NULL
-            OR wr."concurrency_limit" IS NULL
+            wr."concurrency_limit" IS NULL
             OR CASE
               -- cspell:ignore xact hashtextextended
               -- Serialize constrained claims per bucket. pg_try_advisory lock
@@ -447,7 +450,7 @@ export class BackendPostgres implements Backend {
                 WHERE active."namespace_id" = wr."namespace_id"
                   AND active."workflow_name" = wr."workflow_name"
                   AND active."version" IS NOT DISTINCT FROM wr."version"
-                  AND active."concurrency_key" = wr."concurrency_key"
+                  AND active."concurrency_key" IS NOT DISTINCT FROM wr."concurrency_key"
                   AND active."status" = 'running'
                   -- Candidates require available_at <= NOW(); active leased runs
                   -- require available_at > NOW(). Keep explicit self-exclusion

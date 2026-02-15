@@ -15,9 +15,10 @@ export interface WorkflowConcurrencyResolverParams<Input> {
  */
 export interface WorkflowConcurrency<Input> {
   /**
-   * Bucket key used to scope concurrency for this run.
+   * Optional bucket key used to scope concurrency for this run.
+   * When omitted, runs use the default workflow+version bucket.
    */
-  readonly key:
+  readonly key?:
     | string
     | ((params: Readonly<WorkflowConcurrencyResolverParams<Input>>) => string);
   /**
