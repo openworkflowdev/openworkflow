@@ -1,4 +1,5 @@
 import { AppLayout } from "@/components/app-layout";
+import { RunCancelAction } from "@/components/run-cancel-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import {
   CaretDownIcon,
   ListDashesIcon,
 } from "@phosphor-icons/react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import type { StepAttempt } from "openworkflow/internal";
 import { useState } from "react";
 
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/runs/$runId")({
 
 function RunDetailsPage() {
   const { run, steps } = Route.useLoaderData();
+  const router = useRouter();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   usePolling({
     enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
@@ -76,7 +78,7 @@ function RunDetailsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-start gap-4">
           <Link to="/">
             <Button variant="ghost" size="icon">
               <ArrowLeftIcon className="size-5" />
@@ -104,6 +106,13 @@ function RunDetailsPage() {
               Run ID: <span className="font-mono">{run.id}</span>
             </p>
           </div>
+          <RunCancelAction
+            runId={run.id}
+            status={run.status}
+            onCanceled={async () => {
+              await router.invalidate();
+            }}
+          />
         </div>
 
         <div className="flex gap-6">
