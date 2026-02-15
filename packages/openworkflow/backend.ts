@@ -68,6 +68,8 @@ export interface CreateWorkflowRunParams {
   workflowName: string;
   version: string | null;
   idempotencyKey: string | null;
+  concurrencyKey: string | null;
+  concurrencyLimit: number | null;
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;

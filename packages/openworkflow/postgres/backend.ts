@@ -100,11 +100,13 @@ export class BackendPostgres implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    if (params.idempotencyKey === null) {
-      return await this.insertWorkflowRun(this.pg, params);
+    const normalizedParams = normalizeCreateWorkflowRunParams(params);
+
+    if (normalizedParams.idempotencyKey === null) {
+      return await this.insertWorkflowRun(this.pg, normalizedParams);
     }
 
-    const { workflowName, idempotencyKey } = params;
+    const { workflowName, idempotencyKey } = normalizedParams;
     const lockScope = JSON.stringify({
       namespaceId: this.namespaceId,
       workflowName,
@@ -131,7 +133,7 @@ export class BackendPostgres implements Backend {
         return existing;
       }
 
-      return await this.insertWorkflowRun(pgTx, params);
+      return await this.insertWorkflowRun(pgTx, normalizedParams);
     });
   }
 
@@ -149,6 +151,8 @@ export class BackendPostgres implements Backend {
         "version",
         "status",
         "idempotency_key",
+        "concurrency_key",
+        "concurrency_limit",
         "config",
         "context",
         "input",
@@ -165,6 +169,8 @@ export class BackendPostgres implements Backend {
         ${params.version},
         'pending',
         ${params.idempotencyKey},
+        ${params.concurrencyKey ?? null},
+        ${params.concurrencyLimit ?? null},
         ${pg.json(params.config)},
         ${pg.json(params.context)},
         ${pg.json(params.input)},
@@ -301,16 +307,36 @@ export class BackendPostgres implements Backend {
         RETURNING "id"
       ),
       candidate AS (
-        SELECT "id"
-        FROM ${workflowRunsTable}
-        WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running', 'sleeping')
-          AND "available_at" <= NOW()
-          AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
+        SELECT wr."id"
+        FROM ${workflowRunsTable} AS wr
+        WHERE wr."namespace_id" = ${this.namespaceId}
+          AND wr."status" IN ('pending', 'running', 'sleeping')
+          AND wr."available_at" <= NOW()
+          AND (wr."deadline_at" IS NULL OR wr."deadline_at" > NOW())
+          AND (
+            wr."concurrency_key" IS NULL
+            OR wr."concurrency_limit" IS NULL
+            OR (
+              -- TODO: If claim latency becomes a hot spot, replace this
+              -- correlated count with precomputed bucket counts via a CTE.
+              SELECT COUNT(*)
+              FROM ${workflowRunsTable} AS active
+              WHERE active."namespace_id" = wr."namespace_id"
+                AND active."workflow_name" = wr."workflow_name"
+                AND active."version" IS NOT DISTINCT FROM wr."version"
+                AND active."concurrency_key" = wr."concurrency_key"
+                AND active."status" = 'running'
+                -- Candidates require available_at <= NOW(); active leased runs
+                -- require available_at > NOW(). Keep explicit self-exclusion
+                -- for readability/safety.
+                AND active."id" <> wr."id"
+                AND active."available_at" > NOW()
+            ) < wr."concurrency_limit"
+          )
         ORDER BY
-          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
-          "available_at",
-          "created_at"
+          CASE WHEN wr."status" = 'pending' THEN 0 ELSE 1 END,
+          wr."available_at",
+          wr."created_at"
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
@@ -791,5 +817,64 @@ function decodeCursor(cursor: string): Cursor {
   return {
     createdAt: new Date(parsed.createdAt),
     id: parsed.id,
+  };
+}
+
+/**
+ * Normalize and validate workflow concurrency metadata passed to create calls.
+ * @param params - Workflow run creation params
+ * @returns Params with normalized concurrency fields
+ * @throws {Error} When concurrency metadata has invalid shape or types
+ */
+function normalizeCreateWorkflowRunParams(
+  params: CreateWorkflowRunParams,
+): CreateWorkflowRunParams {
+  const rawParams = params as unknown as Record<string, unknown>;
+  const rawConcurrencyKey = rawParams["concurrencyKey"];
+  const rawConcurrencyLimit = rawParams["concurrencyLimit"];
+
+  if (rawConcurrencyKey === undefined && rawConcurrencyLimit === undefined) {
+    return {
+      ...params,
+      concurrencyKey: null,
+      concurrencyLimit: null,
+    };
+  }
+
+  if (
+    rawConcurrencyKey !== undefined &&
+    rawConcurrencyKey !== null &&
+    typeof rawConcurrencyKey !== "string"
+  ) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyKey" must be a string or null.',
+    );
+  }
+
+  if (
+    rawConcurrencyLimit !== undefined &&
+    rawConcurrencyLimit !== null &&
+    typeof rawConcurrencyLimit !== "number"
+  ) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyLimit" must be a number or null.',
+    );
+  }
+
+  const concurrencyKey =
+    rawConcurrencyKey === undefined ? null : rawConcurrencyKey;
+  const concurrencyLimit =
+    rawConcurrencyLimit === undefined ? null : rawConcurrencyLimit;
+
+  if ((concurrencyKey === null) !== (concurrencyLimit === null)) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
+    );
+  }
+
+  return {
+    ...params,
+    concurrencyKey,
+    concurrencyLimit,
   };
 }

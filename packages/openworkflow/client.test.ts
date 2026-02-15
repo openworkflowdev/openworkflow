@@ -334,6 +334,124 @@ describe("OpenWorkflow", () => {
     expect(handle.workflowRun.version).toBeNull();
   });
 
+  test("resolves literal workflow concurrency values", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-literal-test",
+        concurrency: {
+          key: "tenant:acme",
+          limit: 3,
+        },
+      },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    expect(handle.workflowRun.concurrencyKey).toBe("tenant:acme");
+    expect(handle.workflowRun.concurrencyLimit).toBe(3);
+  });
+
+  test("resolves function workflow concurrency values from parsed input", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const schema = z.object({
+      tenant: z.string().transform((value) => value.trim()),
+      limit: z.coerce.number().int().positive(),
+    });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-function-test",
+        schema,
+        concurrency: {
+          key: ({ input }) => `tenant:${input.tenant}`,
+          limit: ({ input }) => Number(input.limit),
+        },
+      },
+      noopFn,
+    );
+
+    const handle = await workflow.run({
+      tenant: " acme ",
+      limit: "4",
+    });
+
+    expect(handle.workflowRun.concurrencyKey).toBe("tenant:acme");
+    expect(handle.workflowRun.concurrencyLimit).toBe(4);
+  });
+
+  test("throws when resolved workflow concurrency key is invalid", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-invalid-key-test",
+        concurrency: {
+          key: () => "   ",
+          limit: 1,
+        },
+      },
+      noopFn,
+    );
+
+    await expect(workflow.run()).rejects.toThrow(
+      /Invalid concurrency key for workflow "concurrency-invalid-key-test"/,
+    );
+  });
+
+  test("throws when resolved workflow concurrency limit is invalid", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-invalid-limit-test",
+        concurrency: {
+          key: "tenant:acme",
+          limit: 0,
+        },
+      },
+      noopFn,
+    );
+
+    await expect(workflow.run()).rejects.toThrow(
+      /Invalid concurrency limit for workflow "concurrency-invalid-limit-test"/,
+    );
+  });
+
+  test("throws when workflow concurrency resolver throws and does not enqueue", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "concurrency-throwing-resolver-test",
+        concurrency: {
+          key: () => {
+            throw new Error("resolver failed");
+          },
+          limit: 1,
+        },
+      },
+      noopFn,
+    );
+
+    await expect(workflow.run()).rejects.toThrow(
+      /Failed to resolve concurrency key for workflow "concurrency-throwing-resolver-test"/,
+    );
+
+    const claimed = await backend.claimWorkflowRun({
+      workerId: randomUUID(),
+      leaseDurationMs: 1000,
+    });
+    expect(claimed).toBeNull();
+  });
+
   test("creates workflow run with idempotency key", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

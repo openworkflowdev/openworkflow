@@ -94,10 +94,11 @@ export class BackendSqlite implements Backend {
   }
 
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun> {
-    const { workflowName, idempotencyKey } = params;
+    const normalizedParams = normalizeCreateWorkflowRunParams(params);
+    const { workflowName, idempotencyKey } = normalizedParams;
 
     if (idempotencyKey === null) {
-      return Promise.resolve(this.insertWorkflowRun(params));
+      return Promise.resolve(this.insertWorkflowRun(normalizedParams));
     }
 
     try {
@@ -113,7 +114,7 @@ export class BackendSqlite implements Backend {
         return Promise.resolve(existing);
       }
 
-      const workflowRun = this.insertWorkflowRun(params);
+      const workflowRun = this.insertWorkflowRun(normalizedParams);
       this.db.exec("COMMIT");
       return Promise.resolve(workflowRun);
     } catch (error) {
@@ -144,6 +145,8 @@ export class BackendSqlite implements Backend {
         "version",
         "status",
         "idempotency_key",
+        "concurrency_key",
+        "concurrency_limit",
         "config",
         "context",
         "input",
@@ -153,7 +156,7 @@ export class BackendSqlite implements Backend {
         "created_at",
         "updated_at"
       )
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -162,6 +165,8 @@ export class BackendSqlite implements Backend {
       params.workflowName,
       params.version,
       params.idempotencyKey,
+      params.concurrencyKey ?? null,
+      params.concurrencyLimit ?? null,
       toJSON(params.config),
       toJSON(params.context),
       toJSON(params.input),
@@ -262,21 +267,48 @@ export class BackendSqlite implements Backend {
 
       // 2. find an available workflow run to claim
       const findStmt = this.db.prepare(`
-        SELECT "id"
-        FROM "workflow_runs"
-        WHERE "namespace_id" = ?
-          AND "status" IN ('pending', 'running', 'sleeping')
-          AND "available_at" <= ?
-          AND ("deadline_at" IS NULL OR "deadline_at" > ?)
+        SELECT wr."id"
+        FROM "workflow_runs" AS wr
+        WHERE wr."namespace_id" = ?
+          AND wr."status" IN ('pending', 'running', 'sleeping')
+          AND wr."available_at" <= ?
+          AND (wr."deadline_at" IS NULL OR wr."deadline_at" > ?)
+          AND (
+            wr."concurrency_key" IS NULL
+            OR wr."concurrency_limit" IS NULL
+            OR (
+              -- TODO: If claim latency becomes a hot spot, replace this
+              -- correlated count with precomputed bucket counts via a CTE.
+              SELECT COUNT(*)
+              FROM "workflow_runs" AS active
+              WHERE active."namespace_id" = wr."namespace_id"
+                AND active."workflow_name" = wr."workflow_name"
+                AND (
+                  active."version" = wr."version"
+                  OR (
+                    active."version" IS NULL
+                    AND wr."version" IS NULL
+                  )
+                )
+                AND active."concurrency_key" = wr."concurrency_key"
+                AND active."status" = 'running'
+                -- Candidates require available_at <= now; active leased runs
+                -- require available_at > now. Keep explicit self-exclusion
+                -- for readability/safety.
+                AND active."id" <> wr."id"
+                AND active."available_at" > ?
+            ) < wr."concurrency_limit"
+          )
         ORDER BY
-          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
-          "available_at",
-          "created_at"
+          CASE WHEN wr."status" = 'pending' THEN 0 ELSE 1 END,
+          wr."available_at",
+          wr."created_at"
         LIMIT 1
       `);
 
       const candidate = findStmt.get(
         this.namespaceId,
+        currentTime,
         currentTime,
         currentTime,
       ) as { id: string } | undefined;
@@ -941,6 +973,8 @@ interface WorkflowRunRow {
   version: string | null;
   status: string;
   idempotency_key: string | null;
+  concurrency_key: string | null;
+  concurrency_limit: number | null;
   config: string;
   context: string | null;
   input: string | null;
@@ -1000,6 +1034,8 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     version: row.version,
     status: row.status as WorkflowRun["status"],
     idempotencyKey: row.idempotency_key,
+    concurrencyKey: row.concurrency_key,
+    concurrencyLimit: row.concurrency_limit,
     config: config as WorkflowRun["config"],
     context: fromJSON(row.context) as WorkflowRun["context"],
     input: fromJSON(row.input) as WorkflowRun["input"],
@@ -1086,5 +1122,64 @@ function decodeCursor(cursor: string): Cursor {
   return {
     createdAt: new Date(parsed.createdAt),
     id: parsed.id,
+  };
+}
+
+/**
+ * Normalize and validate workflow concurrency metadata passed to create calls.
+ * @param params - Workflow run creation params
+ * @returns Params with normalized concurrency fields
+ * @throws {Error} When concurrency metadata has invalid shape or types
+ */
+function normalizeCreateWorkflowRunParams(
+  params: CreateWorkflowRunParams,
+): CreateWorkflowRunParams {
+  const rawParams = params as unknown as Record<string, unknown>;
+  const rawConcurrencyKey = rawParams["concurrencyKey"];
+  const rawConcurrencyLimit = rawParams["concurrencyLimit"];
+
+  if (rawConcurrencyKey === undefined && rawConcurrencyLimit === undefined) {
+    return {
+      ...params,
+      concurrencyKey: null,
+      concurrencyLimit: null,
+    };
+  }
+
+  if (
+    rawConcurrencyKey !== undefined &&
+    rawConcurrencyKey !== null &&
+    typeof rawConcurrencyKey !== "string"
+  ) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyKey" must be a string or null.',
+    );
+  }
+
+  if (
+    rawConcurrencyLimit !== undefined &&
+    rawConcurrencyLimit !== null &&
+    typeof rawConcurrencyLimit !== "number"
+  ) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyLimit" must be a number or null.',
+    );
+  }
+
+  const concurrencyKey =
+    rawConcurrencyKey === undefined ? null : rawConcurrencyKey;
+  const concurrencyLimit =
+    rawConcurrencyLimit === undefined ? null : rawConcurrencyLimit;
+
+  if ((concurrencyKey === null) !== (concurrencyLimit === null)) {
+    throw new Error(
+      'Invalid workflow concurrency metadata: "concurrencyKey" and "concurrencyLimit" must both be null or both be set.',
+    );
+  }
+
+  return {
+    ...params,
+    concurrencyKey,
+    concurrencyLimit,
   };
 }

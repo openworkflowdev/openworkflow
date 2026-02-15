@@ -199,6 +199,33 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 5 - workflow concurrency columns and indexes
+    `BEGIN;
+
+    ALTER TABLE ${quotedSchema}."workflow_runs"
+    ADD COLUMN IF NOT EXISTS "concurrency_key" TEXT;
+
+    ALTER TABLE ${quotedSchema}."workflow_runs"
+    ADD COLUMN IF NOT EXISTS "concurrency_limit" INTEGER;
+
+    CREATE INDEX IF NOT EXISTS "workflow_runs_concurrency_active_idx"
+    ON ${quotedSchema}."workflow_runs" (
+      "namespace_id",
+      "workflow_name",
+      "version",
+      "concurrency_key",
+      "status",
+      "available_at"
+    )
+    WHERE "concurrency_key" IS NOT NULL
+      AND "concurrency_limit" IS NOT NULL;
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
+    VALUES (5)
+    ON CONFLICT DO NOTHING;
+
+    COMMIT;`,
   ];
 }
 

@@ -4,6 +4,31 @@ import type { StandardSchemaV1 } from "./core/schema.js";
 import { WorkflowFunction } from "./execution.js";
 
 /**
+ * Resolver input for workflow concurrency configuration.
+ */
+export interface WorkflowConcurrencyResolverParams<Input> {
+  input: Input;
+}
+
+/**
+ * Workflow-level concurrency configuration.
+ */
+export interface WorkflowConcurrency<Input> {
+  /**
+   * Bucket key used to scope concurrency for this run.
+   */
+  readonly key:
+    | string
+    | ((params: Readonly<WorkflowConcurrencyResolverParams<Input>>) => string);
+  /**
+   * Maximum active leased runs allowed in the bucket.
+   */
+  readonly limit:
+    | number
+    | ((params: Readonly<WorkflowConcurrencyResolverParams<Input>>) => number);
+}
+
+/**
  * A workflow spec.
  */
 export interface WorkflowSpec<Input, Output, RawInput> {
@@ -15,6 +40,8 @@ export interface WorkflowSpec<Input, Output, RawInput> {
   readonly schema?: StandardSchemaV1<RawInput, Input>;
   /** The retry policy for the workflow. */
   readonly retryPolicy?: Partial<RetryPolicy>;
+  /** Optional workflow-level concurrency configuration. */
+  readonly concurrency?: WorkflowConcurrency<Input>;
   /** Phantom type carrier - won't exist at runtime. */
   readonly __types?: {
     output: Output;

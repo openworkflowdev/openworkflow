@@ -67,10 +67,37 @@ For more details, check out our [docs](https://openworkflow.dev/docs).
 - ✅ **Long pauses** - Sleep for seconds or months
 - ✅ **Scheduled runs** - Start workflows at a specific time
 - ✅ **Parallel execution** - Run steps concurrently
+- ✅ **Workflow concurrency** - Limit active runs by key (static or input-based)
 - ✅ **Idempotency keys** - Deduplicate repeated run requests (24h window)
 - ✅ **No extra servers** - Uses your existing database
 - ✅ **Dashboard included** - Monitor and debug workflows
 - ✅ **Production ready** - PostgreSQL and SQLite support
+
+## Workflow Concurrency
+
+You can limit active leased `running` runs per workflow bucket:
+
+```ts
+const workflow = defineWorkflow(
+  {
+    name: "process-order",
+    concurrency: {
+      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      limit: ({ input }) => input.maxConcurrentOrders, // or: 5
+    },
+  },
+  async ({ step }) => {
+    // ...
+  },
+);
+```
+
+`key` must resolve to a non-empty string and `limit` must resolve to a positive
+integer. Invalid values fail run creation.
+Keys are stored verbatim (for example, `" foo "` and `"foo"` are different
+concurrency keys); only empty or all-whitespace keys are rejected.
+Sleeping runs do not consume workflow-concurrency slots until they are claimed
+again as actively leased `running` runs.
 
 ## Documentation
 

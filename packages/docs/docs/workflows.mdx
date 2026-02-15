@@ -189,6 +189,43 @@ defineWorkflow(
 Any `retryPolicy` fields you omit fall back to defaults. See
 [Retries](/docs/retries) for the full behavior and defaults.
 
+### Concurrency (Optional)
+
+Control how many active leased `running` runs are allowed for a workflow bucket:
+
+```ts
+defineWorkflow(
+  {
+    name: "process-order",
+    concurrency: {
+      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      limit: ({ input }) => input.maxConcurrentOrders, // or: 5
+    },
+  },
+  async ({ input, step }) => {
+    // ...
+  },
+);
+```
+
+- `key` can be a string or a function `({ input }) => string`
+- `limit` can be a number or a function `({ input }) => number`
+- key must resolve to a non-empty string
+- limit must resolve to a positive integer
+- resolved keys are stored verbatim; only empty/all-whitespace keys are rejected
+
+When concurrency is configured, runs in the same bucket are constrained by:
+
+- namespace
+- workflow name
+- workflow version
+- resolved `key`
+
+Only actively leased `running` runs consume slots. `pending`, `sleeping`, and
+expired-lease runs do not.
+Sleeping runs become slot-consuming only after they are claimed again as
+actively leased `running` runs.
+
 ### Idempotency Key (Optional)
 
 You can prevent duplicate run creation by providing an idempotency key, though

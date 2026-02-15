@@ -49,7 +49,7 @@ When a worker picks up a workflow:
 5. **Execute**: New steps are executed and their results are stored
 6. **Complete**: The workflow status is updated to `completed` or `failed`
 
-## Concurrency
+## Worker Concurrency
 
 Workers can process multiple workflow runs simultaneously. Configure concurrency
 in your `openworkflow.config.ts`:
@@ -87,6 +87,38 @@ bunx @openworkflow/cli worker start --concurrency 10
   Start with `concurrency: 10` and tune based on your workload and database
   capacity.
 </Note>
+
+## Workflow Concurrency
+
+Workflow specs can also define concurrency buckets that are enforced at claim
+time:
+
+```ts
+defineWorkflow(
+  {
+    name: "process-order",
+    concurrency: {
+      key: ({ input }) => `tenant:${input.tenantId}`, // or: "tenant:acme"
+      limit: ({ input }) => input.maxConcurrentOrders, // or: 5
+    },
+  },
+  async ({ step }) => {
+    // ...
+  },
+);
+```
+
+Workers will only claim a run when the bucket has capacity. Bucket scope is:
+
+- namespace
+- workflow name
+- workflow version
+- resolved concurrency key
+
+Only active leased `running` runs consume workflow-concurrency slots.
+Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
+Sleeping runs are non-consuming until they are claimed again as actively leased
+`running` runs.
 
 ## Heartbeats and Crash Recovery
 
