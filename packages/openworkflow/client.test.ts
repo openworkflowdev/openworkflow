@@ -412,6 +412,33 @@ describe("OpenWorkflow", () => {
     expect(workflowRun?.finishedAt).not.toBeNull();
   });
 
+  test("cancels workflow run via client by ID", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow({ name: "cancel-test" }, noopFn);
+    const handle = await workflow.run({ value: 1 });
+
+    await client.cancelWorkflowRun(handle.workflowRun.id);
+
+    const workflowRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(workflowRun?.status).toBe("canceled");
+    expect(workflowRun?.finishedAt).not.toBeNull();
+  });
+
+  test("throws when canceling a non-existent workflow run", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const nonExistentId = randomUUID();
+
+    await expect(
+      client.cancelWorkflowRun(nonExistentId),
+    ).rejects.toThrow(`Workflow run ${nonExistentId} does not exist`);
+  });
+
   describe("defineWorkflowSpec / implementWorkflow API", () => {
     test("defineWorkflowSpec returns a spec that can be used to schedule runs", async () => {
       const backend = await createBackend();
