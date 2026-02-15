@@ -2,11 +2,9 @@ name: pkg.pr.new
 
 permissions:
   contents: read
+  pull-requests: write
 
 on:
-  push:
-    tags-ignore:
-      - "**"
   pull_request:
 
 concurrency:
