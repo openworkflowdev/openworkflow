@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
@@ -32,31 +33,41 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
       value: runs.length.toLocaleString(),
       icon: PulseIcon,
     },
-    { label: "Pending", value: pending.toLocaleString(), icon: ClockIcon },
+    {
+      label: "Pending",
+      value: pending.toLocaleString(),
+      icon: ClockIcon,
+      class: "bg-warning/10 ring-warning/20",
+    },
     {
       label: "Running",
       value: running.toLocaleString(),
       icon: ArrowsClockwiseIcon,
+      class: "bg-info/10 ring-info/20",
     },
     {
       label: "Sleeping",
       value: sleeping.toLocaleString(),
       icon: HourglassIcon,
+      class: "bg-sleeping/10 ring-sleeping/20",
     },
     {
       label: "Completed",
       value: completed.toLocaleString(),
       icon: CheckCircleIcon,
+      class: "bg-success/10 ring-success/20",
     },
     {
       label: "Failed",
       value: failed.toLocaleString(),
       icon: XCircleIcon,
+      class: "bg-destructive/10 ring-destructive/20",
     },
     {
       label: "Canceled",
       value: canceled.toLocaleString(),
       icon: ProhibitIcon,
+      class: "bg-neutral/10 ring-neutral/20",
     },
   ];
 
@@ -67,11 +78,12 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
         return (
           <Card
             key={stat.label}
-            className={`bg-card border-border hover:border-primary/50 p-3 transition-colors sm:p-5 ${
-              index === 0
-                ? "col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-1"
-                : ""
-            }`}
+            className={cn(
+              "bg-card p-3 transition-colors sm:p-5",
+              index === 0 &&
+                "col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-1",
+              stat.class,
+            )}
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
