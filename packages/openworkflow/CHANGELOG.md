@@ -1,5 +1,10 @@
 # openworkflow
 
+## 0.7.2
+
+- Add `cancelWorkflowRun` to client so runs can be canceled without a handle
+  (thanks @octoper!)
+
 ## 0.7.1
 
 - Fix hardcoded schema in Postgres reschedule query (thanks @thomasjiangcy)

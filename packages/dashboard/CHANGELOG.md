@@ -1,5 +1,9 @@
 # @openworkflow/dashboard
 
+## 0.1.5
+
+- Add button to cancel run (thanks @octoper!)
+
 ## 0.1.4
 
 - Add create run form
