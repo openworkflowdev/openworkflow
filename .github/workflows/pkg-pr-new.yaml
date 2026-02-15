@@ -1,16 +1,11 @@
 name: pkg.pr.new
-
 permissions:
   contents: read
   pull-requests: write
-
 on:
   pull_request:
-
-concurrency:
-  group: pkg-pr-new-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+    branches:
+      - main
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -22,9 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: >
-          npx pkg-pr-new publish --comment=update
+          npx pkg-pr-new publish
           ./packages/openworkflow
           ./packages/cli
-          ./packages/backend-postgres
-          ./packages/backend-sqlite
           ./packages/dashboard
