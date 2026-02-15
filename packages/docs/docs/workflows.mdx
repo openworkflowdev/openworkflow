@@ -213,6 +213,8 @@ defineWorkflow(
 - key must resolve to a non-empty string
 - limit must resolve to a positive integer
 - resolved keys are stored verbatim; only empty/all-whitespace keys are rejected
+- within active runs (`pending`/`running`) for the same
+  workflow+version+key bucket, `limit` must remain consistent
 
 When concurrency is configured, runs in the same bucket are constrained by:
 
