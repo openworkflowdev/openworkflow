@@ -1,0 +1,32 @@
+name: pkg.pr.new
+
+permissions:
+  contents: read
+
+on:
+  push:
+    tags-ignore:
+      - "**"
+  pull_request:
+
+concurrency:
+  group: pkg-pr-new-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+      - run: npm ci
+      - run: npm run build
+      - run: >
+          npx pkg-pr-new publish --comment=update
+          ./packages/openworkflow
+          ./packages/cli
+          ./packages/backend-postgres
+          ./packages/backend-sqlite
+          ./packages/dashboard

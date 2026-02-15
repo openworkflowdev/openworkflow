@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "treatConfigHintsAsErrors": true,
 
-  "ignoreBinaries": ["mint", "open"],
+  "ignoreBinaries": ["mint", "open", "pkg-pr-new"],
   "ignoreDependencies": [
     "@tanstack/react-router-ssr-query",
     "@tanstack/router-plugin",
