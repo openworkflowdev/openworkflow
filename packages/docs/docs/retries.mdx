@@ -20,8 +20,9 @@ When a step throws an error:
 3. When the workflow resumes, it replays to the failed step
 4. The step function executes again
 
-Steps retry up to 10 times by default. If the step still fails after all
-attempts, the workflow is permanently marked as `failed`.
+Steps are attempted up to 10 times by default (one initial attempt plus up to
+nine retries). If the step still fails after all attempts, the workflow is
+permanently marked as `failed`.
 
 ## Step Retries
 
