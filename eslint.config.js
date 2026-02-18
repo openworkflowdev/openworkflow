@@ -80,7 +80,6 @@ export default defineConfig(
           },
         },
       ],
-      "@typescript-eslint/unified-signatures": "off", // Buggy rule, to be enabled later
       "func-style": ["error", "declaration"],
       // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
       "import/no-extraneous-dependencies": "error",
