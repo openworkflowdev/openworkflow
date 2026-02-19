@@ -131,7 +131,6 @@ export default defineConfig(
       ...functional.configs.externalTypeScriptRecommended.rules,
       ...functional.configs.recommended.rules,
       ...functional.configs.stylistic.rules,
-      "functional/prefer-property-signatures": "off",
     },
   },
   {
