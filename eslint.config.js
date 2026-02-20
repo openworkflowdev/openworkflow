@@ -133,6 +133,10 @@ export default defineConfig(
       ...functional.configs.stylistic.rules,
     },
   },
+
+  // ===========================================================================
+  // Dashboard
+  // ===========================================================================
   {
     files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
     rules: {
