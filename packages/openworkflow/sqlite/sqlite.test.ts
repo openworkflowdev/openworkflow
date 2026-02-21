@@ -193,6 +193,34 @@ describe("sqlite", () => {
         .get() as { count: number };
       expect(stepAttemptsCheck.count).toBe(1);
     });
+
+    test("adds workflow concurrency columns and index", () => {
+      migrate(db);
+
+      const columns = db
+        .prepare(`PRAGMA table_info("workflow_runs")`)
+        .all() as { name: string }[];
+      const columnNames = columns.map((column) => column.name);
+      expect(columnNames).toContain("concurrency_key");
+      expect(columnNames).toContain("concurrency_limit");
+
+      const indexRows = db
+        .prepare(`PRAGMA index_list("workflow_runs")`)
+        .all() as { name: string }[];
+      const indexNames = indexRows.map((index) => index.name);
+      expect(indexNames).toContain("workflow_runs_concurrency_active_idx");
+
+      const concurrencyIndex = db
+        .prepare(
+          `SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`,
+        )
+        .get("workflow_runs_concurrency_active_idx") as
+        | { sql: string | null }
+        | undefined;
+      expect(concurrencyIndex?.sql).toContain(
+        'WHERE "concurrency_limit" IS NOT NULL',
+      );
+    });
   });
 
   describe("migration version tracking", () => {

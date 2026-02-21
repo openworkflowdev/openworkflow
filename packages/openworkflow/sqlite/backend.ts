@@ -1,4 +1,9 @@
 import {
+  CONCURRENCY_LIMIT_MISMATCH_ERROR,
+  normalizeCreateWorkflowRunParams,
+  toConcurrencyBucket,
+} from "../backend-concurrency.js";
+import {
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -94,26 +99,37 @@ export class BackendSqlite implements Backend {
   }
 
   createWorkflowRun(params: CreateWorkflowRunParams): Promise<WorkflowRun> {
-    const { workflowName, idempotencyKey } = params;
+    const normalizedParams = normalizeCreateWorkflowRunParams(params);
+    const concurrencyBucket = toConcurrencyBucket(normalizedParams);
+    const { workflowName, idempotencyKey } = normalizedParams;
 
-    if (idempotencyKey === null) {
-      return Promise.resolve(this.insertWorkflowRun(params));
+    if (idempotencyKey === null && concurrencyBucket === null) {
+      return Promise.resolve(this.insertWorkflowRun(normalizedParams));
     }
 
     try {
+      // BEGIN IMMEDIATE takes a RESERVED write lock up-front. This serializes
+      // create checks/writes across writers, which is the SQLite consistency
+      // model we rely on (instead of row/advisory locks).
       this.db.exec("BEGIN IMMEDIATE");
 
-      const existing = this.getWorkflowRunByIdempotencyKey(
-        workflowName,
-        idempotencyKey,
-        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-      );
-      if (existing) {
-        this.db.exec("COMMIT");
-        return Promise.resolve(existing);
+      if (idempotencyKey !== null) {
+        const existing = this.getWorkflowRunByIdempotencyKey(
+          workflowName,
+          idempotencyKey,
+          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+        );
+        if (existing) {
+          this.db.exec("COMMIT");
+          return Promise.resolve(existing);
+        }
       }
 
-      const workflowRun = this.insertWorkflowRun(params);
+      if (concurrencyBucket) {
+        this.assertNoActiveBucketConcurrencyLimitMismatch(concurrencyBucket);
+      }
+
+      const workflowRun = this.insertWorkflowRun(normalizedParams);
       this.db.exec("COMMIT");
       return Promise.resolve(workflowRun);
     } catch (error) {
@@ -144,6 +160,8 @@ export class BackendSqlite implements Backend {
         "version",
         "status",
         "idempotency_key",
+        "concurrency_key",
+        "concurrency_limit",
         "config",
         "context",
         "input",
@@ -153,7 +171,7 @@ export class BackendSqlite implements Backend {
         "created_at",
         "updated_at"
       )
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -162,6 +180,8 @@ export class BackendSqlite implements Backend {
       params.workflowName,
       params.version,
       params.idempotencyKey,
+      params.concurrencyKey ?? null,
+      params.concurrencyLimit ?? null,
       toJSON(params.config),
       toJSON(params.context),
       toJSON(params.input),
@@ -211,6 +231,49 @@ export class BackendSqlite implements Backend {
     return row ? rowToWorkflowRun(row) : null;
   }
 
+  private assertNoActiveBucketConcurrencyLimitMismatch(params: {
+    workflowName: string;
+    version: string | null;
+    key: string | null;
+    limit: number;
+  }): void {
+    const stmt = this.db.prepare(`
+      SELECT "id"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+        AND "workflow_name" = ?
+        AND (
+          "version" = ?
+          OR ("version" IS NULL AND ? IS NULL)
+        )
+        AND (
+          "concurrency_key" = ?
+          OR ("concurrency_key" IS NULL AND ? IS NULL)
+        )
+        -- Sleeping runs are excluded so long sleeps do not pin historical
+        -- limits and block new run creation after config changes.
+        AND "status" IN ('pending', 'running')
+        -- "params.limit" is always non-null because this is called only when
+        -- toConcurrencyBucket() returns a constrained bucket.
+        AND ("concurrency_limit" <> ? OR "concurrency_limit" IS NULL)
+      LIMIT 1
+    `);
+
+    const conflict = stmt.get(
+      this.namespaceId,
+      params.workflowName,
+      params.version,
+      params.version,
+      params.key,
+      params.key,
+      params.limit,
+    ) as { id: string } | undefined;
+
+    if (conflict) {
+      throw new Error(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+    }
+  }
+
   getWorkflowRun(params: GetWorkflowRunParams): Promise<WorkflowRun | null> {
     const stmt = this.db.prepare(`
       SELECT *
@@ -232,7 +295,8 @@ export class BackendSqlite implements Backend {
     const currentTime = now();
     const newAvailableAt = addMilliseconds(currentTime, params.leaseDurationMs);
 
-    // SQLite doesn't have SKIP LOCKED, so we need to handle claims differently
+    // SQLite doesn't have SKIP LOCKED. BEGIN IMMEDIATE serializes writers with
+    // the database's single-writer lock, which is the intended claim model.
     this.db.exec("BEGIN IMMEDIATE");
 
     try {
@@ -262,21 +326,53 @@ export class BackendSqlite implements Backend {
 
       // 2. find an available workflow run to claim
       const findStmt = this.db.prepare(`
-        SELECT "id"
-        FROM "workflow_runs"
-        WHERE "namespace_id" = ?
-          AND "status" IN ('pending', 'running', 'sleeping')
-          AND "available_at" <= ?
-          AND ("deadline_at" IS NULL OR "deadline_at" > ?)
+        SELECT wr."id"
+        FROM "workflow_runs" AS wr
+        WHERE wr."namespace_id" = ?
+          AND wr."status" IN ('pending', 'running', 'sleeping')
+          AND wr."available_at" <= ?
+          AND (wr."deadline_at" IS NULL OR wr."deadline_at" > ?)
+          AND (
+            wr."concurrency_limit" IS NULL
+            OR (
+              -- TODO: If claim latency becomes a hot spot, replace this
+              -- correlated count with precomputed bucket counts via a CTE.
+              SELECT COUNT(*)
+              FROM "workflow_runs" AS active
+              WHERE active."namespace_id" = wr."namespace_id"
+                AND active."workflow_name" = wr."workflow_name"
+                AND (
+                  active."version" = wr."version"
+                  OR (
+                    active."version" IS NULL
+                    AND wr."version" IS NULL
+                  )
+                )
+                AND (
+                  active."concurrency_key" = wr."concurrency_key"
+                  OR (
+                    active."concurrency_key" IS NULL
+                    AND wr."concurrency_key" IS NULL
+                  )
+                )
+                AND active."status" = 'running'
+                -- Candidates require available_at <= now; active leased runs
+                -- require available_at > now. Keep explicit self-exclusion
+                -- for readability/safety.
+                AND active."id" <> wr."id"
+                AND active."available_at" > ?
+            ) < wr."concurrency_limit"
+          )
         ORDER BY
-          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
-          "available_at",
-          "created_at"
+          CASE WHEN wr."status" = 'pending' THEN 0 ELSE 1 END,
+          wr."available_at",
+          wr."created_at"
         LIMIT 1
       `);
 
       const candidate = findStmt.get(
         this.namespaceId,
+        currentTime,
         currentTime,
         currentTime,
       ) as { id: string } | undefined;
@@ -941,6 +1037,8 @@ interface WorkflowRunRow {
   version: string | null;
   status: string;
   idempotency_key: string | null;
+  concurrency_key: string | null;
+  concurrency_limit: number | null;
   config: string;
   context: string | null;
   input: string | null;
@@ -1000,6 +1098,8 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     version: row.version,
     status: row.status as WorkflowRun["status"],
     idempotencyKey: row.idempotency_key,
+    concurrencyKey: row.concurrency_key,
+    concurrencyLimit: row.concurrency_limit,
     config: config as WorkflowRun["config"],
     context: fromJSON(row.context) as WorkflowRun["context"],
     input: fromJSON(row.input) as WorkflowRun["input"],

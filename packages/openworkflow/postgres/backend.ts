@@ -1,4 +1,9 @@
 import {
+  CONCURRENCY_LIMIT_MISMATCH_ERROR,
+  normalizeCreateWorkflowRunParams,
+  toConcurrencyBucket,
+} from "../backend-concurrency.js";
+import {
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -100,38 +105,48 @@ export class BackendPostgres implements Backend {
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    if (params.idempotencyKey === null) {
-      return await this.insertWorkflowRun(this.pg, params);
-    }
+    const normalizedParams = normalizeCreateWorkflowRunParams(params);
+    const concurrencyBucket = toConcurrencyBucket(normalizedParams);
 
-    const { workflowName, idempotencyKey } = params;
-    const lockScope = JSON.stringify({
-      namespaceId: this.namespaceId,
-      workflowName,
-      idempotencyKey,
-    });
+    if (
+      normalizedParams.idempotencyKey === null &&
+      concurrencyBucket === null
+    ) {
+      return await this.insertWorkflowRun(this.pg, normalizedParams);
+    }
 
     return await this.pg.begin(async (_tx) => {
       const pgTx = _tx as unknown as Postgres;
 
-      /* eslint-disable @cspell/spellchecker */
-      await pgTx.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
-        [lockScope],
-      );
-      /* eslint-enable @cspell/spellchecker */
+      if (normalizedParams.idempotencyKey !== null) {
+        // Acquire/check idempotency first so duplicate create requests can
+        // return early without taking a bucket lock.
+        await this.acquireIdempotencyCreateLock(
+          pgTx,
+          normalizedParams.workflowName,
+          normalizedParams.idempotencyKey,
+        );
 
-      const existing = await this.getWorkflowRunByIdempotencyKey(
-        pgTx,
-        workflowName,
-        idempotencyKey,
-        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-      );
-      if (existing) {
-        return existing;
+        const existing = await this.getWorkflowRunByIdempotencyKey(
+          pgTx,
+          normalizedParams.workflowName,
+          normalizedParams.idempotencyKey,
+          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+        );
+        if (existing) {
+          return existing;
+        }
       }
 
-      return await this.insertWorkflowRun(pgTx, params);
+      if (concurrencyBucket) {
+        await this.acquireConcurrencyCreateLock(pgTx, concurrencyBucket);
+        await this.assertNoActiveBucketConcurrencyLimitMismatch(
+          pgTx,
+          concurrencyBucket,
+        );
+      }
+
+      return await this.insertWorkflowRun(pgTx, normalizedParams);
     });
   }
 
@@ -149,6 +164,8 @@ export class BackendPostgres implements Backend {
         "version",
         "status",
         "idempotency_key",
+        "concurrency_key",
+        "concurrency_limit",
         "config",
         "context",
         "input",
@@ -165,6 +182,8 @@ export class BackendPostgres implements Backend {
         ${params.version},
         'pending',
         ${params.idempotencyKey},
+        ${params.concurrencyKey ?? null},
+        ${params.concurrencyLimit ?? null},
         ${pg.json(params.config)},
         ${pg.json(params.context)},
         ${pg.json(params.input)},
@@ -202,6 +221,78 @@ export class BackendPostgres implements Backend {
     `;
 
     return workflowRun ?? null;
+  }
+
+  private async acquireConcurrencyCreateLock(
+    pg: Postgres,
+    params: {
+      workflowName: string;
+      version: string | null;
+      key: string | null;
+    },
+  ): Promise<void> {
+    // Intentionally uses a different lock payload shape than claim-time locks.
+    // Create-time lock serializes concurrent creates in the bucket, while
+    // claim-time lock serializes concurrent claim gate evaluation.
+    const lockScope = JSON.stringify({
+      namespaceId: this.namespaceId,
+      workflowName: params.workflowName,
+      version: params.version,
+      concurrencyKey: params.key,
+    });
+
+    // Hash collisions are extremely unlikely; if they happen, unrelated
+    // buckets may serialize, but correctness is preserved.
+    await pg.unsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+      [lockScope],
+    );
+  }
+
+  private async acquireIdempotencyCreateLock(
+    pg: Postgres,
+    workflowName: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    const lockScope = JSON.stringify({
+      namespaceId: this.namespaceId,
+      workflowName,
+      idempotencyKey,
+    });
+
+    await pg.unsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+      [lockScope],
+    );
+  }
+
+  private async assertNoActiveBucketConcurrencyLimitMismatch(
+    pg: Postgres,
+    params: {
+      workflowName: string;
+      version: string | null;
+      key: string | null;
+      limit: number;
+    },
+  ): Promise<void> {
+    const workflowRunsTable = this.workflowRunsTable(pg);
+    const [conflict] = await pg<{ id: string }[]>`
+      SELECT "id"
+      FROM ${workflowRunsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "workflow_name" = ${params.workflowName}
+        AND "version" IS NOT DISTINCT FROM ${params.version}
+        AND "concurrency_key" IS NOT DISTINCT FROM ${params.key}
+        -- Sleeping runs are excluded so long sleeps do not pin historical
+        -- limits and block new run creation after config changes.
+        AND "status" IN ('pending', 'running')
+        AND "concurrency_limit" IS DISTINCT FROM ${params.limit}
+      LIMIT 1
+    `;
+
+    if (conflict) {
+      throw new Error(CONCURRENCY_LIMIT_MISMATCH_ERROR);
+    }
   }
 
   async getWorkflowRun(
@@ -301,16 +392,56 @@ export class BackendPostgres implements Backend {
         RETURNING "id"
       ),
       candidate AS (
-        SELECT "id"
-        FROM ${workflowRunsTable}
-        WHERE "namespace_id" = ${this.namespaceId}
-          AND "status" IN ('pending', 'running', 'sleeping')
-          AND "available_at" <= NOW()
-          AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
+        SELECT wr."id"
+        FROM ${workflowRunsTable} AS wr
+        WHERE wr."namespace_id" = ${this.namespaceId}
+          AND wr."status" IN ('pending', 'running', 'sleeping')
+          AND wr."available_at" <= NOW()
+          AND (wr."deadline_at" IS NULL OR wr."deadline_at" > NOW())
+          AND (
+            wr."concurrency_limit" IS NULL
+            OR CASE
+              -- cspell:ignore xact hashtextextended
+              -- Serialize constrained claims per bucket. pg_try_advisory lock
+              -- intentionally skips busy buckets (non-blocking) to avoid
+              -- over-claim races without stalling claim loops. This lock key
+              -- shape intentionally differs from create-time locking because
+              -- claims and creates are serialized within their own hot paths.
+              -- Hash collisions can over-serialize unrelated buckets
+              -- (throughput impact only).
+              WHEN pg_try_advisory_xact_lock(
+                hashtextextended(
+                  json_build_array(
+                    wr."namespace_id",
+                    wr."workflow_name",
+                    wr."version",
+                    wr."concurrency_key"
+                  )::text,
+                  0::bigint
+                )
+              ) THEN (
+                -- TODO: If claim latency becomes a hot spot, replace this
+                -- correlated count with precomputed bucket counts via a CTE.
+                SELECT COUNT(*)
+                FROM ${workflowRunsTable} AS active
+                WHERE active."namespace_id" = wr."namespace_id"
+                  AND active."workflow_name" = wr."workflow_name"
+                  AND active."version" IS NOT DISTINCT FROM wr."version"
+                  AND active."concurrency_key" IS NOT DISTINCT FROM wr."concurrency_key"
+                  AND active."status" = 'running'
+                  -- Candidates require available_at <= NOW(); active leased runs
+                  -- require available_at > NOW(). Keep explicit self-exclusion
+                  -- for readability/safety.
+                  AND active."id" <> wr."id"
+                  AND active."available_at" > NOW()
+              ) < wr."concurrency_limit"
+              ELSE FALSE
+            END
+          )
         ORDER BY
-          CASE WHEN "status" = 'pending' THEN 0 ELSE 1 END,
-          "available_at",
-          "created_at"
+          CASE WHEN wr."status" = 'pending' THEN 0 ELSE 1 END,
+          wr."available_at",
+          wr."created_at"
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )

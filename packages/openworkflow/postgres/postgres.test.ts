@@ -55,6 +55,54 @@ describe("postgres", () => {
       await migrate(pg, schema);
       await migrate(pg, schema);
     });
+
+    test("adds workflow concurrency columns and index", async () => {
+      const schema = "test_concurrency_columns";
+      await dropSchema(pg, schema);
+      await migrate(pg, schema);
+
+      try {
+        const columns = await pg<
+          {
+            columnName: string;
+          }[]
+        >`
+          SELECT column_name AS "columnName"
+          FROM information_schema.columns
+          WHERE table_schema = ${schema}
+            AND table_name = 'workflow_runs'
+            AND column_name IN ('concurrency_key', 'concurrency_limit')
+          ORDER BY column_name ASC
+        `;
+        expect(columns.map((column) => column.columnName)).toEqual([
+          "concurrency_key",
+          "concurrency_limit",
+        ]);
+
+        /* cspell:disable */
+        const indexes = await pg<
+          {
+            indexName: string;
+            indexDef: string;
+          }[]
+        >`
+          SELECT
+            indexname AS "indexName",
+            indexdef AS "indexDef"
+          FROM pg_indexes
+          WHERE schemaname = ${schema}
+            AND tablename = 'workflow_runs'
+            AND indexname = 'workflow_runs_concurrency_active_idx'
+        `;
+        /* cspell:enable */
+        expect(indexes).toHaveLength(1);
+        expect(indexes[0]?.indexDef).toMatch(
+          /WHERE\s+\((?:"concurrency_limit"|concurrency_limit)\s+IS\s+NOT\s+NULL\)/i,
+        );
+      } finally {
+        await dropSchema(pg, schema);
+      }
+    });
   });
 
   describe("dropSchema()", () => {

@@ -84,6 +84,8 @@ describe("Worker", () => {
       workflowName: "missing",
       version: null,
       idempotencyKey: null,
+      concurrencyKey: null,
+      concurrencyLimit: null,
       config: {},
       context: null,
       input: null,
@@ -314,6 +316,202 @@ describe("Worker", () => {
     }
 
     expect(completed).toBe(2);
+  });
+
+  test("worker concurrency > 1 still respects workflow concurrency limits", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+    const stepReleases: (() => void)[] = [];
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "workflow-concurrency-worker-test",
+        concurrency: {
+          key: "tenant:acme",
+          limit: 1,
+        },
+      },
+      async ({ step }) => {
+        await step.run({ name: "block" }, async () => {
+          await new Promise<void>((resolve) => {
+            stepReleases.push(resolve);
+          });
+        });
+
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const first = await workflow.run();
+    const second = await workflow.run();
+
+    await worker.tick();
+    await sleep(100);
+
+    const firstStateAfterFirstTick = await backend.getWorkflowRun({
+      workflowRunId: first.workflowRun.id,
+    });
+    const secondStateAfterFirstTick = await backend.getWorkflowRun({
+      workflowRunId: second.workflowRun.id,
+    });
+    expect(firstStateAfterFirstTick?.status).toBe("running");
+    expect(secondStateAfterFirstTick?.status).toBe("pending");
+
+    const releaseFirst = stepReleases.shift();
+    releaseFirst?.();
+    await sleep(100);
+
+    await worker.tick();
+    await sleep(100);
+
+    const firstStateAfterSecondTick = await backend.getWorkflowRun({
+      workflowRunId: first.workflowRun.id,
+    });
+    const secondStateAfterSecondTick = await backend.getWorkflowRun({
+      workflowRunId: second.workflowRun.id,
+    });
+    expect(firstStateAfterSecondTick?.status).toBe("completed");
+    expect(secondStateAfterSecondTick?.status).toBe("running");
+
+    const releaseSecond = stepReleases.shift();
+    releaseSecond?.();
+    await sleep(100);
+
+    await expect(first.result()).resolves.toBe("done");
+    await expect(second.result()).resolves.toBe("done");
+  });
+
+  test("worker claims next same-bucket run after terminal failure", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "worker-concurrency-terminal-failure",
+        concurrency: {
+          key: "tenant:acme",
+          limit: 1,
+        },
+        retryPolicy: {
+          maximumAttempts: 1,
+        },
+      },
+      ({ input }: { input: { shouldFail: boolean } }) => {
+        if (input.shouldFail) {
+          throw new Error("terminal failure");
+        }
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const failing = await workflow.run({ shouldFail: true });
+    const succeeding = await workflow.run(
+      { shouldFail: false },
+      { availableAt: new Date(Date.now() + 20) },
+    );
+
+    await worker.tick();
+    await sleep(60);
+
+    const failedRun = await backend.getWorkflowRun({
+      workflowRunId: failing.workflowRun.id,
+    });
+    expect(failedRun?.status).toBe("failed");
+
+    await worker.tick();
+    await sleep(60);
+
+    const completedRun = await backend.getWorkflowRun({
+      workflowRunId: succeeding.workflowRun.id,
+    });
+    expect(completedRun?.status).toBe("completed");
+    await expect(succeeding.result()).resolves.toBe("done");
+  });
+
+  test("worker honors same-bucket serialization across retry reschedule", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+    const attemptsById = new Map<string, number>();
+
+    const workflow = client.defineWorkflow(
+      {
+        name: "worker-concurrency-retry-serialization",
+        concurrency: {
+          key: "tenant:acme",
+          limit: 1,
+        },
+        retryPolicy: {
+          initialInterval: "120ms",
+          maximumInterval: "120ms",
+          backoffCoefficient: 1,
+          maximumAttempts: 2,
+        },
+      },
+      async ({ input, step }) => {
+        const typedInput = input as { id: "retry" | "sibling" };
+        const currentAttempts = attemptsById.get(typedInput.id) ?? 0;
+        attemptsById.set(typedInput.id, currentAttempts + 1);
+
+        if (typedInput.id === "retry" && currentAttempts === 0) {
+          throw new Error("retry once");
+        }
+
+        if (typedInput.id === "sibling") {
+          await step.run({ name: "hold-slot" }, async () => {
+            await sleep(180);
+          });
+        }
+
+        return typedInput.id;
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const retrying = await workflow.run({ id: "retry" });
+    const sibling = await workflow.run({ id: "sibling" });
+
+    await worker.tick();
+    await sleep(30);
+
+    const firstState = await backend.getWorkflowRun({
+      workflowRunId: retrying.workflowRun.id,
+    });
+    expect(firstState?.status).toBe("pending");
+    expect(firstState?.availableAt).not.toBeNull();
+
+    await worker.tick();
+    await sleep(40);
+
+    const siblingRunning = await backend.getWorkflowRun({
+      workflowRunId: sibling.workflowRun.id,
+    });
+    expect(siblingRunning?.status).toBe("running");
+
+    await sleep(100); // retry run is due while sibling still holds the slot
+
+    const blockedClaims = await worker.tick();
+    expect(blockedClaims).toBe(0);
+
+    await sleep(100);
+
+    const retryClaimedAfterRelease = await worker.tick();
+    expect(retryClaimedAfterRelease).toBe(1);
+    await sleep(60);
+
+    const retryCompleted = await backend.getWorkflowRun({
+      workflowRunId: retrying.workflowRun.id,
+    });
+    const siblingCompleted = await backend.getWorkflowRun({
+      workflowRunId: sibling.workflowRun.id,
+    });
+    expect(retryCompleted?.status).toBe("completed");
+    expect(retryCompleted?.attempts).toBe(2);
+    expect(siblingCompleted?.status).toBe("completed");
+
+    await expect(retrying.result()).resolves.toBe("retry");
+    await expect(sibling.result()).resolves.toBe("sibling");
   });
 
   test("worker starts, processes work, and stops gracefully", async () => {
@@ -1180,6 +1378,8 @@ describe("Worker", () => {
         workflowName: "version-check",
         version: "v2",
         idempotencyKey: null,
+        concurrencyKey: null,
+        concurrencyLimit: null,
         config: {},
         context: null,
         input: null,
@@ -1215,6 +1415,8 @@ describe("Worker", () => {
         workflowName: "version-mismatch",
         version: "v1",
         idempotencyKey: null,
+        concurrencyKey: null,
+        concurrencyLimit: null,
         config: {},
         context: null,
         input: null,
@@ -1250,6 +1452,8 @@ describe("Worker", () => {
         workflowName: "version-required",
         version: null,
         idempotencyKey: null,
+        concurrencyKey: null,
+        concurrencyLimit: null,
         config: {},
         context: null,
         input: null,

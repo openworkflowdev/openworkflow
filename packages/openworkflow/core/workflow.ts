@@ -24,6 +24,8 @@ export interface WorkflowRun {
   version: string | null;
   status: WorkflowRunStatus;
   idempotencyKey: string | null;
+  concurrencyKey: string | null;
+  concurrencyLimit: number | null;
   config: JsonValue; // user-defined config
   context: JsonValue | null; // runtime execution metadata
   input: JsonValue | null;

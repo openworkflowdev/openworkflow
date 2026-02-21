@@ -297,15 +297,60 @@ When the worker encounters this, it executes all steps within the `Promise.all`
 concurrently. It waits for all of them to complete before proceeding. Each step
 attempt is persisted individually as a `step_attempt`.
 
-### 5.2. Workflow Concurrency
+### 5.2. Worker Concurrency
 
 Workers are configured with a concurrency limit (e.g., 10). A worker will
 maintain up to 10 in-flight workflow runs simultaneously. It polls for new work
-only when it has available capacity. The Backend's atomic `dequeue` operation
-(`FOR UPDATE SKIP LOCKED`) ensures that multiple workers can poll the same table
-without race conditions or processing the same run twice.
+only when it has available capacity. Claim atomicity is backend-specific:
 
-### 5.3. Handling Crashes During Parallel Execution
+- Postgres uses `FOR UPDATE SKIP LOCKED` plus advisory locks for constrained
+  buckets.
+- SQLite uses transaction-level single-writer locking (`BEGIN IMMEDIATE`) to
+  serialize claim writes.
+
+### 5.3. Workflow-Run Concurrency
+
+In addition to worker-slot concurrency, workflows can define a per-run
+concurrency policy in the workflow spec:
+
+```ts
+defineWorkflow(
+  {
+    name: "process-order",
+    concurrency: {
+      key: ({ input }) => `tenant:${input.tenantId}`,
+      limit: ({ input }) => input.maxConcurrentOrders,
+    },
+  },
+  async ({ step }) => {
+    // ...
+  },
+);
+```
+
+`key` and `limit` can each be either static values (`string`/`number`) or
+functions of the validated workflow input, and `key` is optional. They are
+resolved once when the run is created and persisted on `workflow_runs`.
+Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
+When `key` is omitted, the run uses the default bucket for
+`namespace_id + workflow_name + version`.
+
+During claim/dequeue, a run is claimable only when the number of active leased
+`running` runs in the same bucket is below the run's `limit`. The bucket scope
+is:
+
+- `namespace_id`
+- `workflow_name`
+- `version` (version-aware buckets)
+- `concurrency_key` (nullable for the default bucket)
+
+`pending`, `sleeping`, and expired-lease `running` runs do not consume
+concurrency slots.
+For active runs in a bucket (`pending`, `running`), the resolved
+`concurrency_limit` is required to be consistent; conflicting limits are
+rejected at run creation.
+
+### 5.4. Handling Crashes During Parallel Execution
 
 The `availableAt` heartbeat mechanism provides robust recovery. If a worker
 crashes while executing parallel steps, its heartbeat stops. The `availableAt`
