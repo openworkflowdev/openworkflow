@@ -40,6 +40,13 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    settings: {
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+        },
+      },
+    },
   },
   {
     files: ["**/*.mjs"],
@@ -51,17 +58,6 @@ export default defineConfig(
       },
     },
   },
-  // ---------------------------------------------------------------------------
-  {
-    settings: {
-      "import/resolver": {
-        typescript: {
-          alwaysTryTypes: true,
-        },
-      },
-    },
-  },
-  // ---------------------------------------------------------------------------
   {
     rules: {
       "@cspell/spellchecker": [
