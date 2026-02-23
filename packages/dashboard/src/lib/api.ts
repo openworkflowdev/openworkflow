@@ -4,6 +4,7 @@ import type {
   PaginatedResponse,
   PaginationOptions,
   StepAttempt,
+  WorkflowRunCounts,
   WorkflowRun,
 } from "openworkflow/internal";
 import * as z from "zod";
@@ -55,6 +56,16 @@ export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
     const result = await backend.listWorkflowRuns(getPaginationOptions(data));
     return result;
   });
+
+/**
+ * Read workflow run counts from the backend.
+ */
+export const getWorkflowRunCountsServerFn = createServerFn({
+  method: "GET",
+}).handler(async (): Promise<WorkflowRunCounts> => {
+  const backend = await getBackend();
+  return await backend.countWorkflowRuns();
+});
 
 /**
  * Get a single workflow run by ID.

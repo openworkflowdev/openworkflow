@@ -10,7 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { WorkflowStats } from "@/components/workflow-stats";
-import { listWorkflowRunsServerFn } from "@/lib/api";
+import {
+  getWorkflowRunCountsServerFn,
+  listWorkflowRunsServerFn,
+} from "@/lib/api";
 import { usePolling } from "@/lib/use-polling";
 import { PlusIcon } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -19,13 +22,21 @@ import { useState } from "react";
 export const Route = createFileRoute("/")({
   component: HomePage,
   loader: async () => {
-    const result = await listWorkflowRunsServerFn({ data: { limit: 100 } });
-    return result;
+    const [runsResponse, workflowRunCounts] = await Promise.all([
+      listWorkflowRunsServerFn({ data: { limit: 100 } }),
+      getWorkflowRunCountsServerFn(),
+    ]);
+
+    return {
+      runsResponse,
+      workflowRunCounts,
+    };
   },
 });
 
 function HomePage() {
-  const { data: runs } = Route.useLoaderData();
+  const { runsResponse, workflowRunCounts } = Route.useLoaderData();
+  const { data: runs } = runsResponse;
   const [isCreateRunOpen, setIsCreateRunOpen] = useState(false);
   usePolling();
 
@@ -51,7 +62,7 @@ function HomePage() {
             </Button>
           </div>
 
-          <WorkflowStats runs={runs} />
+          <WorkflowStats workflowRunCounts={workflowRunCounts} />
           <RunList runs={runs} showHeader={false} />
         </div>
 
