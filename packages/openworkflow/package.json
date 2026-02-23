@@ -51,7 +51,8 @@
     "!vitest.global-setup.*"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
+    "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
