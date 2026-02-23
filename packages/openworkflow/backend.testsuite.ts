@@ -607,6 +607,113 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
+    describe("countWorkflowRuns()", () => {
+      test("returns zero counts for an empty backend", async () => {
+        const backend = await setup();
+
+        expect(await backend.countWorkflowRuns()).toEqual({
+          pending: 0,
+          running: 0,
+          sleeping: 0,
+          completed: 0,
+          failed: 0,
+          canceled: 0,
+        });
+
+        await teardown(backend);
+      });
+
+      test("returns counts grouped by workflow run status", async () => {
+        const backend = await setup();
+
+        const runningRun = await createClaimedWorkflowRun(backend);
+        const runningWorkerId = runningRun.workerId;
+        if (!runningWorkerId) throw new Error("Expected workerId");
+
+        const sleepingRun = await createClaimedWorkflowRun(backend);
+        const sleepingWorkerId = sleepingRun.workerId;
+        if (!sleepingWorkerId) throw new Error("Expected workerId");
+        await backend.sleepWorkflowRun({
+          workflowRunId: sleepingRun.id,
+          workerId: sleepingWorkerId,
+          availableAt: new Date(Date.now() + 60_000),
+        });
+
+        const completedRun = await createClaimedWorkflowRun(backend);
+        const completedWorkerId = completedRun.workerId;
+        if (!completedWorkerId) throw new Error("Expected workerId");
+        await backend.completeWorkflowRun({
+          workflowRunId: completedRun.id,
+          workerId: completedWorkerId,
+          output: null,
+        });
+
+        const failedRun = await createClaimedWorkflowRun(backend);
+        const failedWorkerId = failedRun.workerId;
+        if (!failedWorkerId) throw new Error("Expected workerId");
+        await backend.failWorkflowRun({
+          workflowRunId: failedRun.id,
+          workerId: failedWorkerId,
+          error: { message: "failed run" },
+          retryPolicy: {
+            ...DEFAULT_WORKFLOW_RETRY_POLICY,
+            maximumAttempts: 1,
+          },
+        });
+
+        const canceledRun = await createPendingWorkflowRun(backend);
+        await backend.cancelWorkflowRun({ workflowRunId: canceledRun.id });
+
+        await createPendingWorkflowRun(backend);
+
+        expect(await backend.countWorkflowRuns()).toEqual({
+          pending: 1,
+          running: 1,
+          sleeping: 1,
+          completed: 1,
+          failed: 1,
+          canceled: 1,
+        });
+
+        await teardown(backend);
+      });
+
+      test("updates counts when workflow runs transition statuses", async () => {
+        const backend = await setup();
+
+        const pendingRun = await createPendingWorkflowRun(backend);
+        expect(await backend.countWorkflowRuns()).toMatchObject({
+          pending: 1,
+          running: 0,
+        });
+
+        const workerId = randomUUID();
+        const claimed = await backend.claimWorkflowRun({
+          workerId,
+          leaseDurationMs: 60_000,
+        });
+        expect(claimed?.id).toBe(pendingRun.id);
+
+        expect(await backend.countWorkflowRuns()).toMatchObject({
+          pending: 0,
+          running: 1,
+        });
+
+        await backend.completeWorkflowRun({
+          workflowRunId: pendingRun.id,
+          workerId,
+          output: null,
+        });
+
+        expect(await backend.countWorkflowRuns()).toMatchObject({
+          running: 0,
+          completed: 1,
+        });
+
+        await teardown(backend);
+      });
+    });
+
     describe("claimWorkflowRun()", () => {
       // because claims involve timing and leases, we create and teardown a new
       // namespaced backend instance for each test
