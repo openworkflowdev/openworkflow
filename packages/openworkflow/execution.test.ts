@@ -540,6 +540,116 @@ describe("executeWorkflow", () => {
       expect(result).toEqual({ receivedVersion: null });
     });
   });
+
+  describe("run", () => {
+    test("exposes run metadata from workflow run", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+      const deadlineAt = new Date(Date.now() + 60_000);
+      const idempotencyKey = "run-metadata-idempotency";
+
+      const workflow = client.defineWorkflow(
+        { name: "run-metadata", version: "1.2.3" },
+        ({ run }) => {
+          return {
+            id: run.id,
+            workflowName: run.workflowName,
+            createdAtIsDate: run.createdAt instanceof Date,
+            startedAtIsDate: run.startedAt instanceof Date,
+            createdAtMs: run.createdAt.getTime(),
+            startedAtMs: run.startedAt?.getTime() ?? null,
+          };
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run(
+        {},
+        {
+          deadlineAt,
+          idempotencyKey,
+        },
+      );
+      await worker.tick();
+      const result = await handle.result();
+
+      expect(result.id).toBe(handle.workflowRun.id);
+      expect(result.workflowName).toBe("run-metadata");
+      expect(result.createdAtIsDate).toBe(true);
+      expect(result.startedAtIsDate).toBe(true);
+      expect(result.startedAtMs).not.toBeNull();
+      if (result.startedAtMs === null) {
+        throw new Error("expected startedAtMs");
+      }
+      expect(result.startedAtMs).toBeGreaterThanOrEqual(result.createdAtMs);
+    });
+
+    test("keeps run metadata frozen at runtime", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+      let mutationError: unknown = null;
+
+      const workflow = client.defineWorkflow(
+        { name: "run-frozen" },
+        async ({ run, step }) => {
+          await step.run({ name: "mutate-run" }, () => {
+            try {
+              Object.assign(run as unknown as Record<string, unknown>, {
+                id: "mutated",
+              });
+            } catch (error) {
+              mutationError = error;
+            }
+            return null;
+          });
+          return run.id;
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      await worker.tick();
+
+      const result = await handle.result();
+      expect(result).toBe(handle.workflowRun.id);
+      if (mutationError !== null) {
+        expect(mutationError).toBeInstanceOf(TypeError);
+      }
+    });
+
+    test("keeps id and timestamps stable across replay", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+      const snapshots: {
+        id: string;
+        createdAt: number;
+        startedAt: number | null;
+      }[] = [];
+
+      const workflow = client.defineWorkflow(
+        { name: "run-replay-stable" },
+        async ({ run, step }) => {
+          snapshots.push({
+            id: run.id,
+            createdAt: run.createdAt.getTime(),
+            startedAt: run.startedAt?.getTime() ?? null,
+          });
+          await step.sleep("pause", "10ms");
+          return null;
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      await worker.tick();
+      await sleep(50);
+      await worker.tick();
+      await handle.result();
+
+      expect(snapshots.length).toBe(2);
+      expect(snapshots[0]).toEqual(snapshots[1]);
+    });
+  });
 });
 
 describe("createStepExecutionStateFromAttempts", () => {
