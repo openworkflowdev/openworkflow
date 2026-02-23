@@ -14,7 +14,9 @@ import { defineWorkflow } from "openworkflow";
  */
 export const helloWorld = defineWorkflow(
   { name: "hello-world" },
-  async ({ step }) => {
+  async ({ step, run }) => {
+    console.log(`[run ${run.id}]`);
+
     const greeting = await step.run({ name: "greet" }, () => {
       return "Hello, World!";
     });

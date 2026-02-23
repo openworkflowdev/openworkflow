@@ -53,12 +53,21 @@ export type StepFunction<Output> = () =>
   | undefined;
 
 /**
+ * Read-only workflow run metadata exposed to workflow functions.
+ */
+export type WorkflowRunMetadata = Pick<
+  WorkflowRun,
+  "id" | "workflowName" | "createdAt" | "startedAt"
+>;
+
+/**
  * Params passed to a workflow function for the user to use when defining steps.
  */
 export interface WorkflowFunctionParams<Input> {
   input: Input;
   step: StepApi;
   version: string | null;
+  run: WorkflowRunMetadata;
 }
 
 /**
@@ -364,7 +373,6 @@ export async function executeWorkflow(
       }
     }
 
-    // create step executor
     const executor = new StepExecutor({
       backend,
       workflowRunId: workflowRun.id,
@@ -372,11 +380,19 @@ export async function executeWorkflow(
       attempts,
     });
 
+    const run = Object.freeze<WorkflowRunMetadata>({
+      id: workflowRun.id,
+      workflowName: workflowRun.workflowName,
+      createdAt: workflowRun.createdAt,
+      startedAt: workflowRun.startedAt,
+    });
+
     // execute workflow
     const output = await workflowFn({
       input: workflowRun.input as unknown,
       step: executor,
       version: workflowVersion,
+      run,
     });
 
     // mark success
