@@ -21,6 +21,7 @@
     "lint:fix": "eslint . --fix",
     "ow": "tsx ./packages/cli/cli.ts",
     "pghero": "sh ./packages/openworkflow/postgres/scripts/pghero.sh",
+    "prepare": "husky",
     "squawk": "tsx ./packages/openworkflow/postgres/scripts/squawk.ts",
     "test": "vitest run",
     "test:bun": "bun run --bun vitest run",
@@ -34,6 +35,8 @@
     "openworkflow": "*"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.4.2",
+    "@commitlint/config-conventional": "^20.4.2",
     "@cspell/eslint-plugin": "^9.6.4",
     "@eslint/js": "^9.39.2",
     "@openworkflow/cli": "*",
@@ -50,6 +53,7 @@
     "eslint-plugin-jsdoc": "^62.5.4",
     "eslint-plugin-sonarjs": "^3.0.7",
     "eslint-plugin-unicorn": "^63.0.0",
+    "husky": "^9.1.7",
     "jscpd": "^4.0.8",
     "knip": "^5.84.1",
     "prettier": "^3.8.1",

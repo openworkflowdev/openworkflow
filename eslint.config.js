@@ -25,12 +25,13 @@ export default defineConfig(
   {
     ignores: [
       "**/dist",
-      "coverage",
-      "eslint.config.js",
-      "prettier.config.js",
       "examples/workflow-discovery/openworkflow.config.js",
       "packages/dashboard/.output",
       "packages/dashboard/src/routeTree.gen.ts",
+      "commitlint.config.js",
+      "coverage",
+      "eslint.config.js",
+      "prettier.config.js",
     ],
   },
   {
