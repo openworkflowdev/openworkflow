@@ -8,4 +8,6 @@
 6. `npm login` to refresh the auth token
 7. `npx @changesets/cli publish` to publish the new version to npm, which also
    creates git tags
-8. `git push --tags`
+8. `git push && git push --tags`
+9. `git checkout docs && git merge main && git push && git checkout main` to
+   update the docs
