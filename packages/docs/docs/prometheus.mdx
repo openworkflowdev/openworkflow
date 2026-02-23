@@ -1,0 +1,105 @@
+---
+title: Prometheus Metrics
+description: Monitor workflow health with Prometheus
+---
+
+The OpenWorkflow dashboard exposes a `GET /metrics` endpoint that serves
+workflow run counts in Prometheus exposition format. Use it to track failures,
+detect stuck backlogs, and alert on throughput drops — with no extra services
+to deploy.
+
+## Setup
+
+### 1. Start the dashboard
+
+<CodeGroup>
+```bash npm
+npx @openworkflow/cli dashboard
+```
+
+```bash pnpm
+pnpx @openworkflow/cli dashboard
+```
+
+```bash bun
+bunx @openworkflow/cli dashboard
+```
+
+</CodeGroup>
+
+### 2. Verify the endpoint
+
+```bash
+curl -s http://localhost:3000/metrics
+```
+
+You should see output like:
+
+```text
+# HELP openworkflow_workflow_runs Current count of workflow runs in each status.
+# TYPE openworkflow_workflow_runs gauge
+openworkflow_workflow_runs{status="pending"} 12
+openworkflow_workflow_runs{status="running"} 3
+openworkflow_workflow_runs{status="sleeping"} 1
+openworkflow_workflow_runs{status="completed"} 847
+openworkflow_workflow_runs{status="failed"} 2
+openworkflow_workflow_runs{status="canceled"} 0
+```
+
+### 3. Configure Prometheus to scrape the dashboard
+
+Add a scrape target to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: openworkflow
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:3000"]
+```
+
+Replace `localhost:3000` with the address where your dashboard is running.
+
+## Metrics reference
+
+### `openworkflow_workflow_runs`
+
+| Field  | Value                                                               |
+| ------ | ------------------------------------------------------------------- |
+| Type   | Gauge                                                               |
+| Labels | `status`                                                            |
+| Values | `pending`, `running`, `sleeping`, `completed`, `failed`, `canceled` |
+
+Current count of workflow runs in each status. One query is executed per
+scrape — there is no caching.
+
+- **Active statuses** (`pending`, `running`, `sleeping`) — Is work piling up?
+  Are runs stuck?
+- **Terminal statuses** (`completed`, `failed`, `canceled`) — Are failures
+  increasing? Is throughput steady?
+
+## Alert examples
+
+### Failures detected in the last 5 minutes
+
+```promql
+clamp_min(delta(openworkflow_workflow_runs{status="failed"}[5m]), 0) > 0
+```
+
+### Failure rate elevated over the last hour
+
+```promql
+clamp_min(delta(openworkflow_workflow_runs{status="failed"}[1h]), 0) > 10
+```
+
+### Pending backlog is growing
+
+```promql
+delta(openworkflow_workflow_runs{status="pending"}[10m]) > 0
+```
+
+### No completed runs in the last hour
+
+```promql
+clamp_min(delta(openworkflow_workflow_runs{status="completed"}[1h]), 0) == 0
+```

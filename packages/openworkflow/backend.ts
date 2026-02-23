@@ -1,7 +1,7 @@
 import type { SerializedError } from "./core/error.js";
 import { JsonValue } from "./core/json.js";
 import type { StepAttempt, StepAttemptContext, StepKind } from "./core/step.js";
-import type { WorkflowRun } from "./core/workflow.js";
+import type { WorkflowRun, WorkflowRunStatus } from "./core/workflow.js";
 import type { RetryPolicy } from "./workflow.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
@@ -21,6 +21,7 @@ export interface Backend {
   listWorkflowRuns(
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
+  countWorkflowRuns(): Promise<WorkflowRunCounts>;
   claimWorkflowRun(
     params: Readonly<ClaimWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -165,4 +166,41 @@ export interface PaginatedResponse<T> {
     next: string | null;
     prev: string | null;
   };
+}
+
+export type WorkflowRunCounts = Omit<
+  Record<WorkflowRunStatus, number>,
+  "succeeded"
+>;
+
+/**
+ * Convert status-count rows from a `GROUP BY "status"` query into a
+ * typed {@link WorkflowRunCounts} object.
+ * @param rows - Rows from the database query
+ * @returns Workflow run counts keyed by status
+ */
+export function toWorkflowRunCounts(
+  rows: readonly { status: string; count: number | string }[],
+): WorkflowRunCounts {
+  const counts: WorkflowRunCounts = {
+    pending: 0,
+    running: 0,
+    sleeping: 0,
+    completed: 0,
+    failed: 0,
+    canceled: 0,
+  };
+
+  for (const row of rows) {
+    // 'succeeded' status is deprecated, fold into 'completed'
+    if (row.status === "succeeded") {
+      counts.completed += Number(row.count);
+    }
+
+    if (Object.hasOwn(counts, row.status)) {
+      counts[row.status as keyof WorkflowRunCounts] += Number(row.count);
+    }
+  }
+
+  return counts;
 }

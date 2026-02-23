@@ -1,4 +1,5 @@
 import {
+  WorkflowRunCounts,
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -18,6 +19,7 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
+  toWorkflowRunCounts,
 } from "../backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
@@ -583,6 +585,22 @@ export class BackendSqlite implements Backend {
     if (!updated) throw new Error("Failed to cancel workflow run");
 
     return updated;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async countWorkflowRuns(): Promise<WorkflowRunCounts> {
+    const stmt = this.db.prepare(`
+      SELECT "status", COUNT(*) AS "count"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+      GROUP BY "status"
+    `);
+
+    const rows = stmt.all(this.namespaceId) as {
+      status: string;
+      count: number;
+    }[];
+    return toWorkflowRunCounts(rows);
   }
 
   listWorkflowRuns(

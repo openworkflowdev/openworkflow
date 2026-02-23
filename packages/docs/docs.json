@@ -45,7 +45,8 @@
           "docs/type-safety",
           "docs/versioning",
           "docs/canceling",
-          "docs/production"
+          "docs/production",
+          "docs/prometheus"
         ]
       },
       {
