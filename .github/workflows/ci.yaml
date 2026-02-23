@@ -49,8 +49,11 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
       - uses: oven-sh/setup-bun@v2
-      - run: bun ci
+      - run: npm ci
       - run: bun run ci:bun
   # https://commitlint.js.org/guides/ci-setup.html
   commitlint:
