@@ -1,6 +1,7 @@
 import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
+  DEFAULT_SCHEMA,
   DEFAULT_POSTGRES_URL,
   dropSchema,
   newPostgresMaxOne,
@@ -163,6 +164,49 @@ describe("BackendPostgres schema option", () => {
       const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
       await dropSchema(pg, schema);
       await pg.end();
+    }
+  });
+});
+
+describe("BackendPostgres cancel fallback", () => {
+  test("throws generic cancel error for non-standard workflow status", async () => {
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      const run = await backend.createWorkflowRun({
+        workflowName: "cancel-non-standard-status",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
+
+        await pg`
+          UPDATE ${workflowRunsTable}
+          SET "status" = 'paused'
+          WHERE "namespace_id" = ${run.namespaceId}
+            AND "id" = ${run.id}
+        `;
+      } finally {
+        await pg.end();
+      }
+
+      await expect(
+        backend.cancelWorkflowRun({
+          workflowRunId: run.id,
+        }),
+      ).rejects.toThrow("Failed to cancel workflow run");
+    } finally {
+      await backend.stop();
     }
   });
 });
