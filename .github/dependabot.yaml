@@ -14,6 +14,9 @@ updates:
     commit-message:
       prefix: chore(deps)
     groups:
+      eslint:
+        patterns:
+          - "*eslint*"
       tanstack:
         patterns:
-          - "@tanstack/*"
+          - "*tanstack*"
