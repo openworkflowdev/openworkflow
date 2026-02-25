@@ -57,7 +57,7 @@
     "eslint-plugin-unicorn": "^63.0.0",
     "husky": "^9.1.7",
     "jscpd": "^4.0.8",
-    "knip": "^5.84.1",
+    "knip": "^5.85.0",
     "prettier": "^3.8.1",
     "prettier-plugin-packagejson": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.7.2",
