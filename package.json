@@ -19,7 +19,7 @@
     "lint": "eslint .",
     "lint:duplication": "jscpd --config jscpd.json packages",
     "lint:fix": "eslint . --fix",
-    "ow": "tsx ./packages/cli/cli.ts",
+    "openworkflow": "tsx ./packages/cli/cli.ts",
     "pghero": "sh ./packages/openworkflow/postgres/scripts/pghero.sh",
     "prepare": "husky",
     "squawk": "tsx ./packages/openworkflow/postgres/scripts/squawk.ts",
@@ -29,10 +29,10 @@
     "test:coverage:browse": "open ./coverage/index.html",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "worker": "npx @openworkflow/cli worker start"
+    "worker": "npm run openworkflow worker start"
   },
   "dependencies": {
-    "openworkflow": "*"
+    "openworkflow": "^0.7.3"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.4.2",
@@ -40,7 +40,7 @@
     "@commitlint/config-workspace-scopes": "^20.4.0",
     "@cspell/eslint-plugin": "^9.6.4",
     "@eslint/js": "^9.39.2",
-    "@openworkflow/cli": "*",
+    "@openworkflow/cli": "^0.4.1",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
