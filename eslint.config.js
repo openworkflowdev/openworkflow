@@ -116,7 +116,6 @@ export default defineConfig(
   {
     files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
     rules: {
-      "import/no-relative-parent-imports": "off",
       "jsdoc/require-jsdoc": "off",
       "sonarjs/prefer-read-only-props": "off",
     },
