@@ -138,12 +138,12 @@ Pauses the workflow until a specified duration has elapsed. See
 await step.sleep("wait-one-hour", "1h");
 ```
 
-### `step.invoke()`
+### `step.invokeWorkflow()`
 
 Starts a child workflow and waits for its result durably:
 
 ```ts
-const childOutput = await step.invoke("generate-report", {
+const childOutput = await step.invokeWorkflow("generate-report", {
   workflow: generateReportWorkflow,
   input: { reportId: input.reportId },
   timeout: "5m", // optional, defaults to 7 days

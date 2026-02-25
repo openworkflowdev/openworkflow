@@ -9,7 +9,7 @@ export const helloWorldParent = defineWorkflow(
   async ({ step, run }) => {
     console.log(`[run ${run.id}]`);
 
-    const childResult = await step.invoke("hello-world-child", {
+    const childResult = await step.invokeWorkflow("hello-world-child", {
       workflow: helloWorld,
     });
 

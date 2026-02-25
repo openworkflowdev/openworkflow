@@ -379,9 +379,9 @@ class StepExecutor implements StepApi {
     throw new SleepSignal(resumeAt);
   }
 
-  // ---- step.invoke --------------------------------------------------------
+  // ---- step.invokeWorkflow -----------------------------------------------
 
-  async invoke<Output, Input, RunInput = Input>(
+  async invokeWorkflow<Output, Input, RunInput = Input>(
     stepName: string,
     opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
   ): Promise<Output> {

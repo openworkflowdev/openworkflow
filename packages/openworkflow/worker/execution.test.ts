@@ -203,7 +203,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow<{ value: number }, number>(
       { name: `invoke-parent-success-${randomUUID()}` },
       async ({ input, step }) => {
-        const childResult = await step.invoke("invoke-child", {
+        const childResult = await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
           input: { value: input.value },
         });
@@ -239,7 +239,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-early-finish-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -319,7 +319,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-step-shape-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
           input: { value: 9 },
         });
@@ -354,22 +354,22 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-timeout-shapes-${randomUUID()}` },
       async ({ step }) => {
-        const first = await step.invoke("invoke-cached", {
+        const first = await step.invokeWorkflow("invoke-cached", {
           workflow: child.workflow.spec.name,
           input: { value: 4 },
           timeout: new Date(Date.now() + 60_000),
         });
-        const second = await step.invoke("invoke-cached", {
+        const second = await step.invokeWorkflow("invoke-cached", {
           workflow: child.workflow.spec.name,
           input: { value: 99 },
           timeout: 60_000,
         });
-        const numeric = await step.invoke("invoke-number-timeout", {
+        const numeric = await step.invokeWorkflow("invoke-number-timeout", {
           workflow: child.workflow.spec.name,
           input: { value: 8 },
           timeout: 60_000,
         });
-        const spec = await step.invoke("invoke-spec-target", {
+        const spec = await step.invokeWorkflow("invoke-spec-target", {
           workflow: { name: child.workflow.spec.name },
           input: { value: 1 },
           timeout: 60_000,
@@ -412,7 +412,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-invalid-timeout-number-${randomUUID()}` },
       async ({ step }) => {
-        await step.invoke("invoke-child", {
+        await step.invokeWorkflow("invoke-child", {
           workflow: `invoke-child-invalid-timeout-number-${randomUUID()}`,
           timeout: -1,
         });
@@ -443,7 +443,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-invalid-timeout-duration-${randomUUID()}` },
       async ({ step }) => {
-        await step.invoke("invoke-child", {
+        await step.invokeWorkflow("invoke-child", {
           workflow: `invoke-child-invalid-timeout-duration-${randomUUID()}`,
           timeout: "not-a-duration" as DurationString,
         });
@@ -479,7 +479,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-context-null-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -529,7 +529,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-legacy-timeout-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -579,7 +579,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-invalid-timeout-context-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -663,7 +663,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-link-missing-id-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -728,7 +728,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-child-not-found-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -801,7 +801,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-failed-null-error-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -882,7 +882,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-canceled-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -960,7 +960,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-empty-target-${randomUUID()}` },
       async ({ step }) => {
-        await step.invoke("invoke-child", {
+        await step.invokeWorkflow("invoke-child", {
           workflow: "",
         });
         return "never";
@@ -1003,7 +1003,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-failure-${randomUUID()}` },
       async ({ step }) => {
-        await step.invoke("invoke-child", {
+        await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
           input: null,
         });
@@ -1040,7 +1040,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-timeout-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
           timeout: "100ms",
         });
@@ -1108,7 +1108,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-timeout-order-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
           timeout: "100ms",
         });
@@ -1211,7 +1211,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-parked-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -1268,11 +1268,11 @@ describe("StepExecutor", () => {
       { name: `invoke-parent-parallel-${randomUUID()}` },
       async ({ step }) => {
         const [a, b] = await Promise.all([
-          step.invoke("invoke-a", {
+          step.invokeWorkflow("invoke-a", {
             workflow: child.workflow,
             input: { value: 2 },
           }),
-          step.invoke("invoke-b", {
+          step.invokeWorkflow("invoke-b", {
             workflow: child.workflow,
             input: { value: 3 },
           }),
@@ -1310,7 +1310,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-replay-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },
@@ -1362,7 +1362,7 @@ describe("StepExecutor", () => {
     const parent = client.defineWorkflow(
       { name: `invoke-parent-cancel-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invoke("invoke-child", {
+        return await step.invokeWorkflow("invoke-child", {
           workflow: child.workflow,
         });
       },

@@ -31,7 +31,7 @@ export type StepFunction<Output> = () =>
   | undefined;
 
 /**
- * Target workflow reference for `step.invoke`.
+ * Target workflow reference for `step.invokeWorkflow`.
  */
 type InvokeWorkflowTarget<Input, Output, RunInput> =
   | WorkflowSpec<Input, Output, RunInput>
@@ -39,7 +39,7 @@ type InvokeWorkflowTarget<Input, Output, RunInput> =
   | string;
 
 /**
- * Config for invoking a child workflow from `step.invoke()`.
+ * Config for invoking a child workflow from `step.invokeWorkflow()`.
  */
 export interface InvokeStepConfig<
   Input = unknown,
@@ -54,7 +54,7 @@ export interface InvokeStepConfig<
 /**
  * Represents the API for defining steps within a workflow. Used within a
  * workflow handler to define steps by calling `step.run()`, `step.sleep()`,
- * and `step.invoke()`.
+ * and `step.invokeWorkflow()`.
  */
 export interface StepApi {
   run: <Output>(
@@ -62,7 +62,7 @@ export interface StepApi {
     fn: StepFunction<Output>,
   ) => Promise<Output>;
   sleep: (name: string, duration: DurationString) => Promise<void>;
-  invoke: <Output, Input, RunInput = Input>(
+  invokeWorkflow: <Output, Input, RunInput = Input>(
     name: string,
     opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
   ) => Promise<Output>;
