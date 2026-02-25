@@ -194,9 +194,7 @@ export default defineConfig(
     ignores: [
       "**/*.test.ts",
       "**/*.testsuite.ts",
-      "packages/openworkflow/core/backend.ts",
       "packages/openworkflow/core/workflow-registry.ts",
-      "packages/openworkflow/core/workflow-definition.ts",
     ],
     plugins: {
       functional,
@@ -205,7 +203,12 @@ export default defineConfig(
       ...functional.configs.externalTypeScriptRecommended.rules,
       ...functional.configs.recommended.rules,
       ...functional.configs.stylistic.rules,
+      "functional/immutable-data": "off",
+      "functional/no-conditional-statements": "off",
+      "functional/no-expression-statements": "off",
+      "functional/no-loop-statements": "off",
       "functional/no-mixed-types": "off",
+      "functional/prefer-property-signatures": "off",
     },
   },
 );
