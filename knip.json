@@ -4,8 +4,10 @@
 
   "ignoreBinaries": ["mint", "open", "pkg-pr-new"],
   "ignoreDependencies": [
+    "@openworkflow/cli",
     "@tanstack/react-router-ssr-query",
     "@tanstack/router-plugin",
+    "openworkflow",
     "postgres",
     "web-vitals"
   ],
