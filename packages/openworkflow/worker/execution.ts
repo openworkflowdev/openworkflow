@@ -1,21 +1,21 @@
-import type { Backend } from "./backend.js";
-import type { DurationString } from "./core/duration.js";
-import { serializeError } from "./core/error.js";
-import type { JsonValue } from "./core/json.js";
-import type { StepAttempt, StepAttemptCache } from "./core/step.js";
+import type { Backend } from "../core/backend.js";
+import type { DurationString } from "../core/duration.js";
+import { serializeError } from "../core/error.js";
+import type { JsonValue } from "../core/json.js";
+import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
 import {
   getCachedStepAttempt,
   addToStepAttemptCache,
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
-} from "./core/step.js";
-import type { WorkflowRun } from "./core/workflow.js";
+} from "../core/step-attempt.js";
 import {
   computeFailedWorkflowRunUpdate,
   DEFAULT_WORKFLOW_RETRY_POLICY,
   type RetryPolicy,
-} from "./workflow.js";
+} from "../core/workflow-definition.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 
 /**
  * Config for an individual step defined with `step.run()`.

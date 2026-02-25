@@ -98,9 +98,12 @@ export default defineConfig(
   {
     files: [
       "**/*.test.ts",
-      "packages/openworkflow/backend.testsuite.ts",
+      "packages/openworkflow/core/backend.testsuite.ts",
       "packages/openworkflow/postgres/**/*.ts",
       "packages/openworkflow/sqlite/**/*.ts",
+      "packages/openworkflow/client/**/*.ts",
+      "packages/openworkflow/worker/**/*.ts",
+      "packages/openworkflow/core/workflow-definition.ts",
     ],
     rules: {
       "import/no-relative-parent-imports": "off",
@@ -120,7 +123,13 @@ export default defineConfig(
   },
   {
     files: ["packages/openworkflow/core/**/*.ts"],
-    ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
+    ignores: [
+      "**/*.test.ts",
+      "**/*.testsuite.ts",
+      "packages/openworkflow/core/backend.ts",
+      "packages/openworkflow/core/registry.ts",
+      "packages/openworkflow/core/workflow-definition.ts",
+    ],
     plugins: {
       functional,
     },

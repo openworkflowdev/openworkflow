@@ -1,8 +1,12 @@
-import type { SerializedError } from "./core/error.js";
-import { JsonValue } from "./core/json.js";
-import type { StepAttempt, StepAttemptContext, StepKind } from "./core/step.js";
-import type { WorkflowRun, WorkflowRunStatus } from "./core/workflow.js";
-import type { RetryPolicy } from "./workflow.js";
+import type { SerializedError } from "./error.js";
+import { JsonValue } from "./json.js";
+import type {
+  StepAttempt,
+  StepAttemptContext,
+  StepKind,
+} from "./step-attempt.js";
+import type { RetryPolicy } from "./workflow-definition.js";
+import type { WorkflowRun, WorkflowRunStatus } from "./workflow-run.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 export const DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS = 24 * 60 * 60 * 1000;

@@ -6,8 +6,8 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
-} from "./step.js";
-import type { StepAttempt, StepAttemptCache } from "./step.js";
+} from "./step-attempt.js";
+import type { StepAttempt, StepAttemptCache } from "./step-attempt.js";
 import { describe, expect, test } from "vitest";
 
 describe("createStepAttemptCacheFromAttempts", () => {

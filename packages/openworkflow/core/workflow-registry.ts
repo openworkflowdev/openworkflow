@@ -1,4 +1,4 @@
-import type { Workflow } from "./workflow.js";
+import type { Workflow } from "./workflow-definition.js";
 
 /**
  * A registry for storing and retrieving workflows by name and version.

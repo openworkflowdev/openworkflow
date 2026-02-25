@@ -1,8 +1,8 @@
 import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
 import type { Backend } from "./backend.js";
-import type { StepAttempt } from "./core/step.js";
-import type { WorkflowRun } from "./core/workflow.js";
-import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
+import type { StepAttempt } from "./step-attempt.js";
+import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow-definition.js";
+import type { WorkflowRun } from "./workflow-run.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 

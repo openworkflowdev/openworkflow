@@ -1,5 +1,5 @@
-import type { StandardSchemaV1 } from "./schema.js";
-import { validateInput } from "./workflow.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
+import { validateInput } from "./workflow-run.js";
 import { describe, expect, test } from "vitest";
 
 describe("validateInput", () => {

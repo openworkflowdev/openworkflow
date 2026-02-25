@@ -20,12 +20,12 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
-} from "../backend.js";
+} from "../core/backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
-import { StepAttempt } from "../core/step.js";
-import { WorkflowRun } from "../core/workflow.js";
-import { computeFailedWorkflowRunUpdate } from "../workflow.js";
+import { StepAttempt } from "../core/step-attempt.js";
+import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
+import { WorkflowRun } from "../core/workflow-run.js";
 import {
   newPostgres,
   newPostgresMaxOne,

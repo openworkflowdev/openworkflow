@@ -1,5 +1,5 @@
-import { WorkflowRegistry } from "./registry.js";
-import { defineWorkflow } from "./workflow.js";
+import { defineWorkflow } from "./workflow-definition.js";
+import { WorkflowRegistry } from "./workflow-registry.js";
 import { describe, expect, test } from "vitest";
 
 describe("WorkflowRegistry", () => {

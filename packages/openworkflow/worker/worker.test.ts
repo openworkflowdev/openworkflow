@@ -1,12 +1,12 @@
-import type { Backend } from "./backend.js";
-import { OpenWorkflow } from "./client.js";
-import { BackendPostgres } from "./postgres.js";
-import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
-import { Worker, resolveRetryPolicy } from "./worker.js";
+import { OpenWorkflow } from "../client/client.js";
+import type { Backend } from "../core/backend.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   defineWorkflowSpec,
-} from "./workflow.js";
+} from "../core/workflow-definition.js";
+import { BackendPostgres } from "../postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../postgres/postgres.js";
+import { Worker, resolveRetryPolicy } from "./worker.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 

@@ -1,15 +1,15 @@
-import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "./backend.js";
-import { OpenWorkflow } from "./client.js";
-import { BackendPostgres } from "./postgres.js";
+import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "../core/backend.js";
+import {
+  DEFAULT_WORKFLOW_RETRY_POLICY,
+  defineWorkflowSpec,
+} from "../core/workflow-definition.js";
+import { BackendPostgres } from "../postgres.js";
 import {
   DEFAULT_POSTGRES_URL,
   DEFAULT_SCHEMA,
   newPostgresMaxOne,
-} from "./postgres/postgres.js";
-import {
-  DEFAULT_WORKFLOW_RETRY_POLICY,
-  defineWorkflowSpec,
-} from "./workflow.js";
+} from "../postgres/postgres.js";
+import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";

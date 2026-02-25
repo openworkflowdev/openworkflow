@@ -4,7 +4,7 @@ import {
   defineWorkflowSpec,
   isWorkflow,
   RetryPolicy,
-} from "./workflow.js";
+} from "./workflow-definition.js";
 import { describe, expect, test } from "vitest";
 
 describe("defineWorkflowSpec", () => {

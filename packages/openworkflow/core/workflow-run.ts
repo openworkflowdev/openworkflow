@@ -1,6 +1,6 @@
 import type { SerializedError } from "./error.js";
 import { JsonValue } from "./json.js";
-import type { StandardSchemaV1 } from "./schema.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
 
 /**
  * Status of a workflow run through its lifecycle.

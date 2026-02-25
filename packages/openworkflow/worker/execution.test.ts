@@ -1,8 +1,8 @@
-import { OpenWorkflow } from "./client.js";
-import type { StepAttempt } from "./core/step.js";
+import { OpenWorkflow } from "../client/client.js";
+import type { StepAttempt } from "../core/step-attempt.js";
+import { BackendPostgres } from "../postgres.js";
+import { DEFAULT_POSTGRES_URL } from "../postgres/postgres.js";
 import { createStepExecutionStateFromAttempts } from "./execution.js";
-import { BackendPostgres } from "./postgres.js";
-import { DEFAULT_POSTGRES_URL } from "./postgres/postgres.js";
 import { randomUUID } from "node:crypto";
 import { describe, test, expect } from "vitest";
 

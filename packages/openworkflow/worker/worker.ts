@@ -1,11 +1,11 @@
-import type { Backend } from "./backend.js";
-import { type BackoffPolicy, computeBackoffDelayMs } from "./core/backoff.js";
-import { parseDuration } from "./core/duration.js";
-import type { WorkflowRun } from "./core/workflow.js";
+import type { Backend } from "../core/backend.js";
+import { type BackoffPolicy, computeBackoffDelayMs } from "../core/backoff.js";
+import { parseDuration } from "../core/duration.js";
+import type { RetryPolicy, Workflow } from "../core/workflow-definition.js";
+import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
+import { WorkflowRegistry } from "../core/workflow-registry.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 import { executeWorkflow } from "./execution.js";
-import { WorkflowRegistry } from "./registry.js";
-import type { RetryPolicy, Workflow } from "./workflow.js";
-import { DEFAULT_WORKFLOW_RETRY_POLICY } from "./workflow.js";
 import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
