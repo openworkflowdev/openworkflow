@@ -1,4 +1,4 @@
-import { ow } from "./client.js";
+import { backend, ow } from "./client.js";
 import { helloWorld } from "./hello-world.js";
 
 // Run this file:
@@ -20,3 +20,7 @@ console.log("Waiting for result...");
 const result = await handle.result(); // for very short workflows only
 
 console.log(`Workflow result: ${JSON.stringify(result, null, 2)}`);
+
+// Stop backend. Only needed if this is a standalone script that you want to
+// exit after running the workflow.
+await backend.stop();
