@@ -1,8 +1,10 @@
+import type { Backend } from "../core/backend.js";
 import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "../core/backend.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   defineWorkflowSpec,
 } from "../core/workflow-definition.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 import { BackendPostgres } from "../postgres.js";
 import {
   DEFAULT_POSTGRES_URL,
@@ -240,6 +242,52 @@ describe("OpenWorkflow", () => {
     });
     expect(failedRun?.status).toBe("failed");
     expect(failedRun?.error).toEqual({ message: "boom" });
+  });
+
+  test("result rejects when workflow run no longer exists", async () => {
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "missing-result-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () => Promise.resolve(null),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "missing-result-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    await expect(handle.result()).rejects.toThrow(
+      `Workflow run ${workflowRun.id} no longer exists`,
+    );
+  });
+
+  test("result rejects when timeout is exceeded", async () => {
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-timeout-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        Promise.resolve({
+          ...workflowRun,
+          status: "pending" as const,
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-timeout-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    await expect(handle.result({ timeoutMs: -1 })).rejects.toThrow(
+      `Timed out waiting for workflow run ${workflowRun.id} to finish`,
+    );
   });
 
   test("creates workflow run with deadline", async () => {
@@ -585,6 +633,36 @@ async function createBackend(): Promise<BackendPostgres> {
   return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
     namespaceId: randomUUID(), // unique namespace per test
   });
+}
+
+function createMockWorkflowRun(
+  overrides: Partial<WorkflowRun> = {},
+): WorkflowRun {
+  const currentTime = new Date();
+  return {
+    namespaceId: randomUUID(),
+    id: randomUUID(),
+    workflowName: "mock-workflow",
+    version: null,
+    status: "pending",
+    idempotencyKey: null,
+    config: {},
+    context: null,
+    input: null,
+    output: null,
+    error: null,
+    attempts: 0,
+    parentStepAttemptNamespaceId: null,
+    parentStepAttemptId: null,
+    workerId: null,
+    availableAt: currentTime,
+    deadlineAt: null,
+    startedAt: null,
+    finishedAt: null,
+    createdAt: currentTime,
+    updatedAt: currentTime,
+    ...overrides,
+  };
 }
 
 function sleep(ms: number): Promise<void> {
