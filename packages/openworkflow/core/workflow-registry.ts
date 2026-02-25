@@ -4,6 +4,7 @@ import type { Workflow } from "./workflow-definition.js";
  * A registry for storing and retrieving workflows by name and version.
  * Provides a centralized way to manage workflow registrations.
  */
+// eslint-disable-next-line functional/no-classes
 export class WorkflowRegistry {
   private readonly workflows = new Map<
     string,
@@ -15,12 +16,14 @@ export class WorkflowRegistry {
    * @param workflow - The workflow to register
    * @throws {Error} If a workflow with the same name and version is already registered
    */
+  // eslint-disable-next-line functional/no-return-void
   register(workflow: Workflow<unknown, unknown, unknown>): void {
     const name = workflow.spec.name;
     const version = workflow.spec.version ?? null;
     const key = registryKey(name, version);
     if (this.workflows.has(key)) {
       const versionStr = version ? ` (version: ${version})` : "";
+      // eslint-disable-next-line functional/no-throw-statements
       throw new Error(`Workflow "${name}"${versionStr} is already registered`);
     }
     this.workflows.set(key, workflow);
@@ -44,6 +47,7 @@ export class WorkflowRegistry {
    * Get all registered workflows.
    * @returns Array of all registered workflows
    */
+  // eslint-disable-next-line functional/functional-parameters
   getAll(): Workflow<unknown, unknown, unknown>[] {
     return [...this.workflows.values()];
   }

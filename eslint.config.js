@@ -191,11 +191,7 @@ export default defineConfig(
   },
   {
     files: ["packages/openworkflow/core/**/*.ts"],
-    ignores: [
-      "**/*.test.ts",
-      "**/*.testsuite.ts",
-      "packages/openworkflow/core/workflow-registry.ts",
-    ],
+    ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
     plugins: {
       functional,
     },
