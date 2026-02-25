@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { test, describe, afterAll, expect } from "vitest";
+import { test, describe, afterAll, expect, vi } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
   assert.ok(true);
@@ -99,6 +99,8 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
           config: {},
           context: null,
           input: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         }),
@@ -146,6 +148,8 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
         config: {},
         context: null,
         input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       }),
@@ -153,5 +157,84 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
 
     expect(calls).toEqual(["BEGIN IMMEDIATE", "ROLLBACK"]);
     await backend.stop();
+  });
+});
+
+describe("BackendSqlite.setStepAttemptChildWorkflowRun error handling", () => {
+  test("throws when linked step attempt cannot be reloaded", async () => {
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      const parent = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 100,
+      });
+      if (!claimed) {
+        throw new Error("Expected parent workflow run to be claimed");
+      }
+      expect(claimed.id).toBe(parent.id);
+
+      const stepAttempt = await backend.createStepAttempt({
+        workflowRunId: claimed.id,
+        workerId,
+        stepName: randomUUID(),
+        kind: "invoke",
+        config: {},
+        context: null,
+      });
+      const childRun = await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        parentStepAttemptNamespaceId: stepAttempt.namespaceId,
+        parentStepAttemptId: stepAttempt.id,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const originalGetStepAttempt = backend.getStepAttempt.bind(backend);
+      const getStepAttemptSpy = vi
+        .spyOn(backend, "getStepAttempt")
+        .mockImplementation(async (params) => {
+          if (params.stepAttemptId === stepAttempt.id) {
+            return null;
+          }
+          return await originalGetStepAttempt(params);
+        });
+
+      try {
+        await expect(
+          backend.setStepAttemptChildWorkflowRun({
+            workflowRunId: claimed.id,
+            stepAttemptId: stepAttempt.id,
+            workerId,
+            childWorkflowRunNamespaceId: childRun.namespaceId,
+            childWorkflowRunId: childRun.id,
+          }),
+        ).rejects.toThrow("Failed to set step attempt child workflow run");
+      } finally {
+        getStepAttemptSpy.mockRestore();
+      }
+    } finally {
+      await backend.stop();
+    }
   });
 });

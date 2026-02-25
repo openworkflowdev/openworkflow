@@ -1,6 +1,6 @@
 import type { Backend } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
-import { serializeError } from "../core/error.js";
+import { deserializeError, serializeError } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
 import {
@@ -9,20 +9,24 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
+  createInvokeContext,
 } from "../core/step-attempt.js";
 import {
   computeFailedWorkflowRunUpdate,
   DEFAULT_WORKFLOW_RETRY_POLICY,
   type RetryPolicy,
+  type Workflow,
+  type WorkflowSpec,
 } from "../core/workflow-definition.js";
 import type {
+  InvokeStepConfig,
   StepApi,
   StepFunction,
   StepFunctionConfig,
   WorkflowFunction,
   WorkflowRunMetadata,
 } from "../core/workflow-function.js";
-import type { WorkflowRun } from "../core/workflow-run.js";
+import { isTerminalStatus, type WorkflowRun } from "../core/workflow-run.js";
 
 /**
  * Signal thrown when a workflow needs to sleep. Contains the time when the
@@ -65,14 +69,21 @@ class StepError extends Error {
   }
 }
 
-/**
- * Retry defaults for step failures.
- */
+/** Default retry policy for step failures. */
 const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
   initialInterval: "1s",
   backoffCoefficient: 2,
   maximumInterval: "100s",
   maximumAttempts: 10,
+};
+
+/**
+ * Retry policy for invoke step failures (no retries - the child workflow
+ * is responsible for retries).
+ */
+const INVOKE_FAILURE_RETRY_POLICY: RetryPolicy = {
+  ...DEFAULT_STEP_RETRY_POLICY,
+  maximumAttempts: 1,
 };
 
 /**
@@ -91,6 +102,7 @@ function resolveStepRetryPolicy(partial?: Partial<RetryPolicy>): RetryPolicy {
 export interface StepExecutionState {
   cache: StepAttemptCache;
   failedCountsByStepName: ReadonlyMap<string, number>;
+  runningByStepName: ReadonlyMap<string, StepAttempt>;
 }
 
 /**
@@ -103,6 +115,7 @@ export function createStepExecutionStateFromAttempts(
 ): StepExecutionState {
   const cache = new Map<string, StepAttempt>();
   const failedCountsByStepName = new Map<string, number>();
+  const runningByStepName = new Map<string, StepAttempt>();
 
   for (const attempt of attempts) {
     if (attempt.status === "completed" || attempt.status === "succeeded") {
@@ -113,13 +126,128 @@ export function createStepExecutionStateFromAttempts(
     if (attempt.status === "failed") {
       const previousCount = failedCountsByStepName.get(attempt.stepName) ?? 0;
       failedCountsByStepName.set(attempt.stepName, previousCount + 1);
+      continue;
     }
+
+    runningByStepName.set(attempt.stepName, attempt);
   }
 
   return {
     cache,
     failedCountsByStepName,
+    runningByStepName,
   };
+}
+
+/**
+ * Resolve invoke timeout input to an absolute deadline.
+ * @param timeout - Relative/absolute timeout input
+ * @returns Absolute timeout deadline
+ * @throws {Error} When timeout is invalid
+ */
+function resolveInvokeTimeoutAt(
+  timeout: number | string | Date | undefined,
+): Date {
+  if (timeout === undefined) {
+    return defaultInvokeTimeoutAt();
+  }
+
+  if (timeout instanceof Date) {
+    return timeout;
+  }
+
+  if (typeof timeout === "number") {
+    if (!Number.isFinite(timeout) || timeout < 0) {
+      throw new Error("Invoke timeout must be a non-negative number");
+    }
+    return new Date(Date.now() + timeout);
+  }
+
+  const result = calculateDateFromDuration(timeout as DurationString);
+  if (!result.ok) {
+    throw result.error;
+  }
+  return result.value;
+}
+
+/**
+ * Default invoke timeout: 7 days from a base time.
+ * @param base - Base timestamp (defaults to now)
+ * @returns Timeout deadline
+ */
+function defaultInvokeTimeoutAt(base: Readonly<Date> = new Date()): Date {
+  const timeoutAt = new Date(base);
+  timeoutAt.setDate(timeoutAt.getDate() + 7);
+  return timeoutAt;
+}
+
+/**
+ * Extract the invoke timeout from a persisted step attempt's context.
+ * @param attempt - Running invoke step attempt
+ * @returns Timeout deadline, or null when context is not invoke
+ */
+function getInvokeTimeoutAt(attempt: Readonly<StepAttempt>): Date | null {
+  if (attempt.context?.kind !== "invoke") {
+    return null;
+  }
+
+  if (attempt.context.timeoutAt === null) {
+    // Backward compatibility for previously persisted invoke contexts.
+    return defaultInvokeTimeoutAt(attempt.createdAt);
+  }
+
+  return new Date(attempt.context.timeoutAt);
+}
+
+/**
+ * Determine whether the invoke timeout has elapsed before the child completed.
+ * @param attempt - Running invoke step attempt
+ * @param childRun - Linked child workflow run
+ * @returns True when timeout elapsed before child terminal completion
+ */
+function hasInvokeTimedOut(
+  attempt: Readonly<StepAttempt>,
+  childRun: Readonly<WorkflowRun>,
+): boolean {
+  const timeoutAt = getInvokeTimeoutAt(attempt);
+  if (!timeoutAt) return false;
+
+  const timeoutMs = timeoutAt.getTime();
+  if (!Number.isFinite(timeoutMs)) return false;
+  if (Date.now() < timeoutMs) return false;
+
+  if (isTerminalStatus(childRun.status) && childRun.finishedAt) {
+    return childRun.finishedAt.getTime() > timeoutMs;
+  }
+
+  return true;
+}
+
+/**
+ * Normalize a workflow target (string | WorkflowSpec | Workflow) to a
+ * WorkflowSpec.
+ * @param workflow - Workflow target reference
+ * @returns WorkflowSpec for child run creation
+ */
+function toWorkflowSpec<Input, Output, RunInput>(
+  workflow:
+    | WorkflowSpec<Input, Output, RunInput>
+    | Workflow<Input, Output, RunInput>
+    | string,
+): WorkflowSpec<Input, Output, RunInput> {
+  if (typeof workflow === "string") {
+    return { name: workflow };
+  }
+  return "spec" in workflow ? workflow.spec : workflow;
+}
+
+/**
+ * Build deterministic idempotency key for child workflow invocation.
+ * @param attempt - Parent invoke step attempt
+ * @returns Stable idempotency key
+ */
+function buildInvokeIdempotencyKey(attempt: Readonly<StepAttempt>): string {
+  return `__invoke:${attempt.namespaceId}:${attempt.id}`;
 }
 
 /**
@@ -142,6 +270,7 @@ class StepExecutor implements StepApi {
   private readonly workerId: string;
   private cache: StepAttemptCache;
   private readonly failedCountsByStepName: Map<string, number>;
+  private readonly runningByStepName: Map<string, StepAttempt>;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
@@ -151,7 +280,10 @@ class StepExecutor implements StepApi {
     const state = createStepExecutionStateFromAttempts(options.attempts);
     this.cache = state.cache;
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
+    this.runningByStepName = new Map(state.runningByStepName);
   }
+
+  // ---- step.run -----------------------------------------------------------
 
   async run<Output>(
     config: Readonly<StepFunctionConfig>,
@@ -174,6 +306,7 @@ class StepExecutor implements StepApi {
       config: {},
       context: null,
     });
+    this.runningByStepName.set(name, attempt);
 
     try {
       // execute step function
@@ -190,10 +323,12 @@ class StepExecutor implements StepApi {
 
       // cache result
       this.cache = addToStepAttemptCache(this.cache, savedAttempt);
+      this.runningByStepName.delete(name);
 
       return savedAttempt.output as Output;
     } catch (error) {
       // mark failure
+      this.runningByStepName.delete(name);
       await this.backend.failStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
@@ -201,8 +336,8 @@ class StepExecutor implements StepApi {
         error: serializeError(error),
       });
 
-      const previousFailedAttempts = this.failedCountsByStepName.get(name) ?? 0;
-      const stepFailedAttempts = previousFailedAttempts + 1;
+      const stepFailedAttempts =
+        (this.failedCountsByStepName.get(name) ?? 0) + 1;
       this.failedCountsByStepName.set(name, stepFailedAttempts);
 
       throw new StepError({
@@ -213,6 +348,8 @@ class StepExecutor implements StepApi {
       });
     }
   }
+
+  // ---- step.sleep ---------------------------------------------------------
 
   async sleep(name: string, duration: DurationString): Promise<void> {
     // return cached result if this sleep already completed
@@ -240,6 +377,233 @@ class StepExecutor implements StepApi {
     // we do not mark the step as completed here; it will be updated
     // when the workflow resumes
     throw new SleepSignal(resumeAt);
+  }
+
+  // ---- step.invoke --------------------------------------------------------
+
+  async invoke<Output, Input, RunInput = Input>(
+    stepName: string,
+    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  ): Promise<Output> {
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) {
+      return existingAttempt.output as Output;
+    }
+
+    // Resume a running invoke attempt (replay path)
+    const runningAttempt = this.runningByStepName.get(stepName);
+    if (runningAttempt?.kind === "invoke") {
+      return await this.resolveRunningInvoke(stepName, runningAttempt, opts);
+    }
+
+    // First encounter — create the invoke step and child workflow run
+    const timeoutAt = resolveInvokeTimeoutAt(opts.timeout);
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind: "invoke",
+      config: {},
+      context: createInvokeContext(timeoutAt),
+    });
+    this.runningByStepName.set(stepName, attempt);
+
+    const linkedAttempt = await this.linkChildWorkflowRun(
+      stepName,
+      attempt,
+      opts,
+    ).catch(
+      async (error: unknown) =>
+        await this.failStepWithError(
+          stepName,
+          attempt.id,
+          error,
+          INVOKE_FAILURE_RETRY_POLICY,
+        ),
+    );
+
+    return await this.resolveRunningInvoke(stepName, linkedAttempt, opts);
+  }
+
+  /**
+   * Resolve a running invoke attempt — check child status and either complete,
+   * fail, or go back to sleep.
+   * @param stepName - Invoke step name
+   * @param runningAttempt - Previously created invoke step attempt
+   * @param opts - Invoke step configuration
+   * @returns The child workflow output when available
+   */
+  private async resolveRunningInvoke<Output, Input, RunInput = Input>(
+    stepName: string,
+    runningAttempt: Readonly<StepAttempt>,
+    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  ): Promise<Output> {
+    // Ensure the invoke attempt has a linked child (may need to create one if
+    // a previous attempt crashed before linking)
+    const invokeAttempt =
+      runningAttempt.childWorkflowRunId &&
+      runningAttempt.childWorkflowRunNamespaceId
+        ? runningAttempt
+        : await this.linkChildWorkflowRun(stepName, runningAttempt, opts);
+
+    const childId = invokeAttempt.childWorkflowRunId;
+    if (!childId) {
+      return await this.failStepWithError(
+        stepName,
+        invokeAttempt.id,
+        new Error(
+          `Invoke step "${stepName}" could not find linked child workflow run`,
+        ),
+        INVOKE_FAILURE_RETRY_POLICY,
+      );
+    }
+
+    const childRun = await this.backend.getWorkflowRun({
+      workflowRunId: childId,
+    });
+    if (!childRun) {
+      return await this.failStepWithError(
+        stepName,
+        invokeAttempt.id,
+        new Error(
+          `Invoke step "${stepName}" could not find linked child workflow run "${childId}"`,
+        ),
+        INVOKE_FAILURE_RETRY_POLICY,
+      );
+    }
+
+    // Check timeout before checking child result
+    if (hasInvokeTimedOut(invokeAttempt, childRun)) {
+      return await this.failStepWithError(
+        stepName,
+        invokeAttempt.id,
+        new Error("Timed out waiting for invoked workflow to complete"),
+        INVOKE_FAILURE_RETRY_POLICY,
+      );
+    }
+
+    // Child completed successfully — propagate result
+    if (childRun.status === "completed" || childRun.status === "succeeded") {
+      const completed = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: invokeAttempt.id,
+        workerId: this.workerId,
+        output: childRun.output,
+      });
+      this.runningByStepName.delete(stepName);
+      this.cache = addToStepAttemptCache(this.cache, completed);
+      return completed.output as Output;
+    }
+
+    // Child failed — propagate its error
+    if (childRun.status === "failed") {
+      const childError =
+        childRun.error === null
+          ? new Error(`Child workflow run "${childRun.id}" failed`)
+          : deserializeError(childRun.error);
+      return await this.failStepWithError(
+        stepName,
+        invokeAttempt.id,
+        childError,
+        INVOKE_FAILURE_RETRY_POLICY,
+      );
+    }
+
+    // Child canceled — propagate as error
+    if (childRun.status === "canceled") {
+      return await this.failStepWithError(
+        stepName,
+        invokeAttempt.id,
+        new Error(
+          `Invoke step "${stepName}" failed because child workflow run "${childRun.id}" was canceled`,
+        ),
+        INVOKE_FAILURE_RETRY_POLICY,
+      );
+    }
+
+    // Child still running — sleep until timeout
+    const timeoutAt = getInvokeTimeoutAt(invokeAttempt);
+    throw new SleepSignal(
+      timeoutAt ?? defaultInvokeTimeoutAt(invokeAttempt.createdAt),
+    );
+  }
+
+  /**
+   * Create (or dedupe) the child workflow run and persist the linkage on the
+   * parent invoke step attempt.
+   * @param stepName - Parent invoke step name
+   * @param attempt - Parent invoke step attempt
+   * @param opts - Invoke step configuration
+   * @returns Updated step attempt with child linkage
+   */
+  private async linkChildWorkflowRun<Output, Input, RunInput = Input>(
+    stepName: string,
+    attempt: Readonly<StepAttempt>,
+    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  ): Promise<StepAttempt> {
+    const workflow = opts.workflow;
+    if (typeof workflow === "string" && workflow.length === 0) {
+      throw new Error("Invoke workflow target must be a non-empty string");
+    }
+
+    const spec = toWorkflowSpec(workflow);
+    const childRun = await this.backend.createWorkflowRun({
+      workflowName: spec.name,
+      version: spec.version ?? null,
+      idempotencyKey: buildInvokeIdempotencyKey(attempt),
+      config: {},
+      context: null,
+      input: normalizeStepOutput(opts.input),
+      parentStepAttemptNamespaceId: attempt.namespaceId,
+      parentStepAttemptId: attempt.id,
+      availableAt: null,
+      deadlineAt: null,
+    });
+
+    const linked = await this.backend.setStepAttemptChildWorkflowRun({
+      workflowRunId: this.workflowRunId,
+      stepAttemptId: attempt.id,
+      workerId: this.workerId,
+      childWorkflowRunNamespaceId: childRun.namespaceId,
+      childWorkflowRunId: childRun.id,
+    });
+    this.runningByStepName.set(stepName, linked);
+
+    return linked;
+  }
+
+  /**
+   * Record a step failure, update the failed-attempt counter, and throw a
+   * StepError. Shared by both `step.run` failures and invoke failures.
+   * @param stepName - Step name
+   * @param stepAttemptId - Step attempt id
+   * @param error - Error that caused the failure
+   * @param retryPolicy - Retry policy for this failure
+   */
+  private async failStepWithError(
+    stepName: string,
+    stepAttemptId: string,
+    error: unknown,
+    retryPolicy: RetryPolicy,
+  ): Promise<never> {
+    this.runningByStepName.delete(stepName);
+    await this.backend.failStepAttempt({
+      workflowRunId: this.workflowRunId,
+      stepAttemptId,
+      workerId: this.workerId,
+      error: serializeError(error),
+    });
+
+    const stepFailedAttempts =
+      (this.failedCountsByStepName.get(stepName) ?? 0) + 1;
+    this.failedCountsByStepName.set(stepName, stepFailedAttempts);
+
+    throw new StepError({
+      stepName,
+      stepFailedAttempts,
+      retryPolicy,
+      error,
+    });
   }
 }
 

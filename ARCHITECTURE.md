@@ -51,8 +51,8 @@ A workflow run can be in one of the following states:
   to claim it.
 - **`running`**: The workflow run is actively being executed by a worker.
 - **`sleeping`**: The workflow run is waiting for a duration to elapse
-  (`step.sleep`). The `availableAt` timestamp controls when it becomes available
-  again.
+  (`step.sleep`) or waiting for a child workflow result (`step.invoke`). The
+  `availableAt` timestamp controls when it becomes available again.
 - **`completed`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed after exhausting retries or deadline
   reached.
@@ -219,6 +219,10 @@ worker slot for other work - it's not a blocking sleep but a durable pause.
 ```ts
 await step.sleep("wait-one-hour", "1h");
 ```
+
+**`step.invoke(name, options)`**: Starts a child workflow and waits for it
+durably. When the timeout is reached (default 7d), the parent step fails but the
+child workflow continues running independently.
 
 ## 4. Error Handling & Retries
 

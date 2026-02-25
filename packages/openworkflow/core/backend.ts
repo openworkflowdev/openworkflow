@@ -64,6 +64,9 @@ export interface Backend {
   failStepAttempt(
     params: Readonly<FailStepAttemptParams>,
   ): Promise<StepAttempt>;
+  setStepAttemptChildWorkflowRun(
+    params: Readonly<SetStepAttemptChildWorkflowRunParams>,
+  ): Promise<StepAttempt>;
 
   // Lifecycle
   stop(): Promise<void>;
@@ -76,6 +79,8 @@ export interface CreateWorkflowRunParams {
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
+  parentStepAttemptNamespaceId: string | null;
+  parentStepAttemptId: string | null;
   availableAt: Date | null; // null = immediately
   deadlineAt: Date | null; // null = no deadline
 }
@@ -156,6 +161,14 @@ export interface FailStepAttemptParams {
   stepAttemptId: string;
   workerId: string;
   error: SerializedError;
+}
+
+export interface SetStepAttemptChildWorkflowRunParams {
+  workflowRunId: string;
+  stepAttemptId: string;
+  workerId: string;
+  childWorkflowRunNamespaceId: string;
+  childWorkflowRunId: string;
 }
 
 export interface PaginationOptions {

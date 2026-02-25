@@ -112,6 +112,19 @@ export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
   });
 
 /**
+ * Get a single step attempt by ID.
+ */
+export const getStepAttemptServerFn = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ stepAttemptId: z.string() }))
+  .handler(async ({ data }): Promise<StepAttempt | null> => {
+    const backend = await getBackend();
+    const stepAttempt = await backend.getStepAttempt({
+      stepAttemptId: data.stepAttemptId,
+    });
+    return stepAttempt;
+  });
+
+/**
  * Create a new workflow run.
  */
 export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
@@ -154,6 +167,8 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
       config: {},
       context: null,
       input: parsedInput,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
       availableAt,
       deadlineAt,
     });

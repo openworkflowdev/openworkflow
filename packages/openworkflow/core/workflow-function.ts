@@ -1,5 +1,9 @@
 import type { DurationString } from "./duration.js";
-import type { RetryPolicy } from "./workflow-definition.js";
+import type {
+  RetryPolicy,
+  Workflow,
+  WorkflowSpec,
+} from "./workflow-definition.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -27,8 +31,30 @@ export type StepFunction<Output> = () =>
   | undefined;
 
 /**
+ * Target workflow reference for `step.invoke`.
+ */
+type InvokeWorkflowTarget<Input, Output, RunInput> =
+  | WorkflowSpec<Input, Output, RunInput>
+  | Workflow<Input, Output, RunInput>
+  | string;
+
+/**
+ * Config for invoking a child workflow from `step.invoke()`.
+ */
+export interface InvokeStepConfig<
+  Input = unknown,
+  Output = unknown,
+  RunInput = Input,
+> {
+  workflow: InvokeWorkflowTarget<Input, Output, RunInput>;
+  input?: RunInput;
+  timeout?: number | string | Date;
+}
+
+/**
  * Represents the API for defining steps within a workflow. Used within a
- * workflow handler to define steps by calling `step.run()`.
+ * workflow handler to define steps by calling `step.run()`, `step.sleep()`,
+ * and `step.invoke()`.
  */
 export interface StepApi {
   run: <Output>(
@@ -36,6 +62,10 @@ export interface StepApi {
     fn: StepFunction<Output>,
   ) => Promise<Output>;
   sleep: (name: string, duration: DurationString) => Promise<void>;
+  invoke: <Output, Input, RunInput = Input>(
+    name: string,
+    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  ) => Promise<Output>;
 }
 
 /**

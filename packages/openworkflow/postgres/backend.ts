@@ -16,6 +16,7 @@ import {
   PaginatedResponse,
   FailStepAttemptParams,
   CompleteStepAttemptParams,
+  SetStepAttemptChildWorkflowRunParams,
   FailWorkflowRunParams,
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
@@ -142,6 +143,9 @@ export class BackendPostgres implements Backend {
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const workflowRunsTable = this.workflowRunsTable(pg);
+    const parentStepAttemptNamespaceId =
+      params.parentStepAttemptNamespaceId ?? null;
+    const parentStepAttemptId = params.parentStepAttemptId ?? null;
 
     const [workflowRun] = await pg<WorkflowRun[]>`
       INSERT INTO ${workflowRunsTable} (
@@ -155,6 +159,8 @@ export class BackendPostgres implements Backend {
         "context",
         "input",
         "attempts",
+        "parent_step_attempt_namespace_id",
+        "parent_step_attempt_id",
         "available_at",
         "deadline_at",
         "created_at",
@@ -171,6 +177,8 @@ export class BackendPostgres implements Backend {
         ${pg.json(params.context)},
         ${pg.json(params.input)},
         0,
+        ${parentStepAttemptNamespaceId},
+        ${parentStepAttemptId},
         ${sqlDateDefaultNow(pg, params.availableAt)},
         ${params.deadlineAt},
         date_trunc('milliseconds', NOW()),
@@ -376,7 +384,11 @@ export class BackendPostgres implements Backend {
       UPDATE ${workflowRunsTable}
       SET
         "status" = 'sleeping',
-        "available_at" = ${params.availableAt},
+        "available_at" = CASE
+          WHEN "available_at" IS NOT NULL AND "available_at" <= NOW()
+            THEN "available_at"
+          ELSE ${params.availableAt}
+        END,
         "worker_id" = NULL,
         "updated_at" = NOW()
       WHERE "namespace_id" = ${this.namespaceId}
@@ -418,6 +430,8 @@ export class BackendPostgres implements Backend {
 
     if (!updated) throw new Error("Failed to mark workflow run completed");
 
+    await this.wakeParentWorkflowRun(updated);
+
     return updated;
   }
 
@@ -456,6 +470,10 @@ export class BackendPostgres implements Backend {
     `;
 
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    if (updated.status === "failed") {
+      await this.wakeParentWorkflowRun(updated);
+    }
 
     return updated;
   }
@@ -535,7 +553,40 @@ export class BackendPostgres implements Backend {
       throw new Error("Failed to cancel workflow run");
     }
 
+    await this.wakeParentWorkflowRun(updated);
+
     return updated;
+  }
+
+  private async wakeParentWorkflowRun(
+    childWorkflowRun: Readonly<WorkflowRun>,
+  ): Promise<void> {
+    if (
+      !childWorkflowRun.parentStepAttemptNamespaceId ||
+      !childWorkflowRun.parentStepAttemptId
+    ) {
+      return;
+    }
+
+    const workflowRunsTable = this.workflowRunsTable();
+    const stepAttemptsTable = this.stepAttemptsTable();
+
+    await this.pg`
+      UPDATE ${workflowRunsTable} wr
+      SET
+        "available_at" = CASE
+          WHEN wr."available_at" IS NULL OR wr."available_at" > NOW()
+            THEN NOW()
+          ELSE wr."available_at"
+        END,
+        "updated_at" = NOW()
+      FROM ${stepAttemptsTable} sa
+      WHERE sa."namespace_id" = ${childWorkflowRun.parentStepAttemptNamespaceId}
+      AND sa."id" = ${childWorkflowRun.parentStepAttemptId}
+      AND wr."namespace_id" = sa."namespace_id"
+      AND wr."id" = sa."workflow_run_id"
+      AND wr."status" = 'sleeping'
+    `;
   }
 
   async createStepAttempt(
@@ -576,6 +627,37 @@ export class BackendPostgres implements Backend {
     if (!stepAttempt) throw new Error("Failed to create step attempt");
 
     return stepAttempt;
+  }
+
+  async setStepAttemptChildWorkflowRun(
+    params: SetStepAttemptChildWorkflowRunParams,
+  ): Promise<StepAttempt> {
+    const stepAttemptsTable = this.stepAttemptsTable();
+    const workflowRunsTable = this.workflowRunsTable();
+
+    const [updated] = await this.pg<StepAttempt[]>`
+      UPDATE ${stepAttemptsTable} sa
+      SET
+        "child_workflow_run_namespace_id" = ${params.childWorkflowRunNamespaceId},
+        "child_workflow_run_id" = ${params.childWorkflowRunId},
+        "updated_at" = NOW()
+      FROM ${workflowRunsTable} wr
+      WHERE sa."namespace_id" = ${this.namespaceId}
+      AND sa."workflow_run_id" = ${params.workflowRunId}
+      AND sa."id" = ${params.stepAttemptId}
+      AND sa."status" = 'running'
+      AND wr."namespace_id" = sa."namespace_id"
+      AND wr."id" = sa."workflow_run_id"
+      AND wr."status" = 'running'
+      AND wr."worker_id" = ${params.workerId}
+      RETURNING sa.*
+    `;
+
+    if (!updated) {
+      throw new Error("Failed to set step attempt child workflow run");
+    }
+
+    return updated;
   }
 
   async getStepAttempt(

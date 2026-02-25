@@ -78,6 +78,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: expected.input,
           config: expected.config,
           context: expected.context,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: expected.availableAt,
           deadlineAt: expected.deadlineAt,
         });
@@ -102,6 +104,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -111,6 +115,36 @@ export function testBackend(options: TestBackendOptions): void {
         expect(createdMin.context).toBeNull();
         expect(deltaSeconds(createdMin.availableAt)).toBeLessThan(1); // defaults to NOW()
         expect(createdMin.deadlineAt).toBeNull();
+      });
+
+      test("persists parent step attempt linkage when provided", async () => {
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const parentStepAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: { key: "val" },
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: parentStepAttempt.namespaceId,
+          parentStepAttemptId: parentStepAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        expect(childRun.parentStepAttemptNamespaceId).toBe(
+          parentStepAttempt.namespaceId,
+        );
+        expect(childRun.parentStepAttemptId).toBe(parentStepAttempt.id);
       });
 
       test("reuses the same run for matching idempotency key and workflow identity", async () => {
@@ -126,6 +160,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: { val: 1 },
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -137,6 +173,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: { val: 2 },
           config: { changed: true },
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -156,6 +194,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -167,6 +207,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -189,6 +231,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -200,6 +244,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -214,6 +260,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -225,6 +273,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -249,6 +299,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -260,6 +312,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -285,6 +339,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -300,6 +356,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           });
@@ -322,6 +380,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -333,6 +393,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -356,6 +418,8 @@ export function testBackend(options: TestBackendOptions): void {
               input: { i },
               config: {},
               context: null,
+              parentStepAttemptNamespaceId: null,
+              parentStepAttemptId: null,
               availableAt: null,
               deadlineAt: null,
             }),
@@ -380,6 +444,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -404,6 +470,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -426,6 +494,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -451,6 +521,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -465,6 +537,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -478,6 +552,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -931,6 +1007,142 @@ export function testBackend(options: TestBackendOptions): void {
         expect(completed.finishedAt).not.toBeNull();
         expect(completed.availableAt).toBeNull();
       });
+
+      test("wakes a sleeping parent run when a child run completes", async () => {
+        const backend = await setup();
+
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const parentWorkerId = parentRun.workerId ?? "";
+        const invokeAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentWorkerId,
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: { kind: "invoke", timeoutAt: null },
+        });
+        const farFuture = new Date(Date.now() + 5 * 60 * 1000);
+        await backend.sleepWorkflowRun({
+          workflowRunId: parentRun.id,
+          workerId: parentWorkerId,
+          availableAt: farFuture,
+        });
+
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
+          parentStepAttemptId: invokeAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const claimedChild = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 20,
+        });
+        if (!claimedChild) throw new Error("Expected child run to be claimed");
+        expect(claimedChild.id).toBe(childRun.id);
+
+        await backend.completeWorkflowRun({
+          workflowRunId: childRun.id,
+          workerId: claimedChild.workerId ?? "",
+          output: { ok: true },
+        });
+
+        const parentAfter = await backend.getWorkflowRun({
+          workflowRunId: parentRun.id,
+        });
+        expect(parentAfter?.status).toBe("sleeping");
+        expect(parentAfter?.availableAt).not.toBeNull();
+        if (!parentAfter?.availableAt) {
+          throw new Error("Expected parent availableAt after child completion");
+        }
+
+        expect(parentAfter.availableAt.getTime()).toBeLessThan(
+          farFuture.getTime(),
+        );
+        expect(parentAfter.availableAt.getTime()).toBeLessThanOrEqual(
+          Date.now() + 1000,
+        );
+
+        await teardown(backend);
+      });
+
+      test("does not wake a running parent run when a child run completes", async () => {
+        const backend = await setup();
+
+        const parentWorkerId = randomUUID();
+        const pendingParent = await createPendingWorkflowRun(backend);
+        const parentRun = await backend.claimWorkflowRun({
+          workerId: parentWorkerId,
+          leaseDurationMs: 5 * 60 * 1000,
+        });
+        if (!parentRun) throw new Error("Expected parent run to be claimed");
+        expect(parentRun.id).toBe(pendingParent.id);
+        if (!parentRun.availableAt) {
+          throw new Error("Expected parent availableAt while running");
+        }
+        const parentLeaseBeforeChild = parentRun.availableAt.getTime();
+
+        const invokeAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentWorkerId,
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: { kind: "invoke", timeoutAt: null },
+        });
+
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
+          parentStepAttemptId: invokeAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const claimedChild = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 20,
+        });
+        if (!claimedChild) throw new Error("Expected child run to be claimed");
+        expect(claimedChild.id).toBe(childRun.id);
+
+        await backend.completeWorkflowRun({
+          workflowRunId: childRun.id,
+          workerId: claimedChild.workerId ?? "",
+          output: { ok: true },
+        });
+
+        const parentAfter = await backend.getWorkflowRun({
+          workflowRunId: parentRun.id,
+        });
+        expect(parentAfter?.status).toBe("running");
+        expect(parentAfter?.workerId).toBe(parentWorkerId);
+        expect(parentAfter?.availableAt).not.toBeNull();
+        if (!parentAfter?.availableAt) {
+          throw new Error("Expected parent availableAt after child completion");
+        }
+
+        expect(parentAfter.availableAt.getTime()).toBeGreaterThanOrEqual(
+          parentLeaseBeforeChild - 1000,
+        );
+        expect(parentAfter.availableAt.getTime()).toBeGreaterThan(
+          Date.now() + 1000,
+        );
+
+        await teardown(backend);
+      });
     });
 
     describe("failWorkflowRun()", () => {
@@ -1019,6 +1231,69 @@ export function testBackend(options: TestBackendOptions): void {
         const delayMs = secondFailed.availableAt.getTime() - beforeSecondFail;
         expect(delayMs).toBeGreaterThanOrEqual(1900); // ~2s with some tolerance
         expect(delayMs).toBeLessThan(2500);
+
+        await teardown(backend);
+      });
+
+      test("does not wake parent when child failure is retryable", async () => {
+        const backend = await setup();
+
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const parentWorkerId = parentRun.workerId ?? "";
+        const invokeAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentWorkerId,
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: { kind: "invoke", timeoutAt: null },
+        });
+        const farFuture = new Date(Date.now() + 5 * 60 * 1000);
+        await backend.sleepWorkflowRun({
+          workflowRunId: parentRun.id,
+          workerId: parentWorkerId,
+          availableAt: farFuture,
+        });
+
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
+          parentStepAttemptId: invokeAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        const claimedChild = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 20,
+        });
+        if (!claimedChild) throw new Error("Expected child run to be claimed");
+        expect(claimedChild.id).toBe(childRun.id);
+
+        const failedChild = await backend.failWorkflowRun({
+          workflowRunId: childRun.id,
+          workerId: claimedChild.workerId ?? "",
+          error: { message: "transient child error" },
+          retryPolicy: RESCHEDULING_RETRY_POLICY,
+        });
+        expect(failedChild.status).toBe("pending");
+
+        const parentAfter = await backend.getWorkflowRun({
+          workflowRunId: parentRun.id,
+        });
+        expect(parentAfter?.status).toBe("sleeping");
+        expect(parentAfter?.availableAt).not.toBeNull();
+        if (!parentAfter?.availableAt) {
+          throw new Error("Expected parent availableAt after child retry");
+        }
+
+        expect(parentAfter.availableAt.getTime()).toBeGreaterThan(
+          Date.now() + 4 * 60 * 1000,
+        );
 
         await teardown(backend);
       });
@@ -1123,6 +1398,123 @@ export function testBackend(options: TestBackendOptions): void {
           stepAttemptId: created.id,
         });
         expect(got).toEqual(created);
+      });
+    });
+
+    describe("setStepAttemptChildWorkflowRun()", () => {
+      test("sets child workflow linkage on a running step attempt", async () => {
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: null,
+        });
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: stepAttempt.namespaceId,
+          parentStepAttemptId: stepAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        const updated = await backend.setStepAttemptChildWorkflowRun({
+          workflowRunId: parentRun.id,
+          stepAttemptId: stepAttempt.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          childWorkflowRunNamespaceId: childRun.namespaceId,
+          childWorkflowRunId: childRun.id,
+        });
+
+        expect(updated.childWorkflowRunNamespaceId).toBe(childRun.namespaceId);
+        expect(updated.childWorkflowRunId).toBe(childRun.id);
+
+        const fetched = await backend.getStepAttempt({
+          stepAttemptId: stepAttempt.id,
+        });
+        expect(fetched?.childWorkflowRunNamespaceId).toBe(childRun.namespaceId);
+        expect(fetched?.childWorkflowRunId).toBe(childRun.id);
+      });
+
+      test("throws when parent workflow run is not owned by worker", async () => {
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: null,
+        });
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: stepAttempt.namespaceId,
+          parentStepAttemptId: stepAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        await expect(
+          backend.setStepAttemptChildWorkflowRun({
+            workflowRunId: parentRun.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: randomUUID(),
+            childWorkflowRunNamespaceId: childRun.namespaceId,
+            childWorkflowRunId: childRun.id,
+          }),
+        ).rejects.toThrow("Failed to set step attempt child workflow run");
+      });
+
+      test("throws when step attempt is not running", async () => {
+        const parentRun = await createClaimedWorkflowRun(backend);
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: parentRun.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: randomUUID(),
+          kind: "invoke",
+          config: {},
+          context: null,
+        });
+        await backend.completeStepAttempt({
+          workflowRunId: parentRun.id,
+          stepAttemptId: stepAttempt.id,
+          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: { ok: true },
+        });
+        const childRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: stepAttempt.namespaceId,
+          parentStepAttemptId: stepAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+
+        await expect(
+          backend.setStepAttemptChildWorkflowRun({
+            workflowRunId: parentRun.id,
+            stepAttemptId: stepAttempt.id,
+            workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            childWorkflowRunNamespaceId: childRun.namespaceId,
+            childWorkflowRunId: childRun.id,
+          }),
+        ).rejects.toThrow("Failed to set step attempt child workflow run");
       });
     });
 
@@ -1453,6 +1845,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: deadline,
         });
@@ -1472,6 +1866,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: pastDeadline,
         });
@@ -1497,6 +1893,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: pastDeadline,
         });
@@ -1533,6 +1931,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: deadline,
         });
@@ -1571,6 +1971,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: deadline,
         });
@@ -1697,6 +2099,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: new Date(Date.now() - 1000), // deadline in the past
         });
@@ -1804,6 +2208,8 @@ async function createPendingWorkflowRun(b: Backend) {
     input: null,
     config: {},
     context: null,
+    parentStepAttemptNamespaceId: null,
+    parentStepAttemptId: null,
     availableAt: null,
     deadlineAt: null,
   });

@@ -87,6 +87,8 @@ describe("Worker", () => {
       config: {},
       context: null,
       input: null,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
       availableAt: null,
       deadlineAt: null,
     });
@@ -1183,6 +1185,8 @@ describe("Worker", () => {
         config: {},
         context: null,
         input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });
@@ -1218,6 +1222,8 @@ describe("Worker", () => {
         config: {},
         context: null,
         input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });
@@ -1253,6 +1259,8 @@ describe("Worker", () => {
         config: {},
         context: null,
         input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });
