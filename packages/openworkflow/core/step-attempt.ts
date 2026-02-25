@@ -7,7 +7,7 @@ import { err, ok } from "./result.js";
 /**
  * The kind of step in a workflow.
  */
-export type StepKind = "function" | "sleep";
+export type StepKind = "function" | "sleep" | "invoke";
 
 /**
  * Status of a step attempt through its lifecycle.
@@ -19,12 +19,27 @@ export type StepAttemptStatus =
   | "failed";
 
 /**
- * Context for a step attempt (currently only used for sleep steps).
+ * Context for a sleep step attempt.
  */
-export interface StepAttemptContext {
+export interface SleepStepAttemptContext {
   kind: "sleep";
   resumeAt: string;
 }
+
+/**
+ * Context for an invoke step attempt.
+ */
+export interface InvokeStepAttemptContext {
+  kind: "invoke";
+  timeoutAt: string | null;
+}
+
+/**
+ * Context for a step attempt.
+ */
+export type StepAttemptContext =
+  | SleepStepAttemptContext
+  | InvokeStepAttemptContext;
 
 /**
  * StepAttempt represents a single attempt of a step within a workflow.
@@ -134,12 +149,25 @@ export function calculateDateFromDuration(
  * @param resumeAt - The time when the sleep should resume
  * @returns The context object for the sleep step
  */
-export function createSleepContext(resumeAt: Readonly<Date>): {
-  kind: "sleep";
-  resumeAt: string;
-} {
+export function createSleepContext(
+  resumeAt: Readonly<Date>,
+): SleepStepAttemptContext {
   return {
     kind: "sleep" as const,
     resumeAt: resumeAt.toISOString(),
+  };
+}
+
+/**
+ * Create the context object for an invoke step attempt.
+ * @param timeoutAt - Parent wait timeout deadline, or null for no timeout
+ * @returns The context object for an invoke step
+ */
+export function createInvokeContext(
+  timeoutAt: Readonly<Date> | null,
+): InvokeStepAttemptContext {
+  return {
+    kind: "invoke" as const,
+    timeoutAt: timeoutAt?.toISOString() ?? null,
   };
 }

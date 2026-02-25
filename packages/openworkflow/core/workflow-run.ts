@@ -15,6 +15,20 @@ export type WorkflowRunStatus =
   | "canceled";
 
 /**
+ * Determine whether a workflow run status is terminal (no further transitions).
+ * @param status - Workflow run status
+ * @returns True when status is terminal
+ */
+export function isTerminalStatus(status: WorkflowRunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled"
+  );
+}
+
+/**
  * WorkflowRun represents a single execution instance of a workflow.
  */
 export interface WorkflowRun {

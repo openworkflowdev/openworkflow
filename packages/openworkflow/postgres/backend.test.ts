@@ -66,6 +66,8 @@ describe("BackendPostgres schema option", () => {
         input: null,
         config: {},
         context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });
@@ -112,6 +114,8 @@ describe("BackendPostgres schema option", () => {
         input: null,
         config: {},
         context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });
@@ -182,6 +186,8 @@ describe("BackendPostgres cancel fallback", () => {
         input: null,
         config: {},
         context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
         availableAt: null,
         deadlineAt: null,
       });

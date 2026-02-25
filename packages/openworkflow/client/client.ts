@@ -108,6 +108,8 @@ export class OpenWorkflow {
       config: {},
       context: null,
       input: parsedInput ?? null,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
       availableAt: resolveAvailableAt(options?.availableAt),
       deadlineAt: options?.deadlineAt ?? null,
     });

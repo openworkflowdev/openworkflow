@@ -6,6 +6,7 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
+  createInvokeContext,
 } from "./step-attempt.js";
 import type { StepAttempt, StepAttemptCache } from "./step-attempt.js";
 import { describe, expect, test } from "vitest";
@@ -314,6 +315,27 @@ describe("createSleepContext", () => {
     const context = createSleepContext(now);
 
     expect(context.resumeAt).toBe(now.toISOString());
+  });
+});
+
+describe("createInvokeContext", () => {
+  test("creates invoke context with timeout", () => {
+    const timeoutAt = new Date("2025-06-15T10:30:00.000Z");
+    const context = createInvokeContext(timeoutAt);
+
+    expect(context).toEqual({
+      kind: "invoke",
+      timeoutAt: "2025-06-15T10:30:00.000Z",
+    });
+  });
+
+  test("creates invoke context with null timeout", () => {
+    const context = createInvokeContext(null);
+
+    expect(context).toEqual({
+      kind: "invoke",
+      timeoutAt: null,
+    });
   });
 });
 

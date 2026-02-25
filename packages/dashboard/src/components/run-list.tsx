@@ -7,8 +7,14 @@ import { CaretRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import type { WorkflowRun } from "openworkflow/internal";
 
+export interface ChildRunRelation {
+  parentRunId: string;
+  parentWorkflowName?: string | undefined;
+}
+
 export interface RunListProps {
   runs: WorkflowRun[];
+  childRunRelationsByRunId?: Record<string, ChildRunRelation | undefined>;
   title?: string;
   showHeader?: boolean;
   showCount?: boolean;
@@ -16,6 +22,7 @@ export interface RunListProps {
 
 export function RunList({
   runs,
+  childRunRelationsByRunId,
   title = "Workflow Runs",
   showHeader = true,
   showCount = true,
@@ -60,6 +67,7 @@ export function RunList({
             const StatusIcon = config.icon;
             const duration = computeDuration(run.startedAt, run.finishedAt);
             const startedAt = formatRelativeTime(run.startedAt);
+            const childRunRelation = childRunRelationsByRunId?.[run.id];
 
             return (
               <Link
@@ -82,27 +90,29 @@ export function RunList({
                       <div className="mb-1 flex items-center gap-3">
                         <span className="font-medium">{run.workflowName}</span>
                         {run.version && (
-                          <Badge
-                            variant="outline"
-                            className="border-border font-mono text-xs"
-                          >
-                            {run.version}
-                          </Badge>
+                          <Badge variant="outline">{run.version}</Badge>
                         )}
                         <span className="text-muted-foreground font-mono text-sm">
                           {run.id}
                         </span>
                       </div>
-                      <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                      <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                         <Badge
                           variant="outline"
-                          className={cn(
-                            "text-xs capitalize",
-                            config.badgeClass,
-                          )}
+                          className={cn("capitalize", config.badgeClass)}
                         >
                           {config.label}
                         </Badge>
+                        {childRunRelation && (
+                          <Badge variant="outline">
+                            {childRunRelation.parentWorkflowName && (
+                              <span className="mr-2 font-medium">
+                                [{childRunRelation.parentWorkflowName}]
+                              </span>
+                            )}
+                            <span>{childRunRelation.parentRunId}</span>
+                          </Badge>
+                        )}
                       </div>
                     </div>
 

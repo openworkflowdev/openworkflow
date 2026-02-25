@@ -1,4 +1,4 @@
-import { serializeError, wrapError } from "./error.js";
+import { deserializeError, serializeError, wrapError } from "./error.js";
 import { describe, expect, test } from "vitest";
 
 describe("serializeError", () => {
@@ -92,5 +92,37 @@ describe("wrapError", () => {
 
     expect(wrapped.message).toBe("Top-level: boom");
     expect(wrapped.cause).toBe("boom");
+  });
+});
+
+describe("deserializeError", () => {
+  test("reconstructs Error with message", () => {
+    const error = deserializeError({ message: "boom" });
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("boom");
+  });
+
+  test("preserves name from serialized payload", () => {
+    const error = deserializeError({ message: "fail", name: "TypeError" });
+
+    expect(error.name).toBe("TypeError");
+    expect(error.message).toBe("fail");
+  });
+
+  test("preserves stack from serialized payload", () => {
+    const stack = "Error: fail\n    at test.ts:1:1";
+    const error = deserializeError({ message: "fail", stack });
+
+    expect(error.stack).toBe(stack);
+  });
+
+  test("roundtrips through serializeError", () => {
+    const original = new TypeError("type mismatch");
+    const serialized = serializeError(original);
+    const restored = deserializeError(serialized);
+
+    expect(restored.message).toBe(original.message);
+    expect(restored.name).toBe(original.name);
   });
 });
