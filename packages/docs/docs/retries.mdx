@@ -24,6 +24,10 @@ Steps are attempted up to 10 times by default (one initial attempt plus up to
 nine retries). If the step still fails after all attempts, the workflow is
 permanently marked as `failed`.
 
+To prevent runaway executions, each workflow run also has a hard cap of 1000
+total step attempts. If the run reaches that cap, it fails immediately and is
+not retried.
+
 ## Step Retries
 
 Steps that throw are retried automatically:
@@ -167,7 +171,8 @@ defineWorkflow({ name: "with-error-handling" }, async ({ input, step }) => {
 ## Terminal Failures
 
 A workflow is permanently marked `failed` when step retries are exhausted
-(`maximumAttempts` reached) or `deadlineAt` expires.
+(`maximumAttempts` reached), `deadlineAt` expires, or the run exceeds the step
+attempt cap.
 
 Once terminal, no more automatic retries occur. You can inspect and manually
 retry failed workflows from the [dashboard](/docs/dashboard).

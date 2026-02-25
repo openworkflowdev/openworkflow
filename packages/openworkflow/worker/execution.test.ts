@@ -1,10 +1,15 @@
 import { OpenWorkflow } from "../client/client.js";
+import type { Backend } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import type { StepAttempt } from "../core/step-attempt.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
+import type { WorkflowFunctionParams } from "../core/workflow-function.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 import { BackendPostgres } from "../postgres.js";
 import { DEFAULT_POSTGRES_URL } from "../postgres/postgres.js";
 import {
+  WORKFLOW_STEP_LIMIT,
+  STEP_LIMIT_EXCEEDED_ERROR_CODE,
   createStepExecutionStateFromAttempts,
   executeWorkflow,
 } from "./execution.js";
@@ -1494,6 +1499,185 @@ describe("executeWorkflow", () => {
   });
 
   describe("error handling", () => {
+    test("fails terminally when replay step history reaches the step limit", async () => {
+      const attempts = Array.from({ length: WORKFLOW_STEP_LIMIT }, (_, index) =>
+        createMockStepAttempt({
+          id: `history-step-${String(index)}`,
+          stepName: `history-step-${String(index)}`,
+          status: "completed",
+        }),
+      );
+
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: attempts,
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const failWorkflowRun = vi.fn(
+        (params: Parameters<Backend["failWorkflowRun"]>[0]) => {
+          if (params.workflowRunId.length === 0) {
+            throw new TypeError("Expected workflowRunId");
+          }
+          return Promise.resolve(
+            createMockWorkflowRun({
+              status: "failed",
+              error: {
+                code: STEP_LIMIT_EXCEEDED_ERROR_CODE,
+                message: "step limit exceeded",
+              },
+            }),
+          );
+        },
+      );
+      const workflowFn = vi.fn(() => "unreachable");
+      const workflowRun = createMockWorkflowRun({
+        id: "replay-step-limit-run",
+        workerId: "worker-step-limit",
+      });
+
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          failWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn,
+        workflowVersion: null,
+        workerId: "worker-step-limit",
+        retryPolicy: {
+          ...DEFAULT_WORKFLOW_RETRY_POLICY,
+          maximumAttempts: 5,
+        },
+      });
+
+      expect(workflowFn).not.toHaveBeenCalled();
+      expect(listStepAttempts).toHaveBeenCalledTimes(1);
+
+      const failCall = failWorkflowRun.mock.calls[0]?.[0];
+      if (!failCall) throw new Error("Expected failWorkflowRun call");
+
+      expect(failCall.workflowRunId).toBe(workflowRun.id);
+      expect(failCall.workerId).toBe("worker-step-limit");
+      expect(failCall.retryPolicy).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
+      expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
+      expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
+      expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT);
+      if (typeof failCall.error.message !== "string") {
+        throw new TypeError("Expected step-limit message to be a string");
+      }
+      expect(failCall.error.message).toMatch(/exceeded the step limit/i);
+    });
+
+    test("fails terminally when new steps would exceed the step limit", async () => {
+      const stepNamesByAttemptId = new Map<string, string>();
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: Array.from({ length: WORKFLOW_STEP_LIMIT - 1 }, (_, index) =>
+            createMockStepAttempt({
+              id: `existing-step-${String(index)}`,
+              stepName: `existing-step-${String(index)}`,
+              status: "completed",
+            }),
+          ),
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const createStepAttempt = vi.fn(
+        (params: Parameters<Backend["createStepAttempt"]>[0]) => {
+          const createdId = `created-${params.stepName}`;
+          stepNamesByAttemptId.set(createdId, params.stepName);
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: createdId,
+              stepName: params.stepName,
+              kind: params.kind,
+              status: "running",
+              output: null,
+              finishedAt: null,
+            }),
+          );
+        },
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) => {
+          const stepName = stepNamesByAttemptId.get(params.stepAttemptId);
+          if (!stepName) {
+            throw new Error(`Missing step name for ${params.stepAttemptId}`);
+          }
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              stepName,
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          );
+        },
+      );
+      const failWorkflowRun = vi.fn(
+        (params: Parameters<Backend["failWorkflowRun"]>[0]) => {
+          if (params.workflowRunId.length === 0) {
+            throw new TypeError("Expected workflowRunId");
+          }
+          return Promise.resolve(
+            createMockWorkflowRun({
+              status: "failed",
+              error: {
+                code: STEP_LIMIT_EXCEEDED_ERROR_CODE,
+                message: "step limit exceeded",
+              },
+            }),
+          );
+        },
+      );
+      const workflowRun = createMockWorkflowRun({
+        id: "runtime-step-limit-run",
+        workerId: "worker-step-runtime",
+      });
+      const workflowFn = vi.fn(
+        async ({ step }: WorkflowFunctionParams<unknown>) => {
+          await step.run({ name: "new-step-1" }, () => "first");
+          await step.run({ name: "new-step-2" }, () => "second");
+          return "unreachable";
+        },
+      );
+
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          createStepAttempt,
+          completeStepAttempt,
+          failWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn,
+        workflowVersion: null,
+        workerId: "worker-step-runtime",
+        retryPolicy: {
+          ...DEFAULT_WORKFLOW_RETRY_POLICY,
+          maximumAttempts: 5,
+        },
+      });
+
+      expect(createStepAttempt).toHaveBeenCalledTimes(1);
+      expect(completeStepAttempt).toHaveBeenCalledTimes(1);
+
+      const failCall = failWorkflowRun.mock.calls[0]?.[0];
+      if (!failCall) throw new Error("Expected failWorkflowRun call");
+
+      expect(failCall.workflowRunId).toBe(workflowRun.id);
+      expect(failCall.workerId).toBe("worker-step-runtime");
+      expect(failCall.retryPolicy).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
+      expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
+      expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
+      expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT);
+      if (typeof failCall.error.message !== "string") {
+        throw new TypeError("Expected step-limit message to be a string");
+      }
+      expect(failCall.error.message).toMatch(/exceeded the step limit/i);
+    });
+
     test("handles workflow errors with deadline exceeded", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
@@ -2036,6 +2220,35 @@ function createMockStepAttempt(
       status === "running" ? null : new Date("2026-01-01T00:00:01.000Z"),
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:01.000Z"),
+    ...overrides,
+  };
+}
+
+function createMockWorkflowRun(
+  overrides: Partial<WorkflowRun> = {},
+): WorkflowRun {
+  return {
+    namespaceId: "default",
+    id: "workflow-run-id",
+    workflowName: "workflow-name",
+    version: null,
+    status: "running",
+    idempotencyKey: null,
+    config: {},
+    context: null,
+    input: null,
+    output: null,
+    error: null,
+    attempts: 1,
+    parentStepAttemptNamespaceId: null,
+    parentStepAttemptId: null,
+    workerId: "worker-id",
+    availableAt: null,
+    deadlineAt: null,
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    finishedAt: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   };
 }
