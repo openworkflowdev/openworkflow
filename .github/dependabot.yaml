@@ -20,3 +20,6 @@ updates:
       tanstack:
         patterns:
           - "*tanstack*"
+      tailwind:
+        patterns:
+          - "*tailwind*"
