@@ -86,6 +86,53 @@ const INVOKE_FAILURE_RETRY_POLICY: RetryPolicy = {
   maximumAttempts: 1,
 };
 
+/** Maximum number of step attempts allowed for a single workflow run. */
+export const WORKFLOW_STEP_LIMIT = 1000;
+
+/** Error code used when a workflow run exceeds the step-attempt limit. */
+export const STEP_LIMIT_EXCEEDED_ERROR_CODE = "STEP_LIMIT_EXCEEDED";
+
+/**
+ * Error thrown when a workflow run reaches the maximum allowed step attempts.
+ */
+class StepLimitExceededError extends Error {
+  readonly code = STEP_LIMIT_EXCEEDED_ERROR_CODE;
+  readonly limit: number;
+  readonly stepCount: number;
+
+  constructor(limit: number, stepCount: number) {
+    super(
+      `Exceeded the step limit of ${String(limit)} attempts (current count: ${String(stepCount)})`,
+    );
+    this.name = "StepLimitExceededError";
+    this.limit = limit;
+    this.stepCount = stepCount;
+  }
+}
+
+/**
+ * Convert a step-limit error to a persisted serialized error payload.
+ * @param error - Step-limit error
+ * @returns Serialized error payload with limit metadata
+ */
+function serializeStepLimitExceededError(
+  error: Readonly<StepLimitExceededError>,
+): {
+  name: string;
+  message: string;
+  code: string;
+  limit: number;
+  stepCount: number;
+} {
+  return {
+    name: error.name,
+    message: error.message,
+    code: error.code,
+    limit: error.limit,
+    stepCount: error.stepCount,
+  };
+}
+
 /**
  * Resolve a partial step retry policy by merging it with step defaults.
  * @param partial - Optional partial retry policy
@@ -258,6 +305,7 @@ export interface StepExecutorOptions {
   workflowRunId: string;
   workerId: string;
   attempts: StepAttempt[];
+  stepLimit?: number;
 }
 
 /**
@@ -268,6 +316,8 @@ class StepExecutor implements StepApi {
   private readonly backend: Backend;
   private readonly workflowRunId: string;
   private readonly workerId: string;
+  private readonly stepLimit: number;
+  private stepCount: number;
   private cache: StepAttemptCache;
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly runningByStepName: Map<string, StepAttempt>;
@@ -276,6 +326,8 @@ class StepExecutor implements StepApi {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
+    this.stepLimit = Math.max(1, options.stepLimit ?? WORKFLOW_STEP_LIMIT);
+    this.stepCount = options.attempts.length;
 
     const state = createStepExecutionStateFromAttempts(options.attempts);
     this.cache = state.cache;
@@ -298,6 +350,7 @@ class StepExecutor implements StepApi {
     }
 
     // not in cache, create new step attempt
+    this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
@@ -306,6 +359,7 @@ class StepExecutor implements StepApi {
       config: {},
       context: null,
     });
+    this.stepCount += 1;
     this.runningByStepName.set(name, attempt);
 
     try {
@@ -364,6 +418,7 @@ class StepExecutor implements StepApi {
     const resumeAt = result.value;
     const context = createSleepContext(resumeAt);
 
+    this.ensureStepLimitNotReached();
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
@@ -372,6 +427,7 @@ class StepExecutor implements StepApi {
       config: {},
       context,
     });
+    this.stepCount += 1;
 
     // throw sleep signal to trigger postponement
     // we do not mark the step as completed here; it will be updated
@@ -398,6 +454,7 @@ class StepExecutor implements StepApi {
 
     // First encounter — create the invoke step and child workflow run
     const timeoutAt = resolveInvokeTimeoutAt(opts.timeout);
+    this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
@@ -406,6 +463,7 @@ class StepExecutor implements StepApi {
       config: {},
       context: createInvokeContext(timeoutAt),
     });
+    this.stepCount += 1;
     this.runningByStepName.set(stepName, attempt);
 
     const linkedAttempt = await this.linkChildWorkflowRun(
@@ -605,6 +663,12 @@ class StepExecutor implements StepApi {
       error,
     });
   }
+
+  private ensureStepLimitNotReached(): void {
+    if (this.stepCount >= this.stepLimit) {
+      throw new StepLimitExceededError(this.stepLimit, this.stepCount);
+    }
+  }
 }
 
 /**
@@ -643,9 +707,12 @@ export async function executeWorkflow(
       const response = await backend.listStepAttempts({
         workflowRunId: workflowRun.id,
         ...(cursor ? { after: cursor } : {}),
-        limit: 1000,
+        limit: WORKFLOW_STEP_LIMIT,
       });
       attempts.push(...response.data);
+      if (attempts.length >= WORKFLOW_STEP_LIMIT) {
+        throw new StepLimitExceededError(WORKFLOW_STEP_LIMIT, attempts.length);
+      }
       cursor = response.pagination.next ?? undefined;
     } while (cursor);
 
@@ -720,6 +787,16 @@ export async function executeWorkflow(
         availableAt: error.resumeAt,
       });
 
+      return;
+    }
+
+    if (error instanceof StepLimitExceededError) {
+      await backend.failWorkflowRun({
+        workflowRunId: workflowRun.id,
+        workerId,
+        error: serializeStepLimitExceededError(error),
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
       return;
     }
 

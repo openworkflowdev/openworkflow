@@ -242,7 +242,7 @@ A workflow run progresses through these states:
 | `running`   | Actively being executed by a worker                            |
 | `sleeping`  | Paused while waiting for `step.sleep` or `step.invokeWorkflow` |
 | `completed` | Finished successfully                                          |
-| `failed`    | Failed after exhausting retries or deadline reached            |
+| `failed`    | Failed after exhausting retries, hitting deadline, or step cap |
 | `canceled`  | Explicitly canceled and will not continue                      |
 
 ## Determinism

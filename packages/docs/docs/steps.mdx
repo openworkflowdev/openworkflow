@@ -195,6 +195,9 @@ await step.run({ name: "risky-operation" }, async () => {
 Steps that throw are marked as failed. The workflow can be retried, and failed
 steps will re-execute (not return cached results).
 
+Each workflow run also has a hard cap of 1000 total step attempts. If that
+limit is reached, the run fails and does not retry.
+
 ## What Makes a Good Step
 
 Each step should be a meaningful unit of work. Good steps:

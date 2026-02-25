@@ -235,6 +235,10 @@ specific `stepName` in the workflow run. If retryable, the workflow run is
 rescheduled by setting `availableAt` to the computed backoff time. On the next
 execution, replay reaches the failed step and re-executes its function.
 
+To prevent runaway workflows from accumulating unbounded step history, execution
+enforces a default hard cap of 1000 step attempts per workflow run. When that
+limit is reached, the run fails immediately and is not retried.
+
 ### 4.2. Workflow Failures & Retries
 
 If an error is unhandled by the workflow code, the entire workflow run fails.
