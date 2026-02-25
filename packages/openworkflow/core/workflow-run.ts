@@ -1,6 +1,6 @@
 import type { SerializedError } from "./error.js";
 import { JsonValue } from "./json.js";
-import type { StandardSchemaV1 } from "./schema.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
 
 /**
  * Status of a workflow run through its lifecycle.
@@ -13,6 +13,20 @@ export type WorkflowRunStatus =
   | "completed"
   | "failed"
   | "canceled";
+
+/**
+ * Determine whether a workflow run status is terminal (no further transitions).
+ * @param status - Workflow run status
+ * @returns True when status is terminal
+ */
+export function isTerminalStatus(status: WorkflowRunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled"
+  );
+}
 
 /**
  * WorkflowRun represents a single execution instance of a workflow.

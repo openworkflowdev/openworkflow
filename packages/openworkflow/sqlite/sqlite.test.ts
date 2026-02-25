@@ -132,6 +132,20 @@ describe("sqlite", () => {
       expect(version).toBe(expectedLatestVersion);
     });
 
+    test("treats empty migrations table as no applied version", () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS "openworkflow_migrations" (
+          "version" INTEGER NOT NULL PRIMARY KEY
+        );
+      `);
+
+      migrate(db);
+
+      const allMigrations = migrations();
+      const expectedLatestVersion = allMigrations.length - 1;
+      expect(getMigrationVersion(db)).toBe(expectedLatestVersion);
+    });
+
     test("applies migrations incrementally", () => {
       // Create the migrations table manually with version 0
       db.exec(`

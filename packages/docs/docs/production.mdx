@@ -162,3 +162,9 @@ The dashboard shows:
 The dashboard does not include built-in authentication. We recommend deploying
 it behind a VPN, private network, or Basic Auth proxy to prevent unauthorized
 access.
+
+### Prometheus Metrics
+
+The dashboard process exposes a Prometheus-compatible `GET /metrics` endpoint.
+See the [Prometheus guide](/docs/prometheus) for scrape configuration and alert
+examples.

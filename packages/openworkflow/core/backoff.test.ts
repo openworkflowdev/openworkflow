@@ -67,4 +67,18 @@ describe("computeBackoffDelayMs", () => {
     expect(Number.isFinite(delayMs)).toBe(true);
     expect(delayMs).toBe(60_000);
   });
+
+  test("defaults invalid runtime intervals to 0ms", () => {
+    const delayMs = computeBackoffDelayMs(
+      {
+        // @ts-expect-error - intentionally invalid
+        initialInterval: "invalid",
+        backoffCoefficient: 2,
+        maximumInterval: "10s",
+      },
+      3,
+    );
+
+    expect(delayMs).toBe(0);
+  });
 });

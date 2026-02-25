@@ -19,6 +19,12 @@ export default defineConfig({
         branches: 80,
         functions: 90,
         lines: 90,
+        "packages/openworkflow/core/**": {
+          statements: 100,
+          branches: 100,
+          functions: 100,
+          lines: 100,
+        },
       },
     },
     // fix ESM resolution issues when running tests with Bun

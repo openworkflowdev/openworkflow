@@ -51,8 +51,8 @@ A workflow run can be in one of the following states:
   to claim it.
 - **`running`**: The workflow run is actively being executed by a worker.
 - **`sleeping`**: The workflow run is waiting for a duration to elapse
-  (`step.sleep`). The `availableAt` timestamp controls when it becomes available
-  again.
+  (`step.sleep`) or waiting for a child workflow result (`step.invokeWorkflow`).
+  The `availableAt` timestamp controls when it becomes available again.
 - **`completed`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed after exhausting retries or deadline
   reached.
@@ -220,6 +220,10 @@ worker slot for other work - it's not a blocking sleep but a durable pause.
 await step.sleep("wait-one-hour", "1h");
 ```
 
+**`step.invokeWorkflow(name, options)`**: Starts a child workflow and waits for
+it durably. When the timeout is reached (default 7d), the parent step fails but
+the child workflow continues running independently.
+
 ## 4. Error Handling & Retries
 
 ### 4.1. Step Failures & Retries
@@ -230,6 +234,10 @@ Retry scheduling for that failure is driven by the failed-attempt count for that
 specific `stepName` in the workflow run. If retryable, the workflow run is
 rescheduled by setting `availableAt` to the computed backoff time. On the next
 execution, replay reaches the failed step and re-executes its function.
+
+To prevent runaway workflows from accumulating unbounded step history, execution
+enforces a default hard cap of 1000 step attempts per workflow run. When that
+limit is reached, the run fails immediately and is not retried.
 
 ### 4.2. Workflow Failures & Retries
 

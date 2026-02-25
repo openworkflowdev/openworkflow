@@ -1,6 +1,21 @@
-import type { StandardSchemaV1 } from "./schema.js";
-import { validateInput } from "./workflow.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
+import { isTerminalStatus, validateInput } from "./workflow-run.js";
+import type { WorkflowRunStatus } from "./workflow-run.js";
 import { describe, expect, test } from "vitest";
+
+describe("isTerminalStatus", () => {
+  test.each<[WorkflowRunStatus, boolean]>([
+    ["pending", false],
+    ["running", false],
+    ["sleeping", false],
+    ["completed", true],
+    ["succeeded", true],
+    ["failed", true],
+    ["canceled", true],
+  ])("returns %s for status '%s'", (status, expected) => {
+    expect(isTerminalStatus(status)).toBe(expected);
+  });
+});
 
 describe("validateInput", () => {
   test("returns success with input when no schema provided (null)", async () => {

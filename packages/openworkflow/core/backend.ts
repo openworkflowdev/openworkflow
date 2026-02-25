@@ -1,8 +1,12 @@
-import type { SerializedError } from "./core/error.js";
-import { JsonValue } from "./core/json.js";
-import type { StepAttempt, StepAttemptContext, StepKind } from "./core/step.js";
-import type { WorkflowRun } from "./core/workflow.js";
-import type { RetryPolicy } from "./workflow.js";
+import type { SerializedError } from "./error.js";
+import { JsonValue } from "./json.js";
+import type {
+  StepAttempt,
+  StepAttemptContext,
+  StepKind,
+} from "./step-attempt.js";
+import type { RetryPolicy } from "./workflow-definition.js";
+import type { WorkflowRun, WorkflowRunStatus } from "./workflow-run.js";
 
 export const DEFAULT_NAMESPACE_ID = "default";
 export const DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +25,7 @@ export interface Backend {
   listWorkflowRuns(
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
+  countWorkflowRuns(): Promise<WorkflowRunCounts>;
   claimWorkflowRun(
     params: Readonly<ClaimWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -59,6 +64,9 @@ export interface Backend {
   failStepAttempt(
     params: Readonly<FailStepAttemptParams>,
   ): Promise<StepAttempt>;
+  setStepAttemptChildWorkflowRun(
+    params: Readonly<SetStepAttemptChildWorkflowRunParams>,
+  ): Promise<StepAttempt>;
 
   // Lifecycle
   stop(): Promise<void>;
@@ -71,6 +79,8 @@ export interface CreateWorkflowRunParams {
   config: JsonValue;
   context: JsonValue | null;
   input: JsonValue | null;
+  parentStepAttemptNamespaceId: string | null;
+  parentStepAttemptId: string | null;
   availableAt: Date | null; // null = immediately
   deadlineAt: Date | null; // null = no deadline
 }
@@ -153,6 +163,14 @@ export interface FailStepAttemptParams {
   error: SerializedError;
 }
 
+export interface SetStepAttemptChildWorkflowRunParams {
+  workflowRunId: string;
+  stepAttemptId: string;
+  workerId: string;
+  childWorkflowRunNamespaceId: string;
+  childWorkflowRunId: string;
+}
+
 export interface PaginationOptions {
   limit?: number;
   after?: string;
@@ -165,4 +183,41 @@ export interface PaginatedResponse<T> {
     next: string | null;
     prev: string | null;
   };
+}
+
+export type WorkflowRunCounts = Omit<
+  Record<WorkflowRunStatus, number>,
+  "succeeded"
+>;
+
+/**
+ * Convert status-count rows from a `GROUP BY "status"` query into a
+ * typed {@link WorkflowRunCounts} object.
+ * @param rows - Rows from the database query
+ * @returns Workflow run counts keyed by status
+ */
+export function toWorkflowRunCounts(
+  rows: readonly { status: string; count: number | string }[],
+): WorkflowRunCounts {
+  const counts: WorkflowRunCounts = {
+    pending: 0,
+    running: 0,
+    sleeping: 0,
+    completed: 0,
+    failed: 0,
+    canceled: 0,
+  };
+
+  for (const row of rows) {
+    // 'succeeded' status is deprecated, fold into 'completed'
+    if (row.status === "succeeded") {
+      counts.completed += Number(row.count);
+    }
+
+    if (Object.hasOwn(counts, row.status)) {
+      counts[row.status as keyof WorkflowRunCounts] += Number(row.count);
+    }
+  }
+
+  return counts;
 }

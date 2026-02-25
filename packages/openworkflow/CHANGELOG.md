@@ -1,5 +1,9 @@
 # openworkflow
 
+## 0.7.3
+
+- Add `run` metadata to workflows
+
 ## 0.7.2
 
 - Add `cancelWorkflowRun` to client so runs can be canceled without a handle

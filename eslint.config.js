@@ -2,6 +2,7 @@
 import cspell from "@cspell/eslint-plugin/configs";
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import boundaries from "eslint-plugin-boundaries";
 import functional from "eslint-plugin-functional";
 import importPlugin from "eslint-plugin-import";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -25,12 +26,13 @@ export default defineConfig(
   {
     ignores: [
       "**/dist",
-      "coverage",
-      "eslint.config.js",
-      "prettier.config.js",
       "examples/workflow-discovery/openworkflow.config.js",
       "packages/dashboard/.output",
       "packages/dashboard/src/routeTree.gen.ts",
+      "commitlint.config.js",
+      "coverage",
+      "eslint.config.js",
+      "prettier.config.js",
     ],
   },
   {
@@ -38,6 +40,13 @@ export default defineConfig(
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    settings: {
+      "import/resolver": {
+        typescript: {
+          alwaysTryTypes: true,
+        },
       },
     },
   },
@@ -51,17 +60,6 @@ export default defineConfig(
       },
     },
   },
-  // ---------------------------------------------------------------------------
-  {
-    settings: {
-      "import/resolver": {
-        typescript: {
-          alwaysTryTypes: true,
-        },
-      },
-    },
-  },
-  // ---------------------------------------------------------------------------
   {
     rules: {
       "@cspell/spellchecker": [
@@ -80,11 +78,9 @@ export default defineConfig(
           },
         },
       ],
-      "@typescript-eslint/unified-signatures": "off", // Buggy rule, to be enabled later
       "func-style": ["error", "declaration"],
       // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
       "import/no-extraneous-dependencies": "error",
-      "import/no-relative-parent-imports": "error",
       "import/no-useless-path-segments": "error",
       "jsdoc/check-indentation": "error",
       "jsdoc/require-throws": "error",
@@ -100,45 +96,26 @@ export default defineConfig(
     },
   },
   {
-    files: [
-      "**/*.test.ts",
-      "packages/openworkflow/backend.testsuite.ts",
-      "packages/openworkflow/postgres/**/*.ts",
-      "packages/openworkflow/sqlite/**/*.ts",
-    ],
-    rules: {
-      "import/no-relative-parent-imports": "off",
-    },
-  },
-  {
     files: ["**/*.test.ts", "**/*.testsuite.ts"],
     rules: {
       "sonarjs/no-nested-functions": "off",
     },
   },
+  // ===========================================================================
+  // cli
+  // ===========================================================================
   {
     files: ["packages/cli/templates/**/*.ts"],
     rules: {
       "import/no-extraneous-dependencies": "off",
     },
   },
-  {
-    files: ["packages/openworkflow/core/**/*.ts"],
-    ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
-    plugins: {
-      functional,
-    },
-    rules: {
-      ...functional.configs.externalTypeScriptRecommended.rules,
-      ...functional.configs.recommended.rules,
-      ...functional.configs.stylistic.rules,
-      "functional/prefer-property-signatures": "off",
-    },
-  },
+  // ===========================================================================
+  // dashboard
+  // ===========================================================================
   {
     files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
     rules: {
-      "import/no-relative-parent-imports": "off",
       "jsdoc/require-jsdoc": "off",
       "sonarjs/prefer-read-only-props": "off",
     },
@@ -162,6 +139,72 @@ export default defineConfig(
     files: ["packages/dashboard/src/routes/runs/$runId.tsx"],
     rules: {
       "unicorn/filename-case": "off",
+    },
+  },
+  // ===========================================================================
+  // openworkflow
+  // ===========================================================================
+  {
+    files: ["packages/openworkflow/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    plugins: {
+      boundaries,
+    },
+    settings: {
+      "boundaries/elements": [
+        {
+          type: "core",
+          pattern: "packages/openworkflow/core/**",
+        },
+        {
+          type: "app",
+          pattern: "packages/openworkflow/{client,worker}/**",
+        },
+        {
+          type: "infra",
+          pattern: "packages/openworkflow/{postgres,sqlite,testing}/**",
+        },
+      ],
+    },
+    rules: {
+      "boundaries/element-types": [
+        "error",
+        {
+          default: "disallow",
+          rules: [
+            {
+              from: "core",
+              disallow: ["*"],
+            },
+            {
+              from: "app",
+              allow: ["app", "core"],
+            },
+            {
+              from: "infra",
+              allow: ["app", "core", "infra"],
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/openworkflow/core/**/*.ts"],
+    ignores: ["**/*.test.ts", "**/*.testsuite.ts"],
+    plugins: {
+      functional,
+    },
+    rules: {
+      ...functional.configs.externalTypeScriptRecommended.rules,
+      ...functional.configs.recommended.rules,
+      ...functional.configs.stylistic.rules,
+      "functional/immutable-data": "off",
+      "functional/no-conditional-statements": "off",
+      "functional/no-expression-statements": "off",
+      "functional/no-loop-statements": "off",
+      "functional/no-mixed-types": "off",
+      "functional/prefer-property-signatures": "off",
     },
   },
 );

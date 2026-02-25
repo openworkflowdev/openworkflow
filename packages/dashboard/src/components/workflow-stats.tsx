@@ -6,33 +6,19 @@ import {
   ClockIcon,
   HourglassIcon,
   ProhibitIcon,
-  PulseIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
-import type { WorkflowRun } from "openworkflow/internal";
+import type { WorkflowRunCounts } from "openworkflow/internal";
 
 export interface WorkflowStatsProps {
-  runs: WorkflowRun[];
+  workflowRunCounts: WorkflowRunCounts;
 }
 
-export function WorkflowStats({ runs }: WorkflowStatsProps) {
-  // this computes stats from real run data as a placeholder until the backend
-  // is updated to provide aggregated stats
-  const completed = runs.filter(
-    (r) => r.status === "completed" || r.status === "succeeded",
-  ).length;
-  const running = runs.filter((r) => r.status === "running").length;
-  const failed = runs.filter((r) => r.status === "failed").length;
-  const pending = runs.filter((r) => r.status === "pending").length;
-  const sleeping = runs.filter((r) => r.status === "sleeping").length;
-  const canceled = runs.filter((r) => r.status === "canceled").length;
+export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
+  const { pending, running, sleeping, completed, failed, canceled } =
+    workflowRunCounts;
 
   const stats = [
-    {
-      label: "Total Runs",
-      value: runs.length.toLocaleString(),
-      icon: PulseIcon,
-    },
     {
       label: "Pending",
       value: pending.toLocaleString(),
@@ -72,16 +58,14 @@ export function WorkflowStats({ runs }: WorkflowStatsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-7">
-      {stats.map((stat, index) => {
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-6">
+      {stats.map((stat) => {
         const Icon = stat.icon;
         return (
           <Card
             key={stat.label}
             className={cn(
               "bg-card p-3 transition-colors sm:p-5",
-              index === 0 &&
-                "col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-1",
               stat.class,
             )}
           >

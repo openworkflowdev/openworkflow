@@ -4,8 +4,10 @@
 
   "ignoreBinaries": ["mint", "open", "pkg-pr-new"],
   "ignoreDependencies": [
+    "@openworkflow/cli",
     "@tanstack/react-router-ssr-query",
     "@tanstack/router-plugin",
+    "openworkflow",
     "postgres",
     "web-vitals"
   ],
@@ -21,6 +23,6 @@
   ],
   "ignoreIssues": {
     "packages/dashboard/src/components/ui/*.tsx": ["exports"],
-    "packages/openworkflow/workflow.ts": ["duplicates"]
+    "packages/openworkflow/core/workflow-definition.ts": ["duplicates"]
   }
 }

@@ -36,6 +36,11 @@ The dashboard requires:
 The dashboard connects to the same backend as your workers. It shows data for
 the namespace configured in your config file.
 
+## Prometheus Metrics
+
+The dashboard serves a Prometheus endpoint at `GET /metrics`. See the
+[Prometheus guide](/docs/prometheus) for setup and alert examples.
+
 <Note>
   The dashboard does not include built-in authentication. For production use,
   deploy it behind a VPN, private network, or reverse proxy with Basic Auth.

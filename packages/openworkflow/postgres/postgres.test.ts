@@ -55,6 +55,28 @@ describe("postgres", () => {
       await migrate(pg, schema);
       await migrate(pg, schema);
     });
+
+    test("applies all migrations when migrations table has no version rows", async () => {
+      const schema = "test_empty_migration_rows";
+      const executedMigrations: string[] = [];
+
+      const fakePg = {
+        unsafe: (query: string) => {
+          if (query.includes("SELECT EXISTS")) {
+            return Promise.resolve([{ exists: true }]);
+          }
+          if (query.includes('MAX("version")')) {
+            return Promise.resolve([{ version: null }]);
+          }
+          executedMigrations.push(query);
+          return Promise.resolve([]);
+        },
+      } as unknown as Postgres;
+
+      await migrate(fakePg, schema);
+
+      expect(executedMigrations.length).toBe(migrations(schema).length);
+    });
   });
 
   describe("dropSchema()", () => {

@@ -1,5 +1,10 @@
 # @openworkflow/dashboard
 
+## 0.1.6
+
+- Switch to global backend run stats
+- Add Prometheus `/metrics` endpoint
+
 ## 0.1.5
 
 - Add button to cancel run (thanks @octoper!)

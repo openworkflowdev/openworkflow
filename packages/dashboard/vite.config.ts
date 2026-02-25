@@ -18,6 +18,10 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  server: {
+    host: true,
+    allowedHosts: ["host.docker.internal"],
+  },
 });
 
 export default config;

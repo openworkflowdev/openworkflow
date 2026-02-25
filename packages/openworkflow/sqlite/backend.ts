@@ -1,4 +1,5 @@
 import {
+  WorkflowRunCounts,
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
@@ -14,16 +15,18 @@ import {
   PaginatedResponse,
   FailStepAttemptParams,
   CompleteStepAttemptParams,
+  SetStepAttemptChildWorkflowRunParams,
   FailWorkflowRunParams,
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
-} from "../backend.js";
+  toWorkflowRunCounts,
+} from "../core/backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
-import { StepAttempt } from "../core/step.js";
-import { WorkflowRun } from "../core/workflow.js";
-import { computeFailedWorkflowRunUpdate } from "../workflow.js";
+import { StepAttempt } from "../core/step-attempt.js";
+import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
+import { WorkflowRun } from "../core/workflow-run.js";
 import {
   newDatabase,
   Database,
@@ -135,6 +138,8 @@ export class BackendSqlite implements Backend {
     const availableAt = params.availableAt
       ? toISO(params.availableAt)
       : currentTime;
+    const parentStepAttemptNamespaceId = params.parentStepAttemptNamespaceId;
+    const parentStepAttemptId = params.parentStepAttemptId ?? null;
 
     const stmt = this.db.prepare(`
       INSERT INTO "workflow_runs" (
@@ -148,12 +153,14 @@ export class BackendSqlite implements Backend {
         "context",
         "input",
         "attempts",
+        "parent_step_attempt_namespace_id",
+        "parent_step_attempt_id",
         "available_at",
         "deadline_at",
         "created_at",
         "updated_at"
       )
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -165,6 +172,8 @@ export class BackendSqlite implements Backend {
       toJSON(params.config),
       toJSON(params.context),
       toJSON(params.input),
+      parentStepAttemptNamespaceId,
+      parentStepAttemptId,
       availableAt,
       toISO(params.deadlineAt),
       currentTime,
@@ -357,12 +366,16 @@ export class BackendSqlite implements Backend {
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
     const currentTime = now();
+    const resumeAt = toISO(params.availableAt);
 
     const stmt = this.db.prepare(`
       UPDATE "workflow_runs"
       SET
         "status" = 'sleeping',
-        "available_at" = ?,
+        "available_at" = CASE
+          WHEN "available_at" IS NOT NULL AND "available_at" <= ? THEN "available_at"
+          ELSE ?
+        END,
         "worker_id" = NULL,
         "updated_at" = ?
       WHERE "namespace_id" = ?
@@ -372,7 +385,8 @@ export class BackendSqlite implements Backend {
     `);
 
     const result = stmt.run(
-      toISO(params.availableAt),
+      currentTime,
+      resumeAt,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
@@ -431,6 +445,8 @@ export class BackendSqlite implements Backend {
     });
     if (!updated) throw new Error("Failed to mark workflow run completed");
 
+    this.wakeParentWorkflowRun(updated);
+
     return updated;
   }
 
@@ -483,6 +499,10 @@ export class BackendSqlite implements Backend {
 
     const updated = await this.getWorkflowRun({ workflowRunId });
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    if (updated.status === "failed") {
+      this.wakeParentWorkflowRun(updated);
+    }
 
     return updated;
   }
@@ -582,7 +602,63 @@ export class BackendSqlite implements Backend {
     });
     if (!updated) throw new Error("Failed to cancel workflow run");
 
+    this.wakeParentWorkflowRun(updated);
+
     return updated;
+  }
+
+  private wakeParentWorkflowRun(childWorkflowRun: Readonly<WorkflowRun>): void {
+    if (
+      !childWorkflowRun.parentStepAttemptNamespaceId ||
+      !childWorkflowRun.parentStepAttemptId
+    ) {
+      return;
+    }
+
+    const currentTime = now();
+    const stmt = this.db.prepare(`
+      UPDATE "workflow_runs"
+      SET
+        "available_at" = CASE
+          WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+          ELSE "available_at"
+        END,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+      AND "id" = (
+        SELECT "workflow_run_id"
+        FROM "step_attempts"
+        WHERE "namespace_id" = ?
+        AND "id" = ?
+        LIMIT 1
+      )
+      AND "status" = 'sleeping'
+    `);
+
+    stmt.run(
+      currentTime,
+      currentTime,
+      currentTime,
+      childWorkflowRun.parentStepAttemptNamespaceId,
+      childWorkflowRun.parentStepAttemptNamespaceId,
+      childWorkflowRun.parentStepAttemptId,
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async countWorkflowRuns(): Promise<WorkflowRunCounts> {
+    const stmt = this.db.prepare(`
+      SELECT "status", COUNT(*) AS "count"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+      GROUP BY "status"
+    `);
+
+    const rows = stmt.all(this.namespaceId) as {
+      status: string;
+      count: number;
+    }[];
+    return toWorkflowRunCounts(rows);
   }
 
   listWorkflowRuns(
@@ -797,6 +873,65 @@ export class BackendSqlite implements Backend {
     if (!stepAttempt) throw new Error("Failed to create step attempt");
 
     return stepAttempt;
+  }
+
+  async setStepAttemptChildWorkflowRun(
+    params: SetStepAttemptChildWorkflowRunParams,
+  ): Promise<StepAttempt> {
+    const currentTime = now();
+
+    const workflowStmt = this.db.prepare(`
+      SELECT "id"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+      AND "worker_id" = ?
+    `);
+
+    const workflowRow = workflowStmt.get(
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    ) as { id: string } | undefined;
+
+    if (!workflowRow) {
+      throw new Error("Failed to set step attempt child workflow run");
+    }
+
+    const stmt = this.db.prepare(`
+      UPDATE "step_attempts"
+      SET
+        "child_workflow_run_namespace_id" = ?,
+        "child_workflow_run_id" = ?,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+      AND "workflow_run_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+    `);
+
+    const result = stmt.run(
+      params.childWorkflowRunNamespaceId,
+      params.childWorkflowRunId,
+      currentTime,
+      this.namespaceId,
+      params.workflowRunId,
+      params.stepAttemptId,
+    );
+
+    if (result.changes === 0) {
+      throw new Error("Failed to set step attempt child workflow run");
+    }
+
+    const updated = await this.getStepAttempt({
+      stepAttemptId: params.stepAttemptId,
+    });
+    if (!updated) {
+      throw new Error("Failed to set step attempt child workflow run");
+    }
+
+    return updated;
   }
 
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null> {

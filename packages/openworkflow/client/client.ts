@@ -1,21 +1,21 @@
-import type { Backend } from "./backend.js";
-import type { DurationString } from "./core/duration.js";
-import type { StandardSchemaV1 } from "./core/schema.js";
-import { calculateDateFromDuration } from "./core/step.js";
-import type {
-  SchemaInput,
-  SchemaOutput,
-  WorkflowRun,
-} from "./core/workflow.js";
-import { validateInput } from "./core/workflow.js";
-import type { WorkflowFunction } from "./execution.js";
-import { WorkflowRegistry } from "./registry.js";
-import { Worker } from "./worker.js";
+import type { Backend } from "../core/backend.js";
+import type { DurationString } from "../core/duration.js";
+import type { StandardSchemaV1 } from "../core/standard-schema.js";
+import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
   defineWorkflow,
   type Workflow,
   type WorkflowSpec,
-} from "./workflow.js";
+} from "../core/workflow-definition.js";
+import type { WorkflowFunction } from "../core/workflow-function.js";
+import { WorkflowRegistry } from "../core/workflow-registry.js";
+import type {
+  SchemaInput,
+  SchemaOutput,
+  WorkflowRun,
+} from "../core/workflow-run.js";
+import { validateInput } from "../core/workflow-run.js";
+import { Worker } from "../worker/worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -108,6 +108,8 @@ export class OpenWorkflow {
       config: {},
       context: null,
       input: parsedInput ?? null,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
       availableAt: resolveAvailableAt(options?.availableAt),
       deadlineAt: options?.deadlineAt ?? null,
     });

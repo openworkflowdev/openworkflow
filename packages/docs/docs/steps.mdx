@@ -117,7 +117,7 @@ await step.run({ name: "log-event" }, async () => {
 
 ## Step Types
 
-OpenWorkflow provides two step types:
+OpenWorkflow provides three step types:
 
 ### `step.run()`
 
@@ -137,6 +137,21 @@ Pauses the workflow until a specified duration has elapsed. See
 ```ts
 await step.sleep("wait-one-hour", "1h");
 ```
+
+### `step.invokeWorkflow()`
+
+Starts a child workflow and waits for its result durably:
+
+```ts
+const childOutput = await step.invokeWorkflow("generate-report", {
+  workflow: generateReportWorkflow,
+  input: { reportId: input.reportId },
+  timeout: "5m", // optional, defaults to 7 days
+});
+```
+
+If `timeout` is reached, the parent step fails, but the child workflow keeps
+running independently.
 
 ## Retry Policy (Optional)
 
@@ -179,6 +194,9 @@ await step.run({ name: "risky-operation" }, async () => {
 
 Steps that throw are marked as failed. The workflow can be retried, and failed
 steps will re-execute (not return cached results).
+
+Each workflow run also has a hard cap of 1000 total step attempts. If that
+limit is reached, the run fails and does not retry.
 
 ## What Makes a Good Step
 

@@ -3,7 +3,11 @@ import { RunCancelAction } from "@/components/run-cancel-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getWorkflowRunServerFn, listStepAttemptsServerFn } from "@/lib/api";
+import {
+  getStepAttemptServerFn,
+  getWorkflowRunServerFn,
+  listStepAttemptsServerFn,
+} from "@/lib/api";
 import {
   STEP_STATUS_CONFIG,
   TERMINAL_RUN_STATUSES,
@@ -19,7 +23,7 @@ import {
   ListDashesIcon,
 } from "@phosphor-icons/react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import type { StepAttempt } from "openworkflow/internal";
+import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
 import { useState } from "react";
 
 export const Route = createFileRoute("/runs/$runId")({
@@ -28,13 +32,57 @@ export const Route = createFileRoute("/runs/$runId")({
       getWorkflowRunServerFn({ data: { workflowRunId: params.runId } }),
       listStepAttemptsServerFn({ data: { workflowRunId: params.runId } }),
     ]);
-    return { run, steps: stepsResult.data };
+    const steps = stepsResult.data;
+
+    let parentStepAttempt: StepAttempt | null = null;
+    let parentRun: WorkflowRun | null = null;
+
+    if (run?.parentStepAttemptId) {
+      parentStepAttempt = await getStepAttemptServerFn({
+        data: { stepAttemptId: run.parentStepAttemptId },
+      });
+
+      if (parentStepAttempt) {
+        parentRun = await getWorkflowRunServerFn({
+          data: { workflowRunId: parentStepAttempt.workflowRunId },
+        });
+      }
+    }
+
+    const childRunIds = [
+      ...new Set(
+        steps
+          .map((step) =>
+            step.kind === "invoke" ? step.childWorkflowRunId : null,
+          )
+          .filter((childRunId): childRunId is string => childRunId !== null),
+      ),
+    ];
+
+    const childRunsById = Object.fromEntries(
+      await Promise.all(
+        childRunIds.map(async (childRunId) => [
+          childRunId,
+          await getWorkflowRunServerFn({
+            data: { workflowRunId: childRunId },
+          }),
+        ]),
+      ),
+    ) as Record<string, WorkflowRun | null>;
+
+    return {
+      run,
+      steps,
+      parentStepAttempt,
+      parentRun,
+      childRunsById,
+    };
   },
   component: RunDetailsPage,
 });
 
 function RunDetailsPage() {
-  const { run, steps } = Route.useLoaderData();
+  const { run, steps, parentRun, childRunsById } = Route.useLoaderData();
   const router = useRouter();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   usePolling({
@@ -87,17 +135,10 @@ function RunDetailsPage() {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-semibold">{run.workflowName}</h2>
-              {run.version && (
-                <Badge variant="outline" className="border-border font-mono">
-                  {run.version}
-                </Badge>
-              )}
+              {run.version && <Badge variant="outline">{run.version}</Badge>}
               <Badge
                 variant="outline"
-                className={cn(
-                  "border-border capitalize",
-                  getStatusBadgeClass(run.status),
-                )}
+                className={cn("capitalize", getStatusBadgeClass(run.status))}
               >
                 {run.status}
               </Badge>
@@ -105,6 +146,14 @@ function RunDetailsPage() {
             <p className="text-muted-foreground mt-1 text-sm">
               Run ID: <span className="font-mono">{run.id}</span>
             </p>
+            {parentRun && (
+              <RunRelationRow
+                label="Parent Workflow Run"
+                runId={parentRun.id}
+                workflowName={parentRun.workflowName}
+                className="mt-2"
+              />
+            )}
           </div>
           <RunCancelAction
             runId={run.id}
@@ -116,7 +165,6 @@ function RunDetailsPage() {
         </div>
 
         <div className="flex gap-6">
-          {/* Left side - Steps list */}
           <div className="flex-1">
             <Card className="bg-card border-border overflow-hidden py-0">
               {steps.length === 0 ? (
@@ -135,6 +183,13 @@ function RunDetailsPage() {
                     const config = STEP_STATUS_CONFIG[step.status];
                     const StatusIcon = config.icon;
                     const iconColor = config.color;
+                    const stepTypeLabel =
+                      step.kind === "function" ? "run" : step.kind;
+                    const childRunId =
+                      step.kind === "invoke" ? step.childWorkflowRunId : null;
+                    const childRun = childRunId
+                      ? (childRunsById[childRunId] ?? null)
+                      : null;
                     const stepDuration = computeDuration(
                       step.startedAt,
                       step.finishedAt,
@@ -142,12 +197,15 @@ function RunDetailsPage() {
                     const stepStartedAt = formatRelativeTime(step.startedAt);
 
                     return (
-                      <div key={step.id}>
+                      <div key={step.id} className="group">
                         <button
                           onClick={() => {
                             toggleStep(step.id);
                           }}
-                          className="hover:bg-muted/50 flex w-full items-center gap-4 px-6 py-4 text-left transition-colors"
+                          className={cn(
+                            "group-hover:bg-muted/50 flex w-full items-center gap-4 border-0 px-6 pt-4 pb-4 text-left transition-colors",
+                            childRunId && "pb-2",
+                          )}
                         >
                           <div className="flex flex-1 items-center gap-3">
                             <div className="flex flex-col items-center gap-2">
@@ -171,20 +229,13 @@ function RunDetailsPage() {
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "border-border text-xs capitalize",
+                                    "capitalize",
                                     getStatusBadgeClass(step.status),
                                   )}
                                 >
                                   {step.status}
                                 </Badge>
-                                {step.kind === "sleep" && (
-                                  <Badge
-                                    variant="outline"
-                                    className="border-border text-xs"
-                                  >
-                                    sleep
-                                  </Badge>
-                                )}
+                                <Badge variant="outline">{stepTypeLabel}</Badge>
                               </div>
                               <div className="text-muted-foreground flex items-center gap-4 text-sm">
                                 <span>Started {stepStartedAt}</span>
@@ -201,8 +252,18 @@ function RunDetailsPage() {
                           />
                         </button>
 
+                        {childRunId && (
+                          <div className="group-hover:bg-muted/50 px-6 pb-3 pl-14 transition-colors">
+                            <RunRelationRow
+                              label="Child Workflow Run"
+                              runId={childRunId}
+                              workflowName={childRun?.workflowName}
+                            />
+                          </div>
+                        )}
+
                         {isExpanded && (
-                          <div className="px-6 pb-4 pl-20">
+                          <div className="px-6 pt-2 pb-4 pl-14">
                             <div className="bg-muted/50 rounded-lg p-4">
                               <p className="text-muted-foreground mb-2 text-sm font-medium">
                                 {step.error ? "Error" : "Output"}
@@ -225,7 +286,6 @@ function RunDetailsPage() {
             </Card>
           </div>
 
-          {/* Right side - Sidebar */}
           <div className="w-64 shrink-0">
             <div className="grid grid-cols-1 gap-3">
               <Card className="bg-card border-border gap-2 p-3">
@@ -258,5 +318,34 @@ function RunDetailsPage() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+interface RunRelationRowProps {
+  label: string;
+  runId: string;
+  workflowName?: string | undefined;
+  className?: string | undefined;
+}
+
+function RunRelationRow({
+  label,
+  runId,
+  workflowName,
+  className,
+}: RunRelationRowProps) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2 text-sm", className)}>
+      <span className="text-muted-foreground whitespace-nowrap">{label}:</span>
+      <Badge
+        variant="outline"
+        render={<Link to="/runs/$runId" params={{ runId }} />}
+      >
+        {workflowName && (
+          <span className="mr-2 font-medium">[{workflowName}]</span>
+        )}
+        <span>{runId}</span>
+      </Badge>
+    </div>
   );
 }

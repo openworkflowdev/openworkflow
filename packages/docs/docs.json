@@ -41,11 +41,13 @@
           "docs/sleeping",
           "docs/parallel-steps",
           "docs/dynamic-steps",
+          "docs/child-workflows",
           "docs/retries",
           "docs/type-safety",
           "docs/versioning",
           "docs/canceling",
-          "docs/production"
+          "docs/production",
+          "docs/prometheus"
         ]
       },
       {

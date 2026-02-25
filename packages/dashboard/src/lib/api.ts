@@ -4,6 +4,7 @@ import type {
   PaginatedResponse,
   PaginationOptions,
   StepAttempt,
+  WorkflowRunCounts,
   WorkflowRun,
 } from "openworkflow/internal";
 import * as z from "zod";
@@ -57,6 +58,16 @@ export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
   });
 
 /**
+ * Read workflow run counts from the backend.
+ */
+export const getWorkflowRunCountsServerFn = createServerFn({
+  method: "GET",
+}).handler(async (): Promise<WorkflowRunCounts> => {
+  const backend = await getBackend();
+  return await backend.countWorkflowRuns();
+});
+
+/**
  * Get a single workflow run by ID.
  */
 export const getWorkflowRunServerFn = createServerFn({ method: "GET" })
@@ -98,6 +109,19 @@ export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
 
     const result = await backend.listStepAttempts(params);
     return result;
+  });
+
+/**
+ * Get a single step attempt by ID.
+ */
+export const getStepAttemptServerFn = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ stepAttemptId: z.string() }))
+  .handler(async ({ data }): Promise<StepAttempt | null> => {
+    const backend = await getBackend();
+    const stepAttempt = await backend.getStepAttempt({
+      stepAttemptId: data.stepAttemptId,
+    });
+    return stepAttempt;
   });
 
 /**
@@ -143,6 +167,8 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
       config: {},
       context: null,
       input: parsedInput,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
       availableAt,
       deadlineAt,
     });

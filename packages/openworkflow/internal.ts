@@ -1,10 +1,14 @@
 // workflow
-export type { Workflow } from "./workflow.js";
-export { isWorkflow } from "./workflow.js";
+export type { Workflow } from "./core/workflow-definition.js";
+export { isWorkflow } from "./core/workflow-definition.js";
 
 // backend
-export * from "./backend.js";
+export * from "./core/backend.js";
 
 // core
-export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow.js";
-export type { StepAttempt, StepAttemptStatus, StepKind } from "./core/step.js";
+export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow-run.js";
+export type {
+  StepAttempt,
+  StepAttemptStatus,
+  StepKind,
+} from "./core/step-attempt.js";
