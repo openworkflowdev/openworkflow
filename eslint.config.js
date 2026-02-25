@@ -96,6 +96,56 @@ export default defineConfig(
     },
   },
   {
+    files: ["**/*.test.ts", "**/*.testsuite.ts"],
+    rules: {
+      "sonarjs/no-nested-functions": "off",
+    },
+  },
+  // ===========================================================================
+  // cli
+  // ===========================================================================
+  {
+    files: ["packages/cli/templates/**/*.ts"],
+    rules: {
+      "import/no-extraneous-dependencies": "off",
+    },
+  },
+  // ===========================================================================
+  // dashboard
+  // ===========================================================================
+  {
+    files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
+    rules: {
+      "import/no-relative-parent-imports": "off",
+      "jsdoc/require-jsdoc": "off",
+      "sonarjs/prefer-read-only-props": "off",
+    },
+  },
+  {
+    files: [
+      "packages/dashboard/**/*.test.ts",
+      "packages/dashboard/**/*.test.tsx",
+    ],
+    rules: {
+      "import/no-extraneous-dependencies": [
+        "error",
+        {
+          devDependencies: true,
+          packageDir: [".", "packages/dashboard"],
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/dashboard/src/routes/runs/$runId.tsx"],
+    rules: {
+      "unicorn/filename-case": "off",
+    },
+  },
+  // ===========================================================================
+  // openworkflow
+  // ===========================================================================
+  {
     files: ["packages/openworkflow/**/*.ts"],
     ignores: ["**/*.test.ts"],
     plugins: {
@@ -141,18 +191,6 @@ export default defineConfig(
     },
   },
   {
-    files: ["**/*.test.ts", "**/*.testsuite.ts"],
-    rules: {
-      "sonarjs/no-nested-functions": "off",
-    },
-  },
-  {
-    files: ["packages/cli/templates/**/*.ts"],
-    rules: {
-      "import/no-extraneous-dependencies": "off",
-    },
-  },
-  {
     files: ["packages/openworkflow/core/**/*.ts"],
     ignores: [
       "**/*.test.ts",
@@ -168,39 +206,6 @@ export default defineConfig(
       ...functional.configs.externalTypeScriptRecommended.rules,
       ...functional.configs.recommended.rules,
       ...functional.configs.stylistic.rules,
-    },
-  },
-
-  // ===========================================================================
-  // Dashboard
-  // ===========================================================================
-  {
-    files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
-    rules: {
-      "import/no-relative-parent-imports": "off",
-      "jsdoc/require-jsdoc": "off",
-      "sonarjs/prefer-read-only-props": "off",
-    },
-  },
-  {
-    files: [
-      "packages/dashboard/**/*.test.ts",
-      "packages/dashboard/**/*.test.tsx",
-    ],
-    rules: {
-      "import/no-extraneous-dependencies": [
-        "error",
-        {
-          devDependencies: true,
-          packageDir: [".", "packages/dashboard"],
-        },
-      ],
-    },
-  },
-  {
-    files: ["packages/dashboard/src/routes/runs/$runId.tsx"],
-    rules: {
-      "unicorn/filename-case": "off",
     },
   },
 );
