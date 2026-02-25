@@ -2,6 +2,7 @@
 import cspell from "@cspell/eslint-plugin/configs";
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import boundaries from "eslint-plugin-boundaries";
 import functional from "eslint-plugin-functional";
 import importPlugin from "eslint-plugin-import";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -80,7 +81,6 @@ export default defineConfig(
       "func-style": ["error", "declaration"],
       // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
       "import/no-extraneous-dependencies": "error",
-      "import/no-relative-parent-imports": "error",
       "import/no-useless-path-segments": "error",
       "jsdoc/check-indentation": "error",
       "jsdoc/require-throws": "error",
@@ -96,17 +96,48 @@ export default defineConfig(
     },
   },
   {
-    files: [
-      "**/*.test.ts",
-      "packages/openworkflow/core/backend.testsuite.ts",
-      "packages/openworkflow/postgres/**/*.ts",
-      "packages/openworkflow/sqlite/**/*.ts",
-      "packages/openworkflow/client/**/*.ts",
-      "packages/openworkflow/worker/**/*.ts",
-      "packages/openworkflow/core/workflow-definition.ts",
-    ],
+    files: ["packages/openworkflow/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    plugins: {
+      boundaries,
+    },
+    settings: {
+      "boundaries/elements": [
+        {
+          type: "core",
+          pattern: "packages/openworkflow/core/**",
+        },
+        {
+          type: "app",
+          pattern: "packages/openworkflow/{client,worker}/**",
+        },
+        {
+          type: "infra",
+          pattern: "packages/openworkflow/{postgres,sqlite,testing}/**",
+        },
+      ],
+    },
     rules: {
-      "import/no-relative-parent-imports": "off",
+      "boundaries/element-types": [
+        "error",
+        {
+          default: "disallow",
+          rules: [
+            {
+              from: "core",
+              disallow: ["*"],
+            },
+            {
+              from: "app",
+              allow: ["app", "core"],
+            },
+            {
+              from: "infra",
+              allow: ["app", "core", "infra"],
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -127,7 +158,7 @@ export default defineConfig(
       "**/*.test.ts",
       "**/*.testsuite.ts",
       "packages/openworkflow/core/backend.ts",
-      "packages/openworkflow/core/registry.ts",
+      "packages/openworkflow/core/workflow-registry.ts",
       "packages/openworkflow/core/workflow-definition.ts",
     ],
     plugins: {

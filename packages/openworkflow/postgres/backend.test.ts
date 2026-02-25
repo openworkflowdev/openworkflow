@@ -1,4 +1,4 @@
-import { testBackend } from "../core/backend.testsuite.js";
+import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
   DEFAULT_POSTGRES_URL,

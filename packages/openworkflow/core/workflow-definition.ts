@@ -1,7 +1,7 @@
-import type { WorkflowFunction } from "../worker/execution.js";
 import { type BackoffPolicy, computeBackoffDelayMs } from "./backoff.js";
 import type { SerializedError } from "./error.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
+import type { WorkflowFunction } from "./workflow-function.js";
 
 /**
  * A workflow spec.

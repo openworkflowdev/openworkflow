@@ -7,6 +7,7 @@ import {
   type Workflow,
   type WorkflowSpec,
 } from "../core/workflow-definition.js";
+import type { WorkflowFunction } from "../core/workflow-function.js";
 import { WorkflowRegistry } from "../core/workflow-registry.js";
 import type {
   SchemaInput,
@@ -14,7 +15,6 @@ import type {
   WorkflowRun,
 } from "../core/workflow-run.js";
 import { validateInput } from "../core/workflow-run.js";
-import type { WorkflowFunction } from "../worker/execution.js";
 import { Worker } from "../worker/worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s

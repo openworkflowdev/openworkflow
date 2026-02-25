@@ -1,4 +1,4 @@
-import { testBackend } from "../core/backend.testsuite.js";
+import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendSqlite } from "./backend.js";
 import { Database } from "./sqlite.js";
 import assert from "node:assert";
