@@ -56,24 +56,6 @@ bunx @openworkflow/cli init
 The CLI will guide you through setup and generate everything you need to get
 started.
 
-For more details, check out our [docs](https://openworkflow.dev/docs).
-
-## Features
-
-- ✅ **Durable** - Workflows survive crashes and deploys
-- ✅ **Resumable** - Pick up exactly where you left off
-- ✅ **Type-safe** - Full TypeScript support
-- ✅ **Step memoization** - Never repeat completed work
-- ✅ **Automatic retries** - Built-in exponential backoff
-- ✅ **Long pauses** - Sleep for seconds or months
-- ✅ **Child workflows** - Invoke and await child workflow runs
-- ✅ **Scheduled runs** - Start workflows at a specific time
-- ✅ **Parallel execution** - Run steps concurrently
-- ✅ **Idempotency keys** - Deduplicate repeated run requests (24h window)
-- ✅ **No extra servers** - Uses your existing database
-- ✅ **Dashboard included** - Monitor and debug workflows
-- ✅ **Production ready** - PostgreSQL and SQLite support
-
 ## Documentation
 
 - [Documentation](https://openworkflow.dev/docs)
@@ -102,6 +84,7 @@ before submitting a pull request.
 
 ## Community
 
+- [Discord](https://discord.openworkflow.dev)
 - [GitHub Issues](https://github.com/openworkflowdev/openworkflow/issues) -
   Report bugs and request features
 - [Roadmap](https://openworkflow.dev/docs/roadmap) - See what's coming next
