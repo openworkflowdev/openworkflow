@@ -384,11 +384,7 @@ export class BackendPostgres implements Backend {
       UPDATE ${workflowRunsTable}
       SET
         "status" = 'running',
-        "available_at" = CASE
-          WHEN "available_at" IS NOT NULL AND "available_at" <= NOW()
-            THEN "available_at"
-          ELSE ${params.availableAt}
-        END,
+        "available_at" = ${params.availableAt},
         "worker_id" = NULL,
         "updated_at" = NOW()
       WHERE "namespace_id" = ${this.namespaceId}

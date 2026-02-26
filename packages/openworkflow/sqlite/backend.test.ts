@@ -389,4 +389,71 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
       await backend.stop();
     }
   });
+
+  test("sleepWorkflowRun overwrites stale due availableAt with new resume time", async () => {
+    const namespaceId = randomUUID();
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId,
+    });
+
+    try {
+      const run = await backend.createWorkflowRun({
+        workflowName: "sleep-overwrite-stale-available-at",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimed?.id).toBe(run.id);
+      if (!claimed) {
+        throw new Error("Expected workflow run to be claimed");
+      }
+
+      const internalBackend = backend as unknown as {
+        db: Database;
+      };
+      const past = new Date(Date.now() - 1000).toISOString();
+      internalBackend.db
+        .prepare(
+          `
+          UPDATE "workflow_runs"
+          SET
+            "available_at" = ?,
+            "updated_at" = ?
+          WHERE "namespace_id" = ?
+            AND "id" = ?
+        `,
+        )
+        .run(past, past, namespaceId, run.id);
+
+      const sleepTarget = new Date(Date.now() + 60 * 60 * 1000);
+      const parked = await backend.sleepWorkflowRun({
+        workflowRunId: run.id,
+        workerId,
+        availableAt: sleepTarget,
+      });
+
+      expect(parked.status).toBe("running");
+      expect(parked.workerId).toBeNull();
+      if (!parked.availableAt) {
+        throw new Error("Expected parked workflow availableAt");
+      }
+      expect(parked.availableAt.getTime()).toBeGreaterThan(
+        Date.now() + 30 * 60 * 1000,
+      );
+    } finally {
+      await backend.stop();
+    }
+  });
 });

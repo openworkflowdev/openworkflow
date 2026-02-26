@@ -372,10 +372,7 @@ export class BackendSqlite implements Backend {
       UPDATE "workflow_runs"
       SET
         "status" = 'running',
-        "available_at" = CASE
-          WHEN "available_at" IS NOT NULL AND "available_at" <= ? THEN "available_at"
-          ELSE ?
-        END,
+        "available_at" = ?,
         "worker_id" = NULL,
         "updated_at" = ?
       WHERE "namespace_id" = ?
@@ -385,7 +382,6 @@ export class BackendSqlite implements Backend {
     `);
 
     const result = stmt.run(
-      currentTime,
       resumeAt,
       currentTime,
       this.namespaceId,

@@ -366,4 +366,69 @@ describe("BackendPostgres invoke wake-up reconciliation", () => {
       await backend.stop();
     }
   });
+
+  test("sleepWorkflowRun overwrites stale due availableAt with new resume time", async () => {
+    const namespaceId = randomUUID();
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId,
+    });
+
+    try {
+      const run = await backend.createWorkflowRun({
+        workflowName: "sleep-overwrite-stale-available-at",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimed?.id).toBe(run.id);
+      if (!claimed) {
+        throw new Error("Expected workflow run to be claimed");
+      }
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
+        await pg`
+          UPDATE ${workflowRunsTable}
+          SET
+            "available_at" = NOW() - INTERVAL '1 second',
+            "updated_at" = NOW()
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${run.id}
+        `;
+      } finally {
+        await pg.end();
+      }
+
+      const sleepTarget = new Date(Date.now() + 60 * 60 * 1000);
+      const parked = await backend.sleepWorkflowRun({
+        workflowRunId: run.id,
+        workerId,
+        availableAt: sleepTarget,
+      });
+
+      expect(parked.status).toBe("running");
+      expect(parked.workerId).toBeNull();
+      if (!parked.availableAt) {
+        throw new Error("Expected parked workflow availableAt");
+      }
+      expect(parked.availableAt.getTime()).toBeGreaterThan(
+        Date.now() + 30 * 60 * 1000,
+      );
+    } finally {
+      await backend.stop();
+    }
+  });
 });
