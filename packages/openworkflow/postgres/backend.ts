@@ -377,13 +377,13 @@ export class BackendPostgres implements Backend {
   }
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
-    // 'succeeded' status is deprecated
+    // 'sleeping' and 'succeeded' statuses are deprecated
     const workflowRunsTable = this.workflowRunsTable();
 
     const [updated] = await this.pg<WorkflowRun[]>`
       UPDATE ${workflowRunsTable}
       SET
-        "status" = 'sleeping',
+        "status" = 'running',
         "available_at" = CASE
           WHEN "available_at" IS NOT NULL AND "available_at" <= NOW()
             THEN "available_at"
@@ -585,7 +585,10 @@ export class BackendPostgres implements Backend {
       AND sa."id" = ${childWorkflowRun.parentStepAttemptId}
       AND wr."namespace_id" = sa."namespace_id"
       AND wr."id" = sa."workflow_run_id"
-      AND wr."status" = 'sleeping'
+      AND (
+        wr."status" = 'sleeping'
+        OR (wr."status" = 'running' AND wr."worker_id" IS NULL)
+      )
     `;
   }
 

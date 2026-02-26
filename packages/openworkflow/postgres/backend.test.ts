@@ -216,3 +216,57 @@ describe("BackendPostgres cancel fallback", () => {
     }
   });
 });
+
+describe("BackendPostgres legacy sleeping compatibility", () => {
+  test("claims workflow runs persisted with legacy sleeping status", async () => {
+    const namespaceId = randomUUID();
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId,
+    });
+
+    try {
+      const run = await backend.createWorkflowRun({
+        workflowName: "legacy-sleeping-claim",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
+
+        await pg`
+          UPDATE ${workflowRunsTable}
+          SET
+            "status" = 'sleeping',
+            "worker_id" = NULL,
+            "available_at" = NOW() - INTERVAL '1 second',
+            "updated_at" = NOW()
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${run.id}
+        `;
+      } finally {
+        await pg.end();
+      }
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 60_000,
+      });
+
+      expect(claimed?.id).toBe(run.id);
+      expect(claimed?.status).toBe("running");
+      expect(claimed?.workerId).toBe(workerId);
+    } finally {
+      await backend.stop();
+    }
+  });
+});

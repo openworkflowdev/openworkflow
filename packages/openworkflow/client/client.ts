@@ -161,8 +161,8 @@ export class OpenWorkflow {
   }
 
   /**
-   * Cancels the workflow run with the given ID. Only workflow runs in pending, running, or sleeping
-   * status can be canceled.
+   * Cancels the workflow run with the given ID. Workflow runs in `pending`,
+   * `running`, or legacy `sleeping` status can be canceled.
    * @param workflowRunId - The ID of the workflow run to cancel
    * @returns Promise<void>
    * @example
@@ -338,8 +338,8 @@ class WorkflowRunHandle<Output> {
   }
 
   /**
-   * Cancels the workflow run. Only workflows in pending, running, or sleeping
-   * status can be canceled.
+   * Cancels the workflow run. Workflows in `pending`, `running`, or legacy
+   * `sleeping` status can be canceled.
    */
   async cancel(): Promise<void> {
     await this.backend.cancelWorkflowRun({

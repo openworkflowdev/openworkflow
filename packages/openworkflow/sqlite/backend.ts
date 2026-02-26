@@ -371,7 +371,7 @@ export class BackendSqlite implements Backend {
     const stmt = this.db.prepare(`
       UPDATE "workflow_runs"
       SET
-        "status" = 'sleeping',
+        "status" = 'running',
         "available_at" = CASE
           WHEN "available_at" IS NOT NULL AND "available_at" <= ? THEN "available_at"
           ELSE ?
@@ -380,7 +380,7 @@ export class BackendSqlite implements Backend {
         "updated_at" = ?
       WHERE "namespace_id" = ?
       AND "id" = ?
-      AND "status" NOT IN ('completed', 'failed', 'canceled')
+      AND "status" NOT IN ('succeeded', 'completed', 'failed', 'canceled')
       AND "worker_id" = ?
     `);
 
@@ -587,8 +587,8 @@ export class BackendSqlite implements Backend {
         return existing;
       }
 
-      // throw error for completed/failed workflows
-      if (["completed", "failed"].includes(existing.status)) {
+      // 'succeeded' status is deprecated
+      if (["succeeded", "completed", "failed"].includes(existing.status)) {
         throw new Error(
           `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
         );
@@ -632,7 +632,10 @@ export class BackendSqlite implements Backend {
         AND "id" = ?
         LIMIT 1
       )
-      AND "status" = 'sleeping'
+      AND (
+        "status" = 'sleeping'
+        OR ("status" = 'running' AND "worker_id" IS NULL)
+      )
     `);
 
     stmt.run(

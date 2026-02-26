@@ -238,3 +238,58 @@ describe("BackendSqlite.setStepAttemptChildWorkflowRun error handling", () => {
     }
   });
 });
+
+describe("BackendSqlite legacy sleeping compatibility", () => {
+  test("claims workflow runs persisted with legacy sleeping status", async () => {
+    const namespaceId = randomUUID();
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId,
+    });
+
+    try {
+      const run = await backend.createWorkflowRun({
+        workflowName: "legacy-sleeping-claim",
+        version: null,
+        idempotencyKey: null,
+        config: {},
+        context: null,
+        input: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const internalBackend = backend as unknown as {
+        db: Database;
+      };
+      const past = new Date(Date.now() - 1000).toISOString();
+      internalBackend.db
+        .prepare(
+          `
+          UPDATE "workflow_runs"
+          SET
+            "status" = 'sleeping',
+            "worker_id" = NULL,
+            "available_at" = ?,
+            "updated_at" = ?
+          WHERE "namespace_id" = ?
+            AND "id" = ?
+        `,
+        )
+        .run(past, past, namespaceId, run.id);
+
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 60_000,
+      });
+
+      expect(claimed?.id).toBe(run.id);
+      expect(claimed?.status).toBe("running");
+      expect(claimed?.workerId).toBe(workerId);
+    } finally {
+      await backend.stop();
+    }
+  });
+});
