@@ -8,7 +8,7 @@ import type { StandardSchemaV1 } from "./standard-schema.js";
 export type WorkflowRunStatus =
   | "pending"
   | "running"
-  | "sleeping"
+  | "sleeping" // deprecated in favor of staying 'running'
   | "succeeded" // deprecated in favor of 'completed'
   | "completed"
   | "failed"

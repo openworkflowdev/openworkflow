@@ -708,12 +708,12 @@ export function testBackend(options: TestBackendOptions): void {
         const runningWorkerId = runningRun.workerId;
         if (!runningWorkerId) throw new Error("Expected workerId");
 
-        const sleepingRun = await createClaimedWorkflowRun(backend);
-        const sleepingWorkerId = sleepingRun.workerId;
-        if (!sleepingWorkerId) throw new Error("Expected workerId");
+        const parkedRun = await createClaimedWorkflowRun(backend);
+        const parkedWorkerId = parkedRun.workerId;
+        if (!parkedWorkerId) throw new Error("Expected workerId");
         await backend.sleepWorkflowRun({
-          workflowRunId: sleepingRun.id,
-          workerId: sleepingWorkerId,
+          workflowRunId: parkedRun.id,
+          workerId: parkedWorkerId,
           availableAt: new Date(Date.now() + 60_000),
         });
 
@@ -746,8 +746,8 @@ export function testBackend(options: TestBackendOptions): void {
 
         expect(await backend.countWorkflowRuns()).toEqual({
           pending: 1,
-          running: 1,
-          sleeping: 1,
+          running: 2,
+          sleeping: 0,
           completed: 1,
           failed: 1,
           canceled: 1,
@@ -904,7 +904,7 @@ export function testBackend(options: TestBackendOptions): void {
     });
 
     describe("sleepWorkflowRun()", () => {
-      test("sets a running workflow to sleeping status until a future time", async () => {
+      test("parks a running workflow with a future availableAt", async () => {
         const workerId = randomUUID();
         await createPendingWorkflowRun(backend);
 
@@ -929,7 +929,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(fetched).not.toBeNull();
         expect(fetched?.availableAt?.getTime()).toBe(sleepUntil.getTime());
         expect(fetched?.workerId).toBeNull();
-        expect(fetched?.status).toBe("sleeping");
+        expect(fetched?.status).toBe("running");
       });
 
       test("fails when trying to sleep a canceled workflow", async () => {
@@ -1008,7 +1008,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(completed.availableAt).toBeNull();
       });
 
-      test("wakes a sleeping parent run when a child run completes", async () => {
+      test("wakes a parked parent run when a child run completes", async () => {
         const backend = await setup();
 
         const parentRun = await createClaimedWorkflowRun(backend);
@@ -1057,7 +1057,8 @@ export function testBackend(options: TestBackendOptions): void {
         const parentAfter = await backend.getWorkflowRun({
           workflowRunId: parentRun.id,
         });
-        expect(parentAfter?.status).toBe("sleeping");
+        expect(parentAfter?.status).toBe("running");
+        expect(parentAfter?.workerId).toBeNull();
         expect(parentAfter?.availableAt).not.toBeNull();
         if (!parentAfter?.availableAt) {
           throw new Error("Expected parent availableAt after child completion");
@@ -1285,7 +1286,8 @@ export function testBackend(options: TestBackendOptions): void {
         const parentAfter = await backend.getWorkflowRun({
           workflowRunId: parentRun.id,
         });
-        expect(parentAfter?.status).toBe("sleeping");
+        expect(parentAfter?.status).toBe("running");
+        expect(parentAfter?.workerId).toBeNull();
         expect(parentAfter?.availableAt).not.toBeNull();
         if (!parentAfter?.availableAt) {
           throw new Error("Expected parent availableAt after child retry");
@@ -2039,22 +2041,23 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
 
-      test("cancels a sleeping workflow run", async () => {
+      test("cancels a parked workflow run", async () => {
         const backend = await setup();
 
         const claimed = await createClaimedWorkflowRun(backend);
 
         // put workflow to sleep
         const sleepUntil = new Date(Date.now() + 60_000); // 1 minute from now
-        const sleeping = await backend.sleepWorkflowRun({
+        const parked = await backend.sleepWorkflowRun({
           workflowRunId: claimed.id,
           workerId: claimed.workerId ?? "",
           availableAt: sleepUntil,
         });
-        expect(sleeping.status).toBe("sleeping");
+        expect(parked.status).toBe("running");
+        expect(parked.workerId).toBeNull();
 
         const canceled = await backend.cancelWorkflowRun({
-          workflowRunId: sleeping.id,
+          workflowRunId: parked.id,
         });
 
         expect(canceled.status).toBe("canceled");

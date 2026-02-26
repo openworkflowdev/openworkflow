@@ -614,11 +614,11 @@ describe("Worker", () => {
     await sleep(50); // wait for processing
     expect(stepCount).toBe(1);
 
-    // verify workflow was postponed with sleeping status
+    // verify workflow was postponed while remaining in running status
     const slept = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(slept?.status).toBe("sleeping");
+    expect(slept?.status).toBe("running");
     expect(slept?.workerId).toBeNull(); // released during sleep
     expect(slept?.availableAt).not.toBeNull();
     if (!slept?.availableAt) throw new Error("availableAt should be set");
@@ -806,12 +806,12 @@ describe("Worker", () => {
     );
   });
 
-  test("sleeping workflows can be claimed after availableAt", async () => {
+  test("parked workflows can be claimed after availableAt", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
-      { name: "sleeping-claim-test" },
+      { name: "parked-claim-test" },
       async ({ step }) => {
         await step.run({ name: "before" }, () => "before");
         await step.sleep("wait", "100ms");
@@ -827,12 +827,12 @@ describe("Worker", () => {
     await worker.tick();
     await sleep(50);
 
-    // verify workflow is in sleeping state
-    const sleeping = await backend.getWorkflowRun({
+    // verify workflow is parked in running state
+    const parked = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(sleeping?.status).toBe("sleeping");
-    expect(sleeping?.workerId).toBeNull();
+    expect(parked?.status).toBe("running");
+    expect(parked?.workerId).toBeNull();
 
     // wait for sleep duration
     await sleep(100);
@@ -847,7 +847,7 @@ describe("Worker", () => {
     expect(claimed?.workerId).toBe("test-worker");
   });
 
-  test("sleep is not skipped when worker crashes after creating sleep step but before marking workflow as sleeping", async () => {
+  test("sleep is not skipped when worker crashes after creating sleep step but before parking workflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -888,7 +888,8 @@ describe("Worker", () => {
       workflowRunId: handle.workflowRun.id,
     });
 
-    expect(workflowAfterFirst?.status).toBe("sleeping");
+    expect(workflowAfterFirst?.status).toBe("running");
+    expect(workflowAfterFirst?.workerId).toBeNull();
 
     const attemptsAfterFirst = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -902,8 +903,7 @@ describe("Worker", () => {
 
     await sleep(50); // only 50ms of the 200ms sleep
 
-    // if there's a running sleep step, the workflow should be properly
-    // transitioned to sleeping
+    // if there's a running sleep step, the workflow should be properly parked
     const worker2 = client.newWorker();
     await worker2.tick();
 
@@ -989,12 +989,12 @@ describe("Worker", () => {
     expect(workflowRun?.workerId).toBeNull();
   });
 
-  test("cancels a sleeping workflow", async () => {
+  test("cancels a parked workflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
-      { name: "cancel-sleeping" },
+      { name: "cancel-parked" },
       async ({ step }) => {
         await step.sleep("sleep-1", "1h");
         return { completed: true };
@@ -1005,7 +1005,7 @@ describe("Worker", () => {
     const handle = await workflow.run();
     await worker.tick();
 
-    // cancel while sleeping
+    // cancel while parked
     await handle.cancel();
 
     const canceled = await backend.getWorkflowRun({
@@ -1761,7 +1761,8 @@ describe("Worker", () => {
     let run = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(run?.status).toBe("sleeping");
+    expect(run?.status).toBe("running");
+    expect(run?.workerId).toBeNull();
 
     await sleep(80); // wait for sleep step to elapse
 

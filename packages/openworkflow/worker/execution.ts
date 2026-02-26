@@ -710,10 +710,10 @@ export interface ExecuteWorkflowParams {
 /**
  * Execute a workflow run. This is the core application use case that handles:
  * - Loading step history
- * - Handling sleeping steps
+ * - Handling paused (sleep/invoke wait) steps
  * - Creating the step executor
  * - Executing the workflow function
- * - Completing, failing, or sleeping the workflow run based on the outcome
+ * - Completing, failing, or parking the workflow run based on the outcome
  * @param params - The execution parameters
  */
 // eslint-disable-next-line sonarjs/cognitive-complexity
@@ -803,7 +803,7 @@ export async function executeWorkflow(
       output: (output ?? null) as JsonValue,
     });
   } catch (error) {
-    // handle sleep signal by setting workflow to sleeping status
+    // handle sleep signal by parking the workflow in running status
     if (error instanceof SleepSignal) {
       await backend.sleepWorkflowRun({
         workflowRunId: workflowRun.id,

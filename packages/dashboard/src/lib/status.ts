@@ -52,6 +52,7 @@ export const STATUS_CONFIG: Record<
     badgeClass: "bg-warning/10 border-warning/20 text-warning",
   },
   sleeping: {
+    // legacy status kept for backward compatibility
     icon: HourglassIcon,
     color: "text-sleeping",
     label: "Sleeping",
@@ -90,6 +91,7 @@ export const STEP_STATUS_CONFIG: Record<
 /** Run statuses that represent a finished workflow (no further updates expected). */
 export const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
   "completed",
+  // legacy status kept for backward compatibility
   "succeeded",
   "failed",
   "canceled",
@@ -99,6 +101,7 @@ export const TERMINAL_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
 const CANCELABLE_RUN_STATUSES: ReadonlySet<WorkflowRunStatus> = new Set([
   "pending",
   "running",
+  // legacy status kept for backward compatibility
   "sleeping",
 ]);
 

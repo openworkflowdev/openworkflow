@@ -49,10 +49,12 @@ A workflow run can be in one of the following states:
 
 - **`pending`**: The workflow run has been created and is waiting for a worker
   to claim it.
-- **`running`**: The workflow run is actively being executed by a worker.
-- **`sleeping`**: The workflow run is waiting for a duration to elapse
-  (`step.sleep`) or waiting for a child workflow result (`step.invokeWorkflow`).
-  The `availableAt` timestamp controls when it becomes available again.
+- **`running`**: The workflow run is either actively being executed by a worker
+  or durably parked with `workerId = null` until `availableAt`.
+- **`sleeping`** (deprecated): Legacy parked state kept for backward
+  compatibility. New runs are parked in `running` instead.
+- **`succeeded`** (deprecated): Legacy success state kept for backward
+  compatibility. New successful runs use `completed`.
 - **`completed`**: The workflow run has completed successfully.
 - **`failed`**: The workflow run has failed after exhausting retries or deadline
   reached.
@@ -64,6 +66,8 @@ A workflow run can be in one of the following states:
 A step attempt can be in one of the following states:
 
 - **`running`**: The step attempt is currently being executed.
+- **`succeeded`** (deprecated): Legacy success state kept for backward
+  compatibility. New successful attempts use `completed`.
 - **`completed`**: The step attempt completed successfully and its result is
   stored.
 - **`failed`**: The step attempt failed. The workflow may create a new attempt
@@ -133,10 +137,10 @@ of coordination. There is no separate orchestrator server.
     table with a `pending` status.
 3.  **Job Polling**: A **Worker** process polls the `workflow_runs` table,
     looking for runs whose `availableAt` timestamp is in the past and whose
-    status is either `pending` (new work), `sleeping` (but done), or `running`
-    with an expired lease. It uses an atomic `FOR UPDATE SKIP LOCKED` query to
-    claim a single workflow run, setting its status to `running` and extending
-    the lease.
+    status is either `pending` (new work), `running` (parked or with an expired
+    lease), or legacy `sleeping`. It uses an atomic `FOR UPDATE SKIP LOCKED`
+    query to claim a single workflow run, setting its status to `running` and
+    extending the lease.
 4.  **Code Execution (Replay Loop)**: The Worker loads the history of completed
     `step_attempts` for the claimed workflow. It then executes the workflow code
     from the beginning, using the history to memoize results of
@@ -148,7 +152,7 @@ of coordination. There is no separate orchestrator server.
     sleep.
 6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
     it is created and completed, and updates the status of the `workflow_run`
-    (e.g., `completed`, `sleeping`).
+    (e.g., `completed`, `running` for parked waits).
 
 ## 3. The Execution Model: State Machine Replication
 
@@ -215,9 +219,10 @@ const user = await step.run({ name: "fetch-user" }, async () => {
 ```
 
 **`step.sleep(name, duration)`**: Pauses the workflow until a specified time.
-When encountered, the worker sets the workflow run's `status` to `sleeping` and
-`availableAt` to the resume time, then releases the workflow. This frees up the
-worker slot for other work - it's not a blocking sleep but a durable pause.
+When encountered, the worker keeps the workflow run's `status` as `running`,
+sets `availableAt` to the resume time, clears `workerId`, and releases the
+workflow. This frees up the worker slot for other work - it's not a blocking
+sleep but a durable pause.
 
 ```ts
 await step.sleep("wait-one-hour", "1h");

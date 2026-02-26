@@ -258,7 +258,7 @@ describe("StepExecutor", () => {
     await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
   });
 
-  test("sleep puts workflow in sleeping status", async () => {
+  test("sleep parks workflow in running status", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -272,21 +272,17 @@ describe("StepExecutor", () => {
 
     const handle = await workflow.run();
     const worker = client.newWorker();
-    const status = await tickUntilStatus(
+    const parkedRun = await tickUntilParked(
       backend,
       worker,
       handle.workflowRun.id,
-      "sleeping",
       200,
       20,
     );
 
-    const workflowRun = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(status).toBe("sleeping");
-    expect(workflowRun?.status).toBe("sleeping");
-    expect(workflowRun?.availableAt).not.toBeNull();
+    expect(parkedRun.status).toBe("running");
+    expect(parkedRun.workerId).toBeNull();
+    expect(parkedRun.availableAt).not.toBeNull();
   });
 
   test("workflow resumes after sleep duration", async () => {
@@ -308,10 +304,11 @@ describe("StepExecutor", () => {
     // First tick - hits sleep
     await worker.tick();
     await sleep(50); // Wait for tick to complete
-    const sleeping = await backend.getWorkflowRun({
+    const parked = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(sleeping?.status).toBe("sleeping");
+    expect(parked?.status).toBe("running");
+    expect(parked?.workerId).toBeNull();
 
     // Wait for sleep to elapse
     await sleep(50);
@@ -1145,7 +1142,8 @@ describe("StepExecutor", () => {
     const parentAfterFirstPass = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(parentAfterFirstPass?.status).toBe("sleeping");
+    expect(parentAfterFirstPass?.status).toBe("running");
+    expect(parentAfterFirstPass?.workerId).toBeNull();
 
     const attempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -1385,7 +1383,8 @@ describe("StepExecutor", () => {
     const parentAfterFirstPass = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(parentAfterFirstPass?.status).toBe("sleeping");
+    expect(parentAfterFirstPass?.status).toBe("running");
+    expect(parentAfterFirstPass?.workerId).toBeNull();
 
     await sleep(150);
 
@@ -1455,25 +1454,16 @@ describe("StepExecutor", () => {
     const worker = client.newWorker({ concurrency: 2 });
     const handle = await parent.run();
 
-    const parentSleepingStatus = await tickUntilStatus(
+    const parkedParent = await tickUntilParked(
       backend,
       worker,
       handle.workflowRun.id,
-      "sleeping",
       200,
       20,
     );
-    expect(parentSleepingStatus).toBe("sleeping");
-
-    const sleepingParent = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    if (!sleepingParent?.availableAt) {
-      throw new Error("Expected parent invoke wait availableAt");
-    }
 
     const millisecondsUntilWake =
-      sleepingParent.availableAt.getTime() - Date.now();
+      parkedParent.availableAt.getTime() - Date.now();
     expect(millisecondsUntilWake).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
     expect(millisecondsUntilWake).toBeLessThan(8 * 24 * 60 * 60 * 1000);
 
@@ -1661,15 +1651,7 @@ describe("StepExecutor", () => {
 
     const worker = client.newWorker({ concurrency: 2 });
     const handle = await parent.run();
-    const parentSleepingStatus = await tickUntilStatus(
-      backend,
-      worker,
-      handle.workflowRun.id,
-      "sleeping",
-      300,
-      20,
-    );
-    expect(parentSleepingStatus).toBe("sleeping");
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 300, 20);
 
     const steps = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -2031,7 +2013,7 @@ describe("executeWorkflow", () => {
   });
 
   describe("sleep handling", () => {
-    test("workflow enters sleeping status", async () => {
+    test("workflow parks in running status", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
 
@@ -2050,7 +2032,8 @@ describe("executeWorkflow", () => {
       const workflowRun = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
       });
-      expect(workflowRun?.status).toBe("sleeping");
+      expect(workflowRun?.status).toBe("running");
+      expect(workflowRun?.workerId).toBeNull();
     });
 
     test("resumes workflow after sleep duration", async () => {
@@ -2073,10 +2056,11 @@ describe("executeWorkflow", () => {
       await worker.tick();
       await sleep(50);
 
-      const sleeping = await backend.getWorkflowRun({
+      const parked = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
       });
-      expect(sleeping?.status).toBe("sleeping");
+      expect(parked?.status).toBe("running");
+      expect(parked?.workerId).toBeNull();
 
       // wait for sleep
       await sleep(50);
@@ -2441,6 +2425,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "canceled"]);
+type ParkedWorkflowRun = WorkflowRun & {
+  status: "running";
+  workerId: null;
+  availableAt: Date;
+};
 
 async function tickUntilTerminal(
   backend: BackendPostgres,
@@ -2480,6 +2469,31 @@ async function tickUntilStatus(
 
   throw new Error(
     `Timed out waiting for workflow run ${workflowRunId} to reach ${expectedStatus}`,
+  );
+}
+
+async function tickUntilParked(
+  backend: BackendPostgres,
+  worker: ReturnType<OpenWorkflow["newWorker"]>,
+  workflowRunId: string,
+  maxTicks: number,
+  sleepMs: number,
+): Promise<ParkedWorkflowRun> {
+  for (let i = 0; i < maxTicks; i++) {
+    await worker.tick();
+    const run = await backend.getWorkflowRun({ workflowRunId });
+    if (
+      run?.status === "running" &&
+      run.workerId === null &&
+      run.availableAt !== null
+    ) {
+      return run as ParkedWorkflowRun;
+    }
+    await sleep(sleepMs);
+  }
+
+  throw new Error(
+    `Timed out waiting for workflow run ${workflowRunId} to park`,
   );
 }
 

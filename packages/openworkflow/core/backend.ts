@@ -202,7 +202,7 @@ export function toWorkflowRunCounts(
   const counts: WorkflowRunCounts = {
     pending: 0,
     running: 0,
-    sleeping: 0,
+    sleeping: 0, // deprecated, retained for backward compatibility
     completed: 0,
     failed: 0,
     canceled: 0,
