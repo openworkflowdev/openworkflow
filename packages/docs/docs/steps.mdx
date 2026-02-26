@@ -65,22 +65,20 @@ The customer is charged exactly once.
 
 ## Step Names
 
-Step names must be unique within a workflow. They identify steps during replay
-and should be stable across code changes.
+Step names identify checkpoints during replay and should be stable across code
+changes. Use descriptive names that reflect what the step does:
 
 ```ts
 // Good - descriptive, stable names
 await step.run({ name: "fetch-user" }, ...);
 await step.run({ name: "send-welcome-email" }, ...);
 await step.run({ name: "update-user-status" }, ...);
-
-// Bad - generic names that could conflict
-await step.run({ name: "step-1" }, ...);
-await step.run({ name: "step-2" }, ...);
 ```
 
-If you need to create a dynamic number of steps from runtime data (like
-mapping over an array), see [Dynamic Steps](/docs/dynamic-steps).
+If two steps share the same name in a single execution, OpenWorkflow
+automatically disambiguates them by appending `:1`, `:2`, and so on in
+encounter order. This is most useful for [dynamic steps](/docs/dynamic-steps)
+where the number of steps isn't known ahead of time.
 
 <Warning>
   Changing step names after workflows are in-flight can cause replay errors.
@@ -149,9 +147,6 @@ const childOutput = await step.invokeWorkflow("generate-report", {
   timeout: "5m", // optional, defaults to 7 days
 });
 ```
-
-If `timeout` is reached, the parent step fails, but the child workflow keeps
-running independently.
 
 ## Retry Policy (Optional)
 

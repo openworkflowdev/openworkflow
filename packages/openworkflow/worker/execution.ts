@@ -321,6 +321,8 @@ class StepExecutor implements StepApi {
   private cache: StepAttemptCache;
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly runningByStepName: Map<string, StepAttempt>;
+  private readonly expectedNextStepIndexByName: Map<string, number>;
+  private readonly resolvedStepNames: Set<string>;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
@@ -333,6 +335,36 @@ class StepExecutor implements StepApi {
     this.cache = state.cache;
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
     this.runningByStepName = new Map(state.runningByStepName);
+    this.expectedNextStepIndexByName = new Map();
+    this.resolvedStepNames = new Set();
+  }
+
+  /**
+   * Resolve a step name to a deterministic, unique key for this workflow
+   * execution pass. When a name collides, suffixes are appended as
+   * `name:1`, `name:2`, etc. If those suffixes already exist (including
+   * user-provided names), indexing continues until an unused name is found.
+   * @param stepName - User-provided step name
+   * @returns Resolved step name used for durable step state
+   */
+  private resolveStepName(stepName: string): string {
+    if (!this.resolvedStepNames.has(stepName)) {
+      this.resolvedStepNames.add(stepName);
+      return stepName;
+    }
+
+    const expectedNextIndex =
+      this.expectedNextStepIndexByName.get(stepName) ?? 1;
+    for (let index = expectedNextIndex; ; index += 1) {
+      const resolvedName = `${stepName}:${String(index)}`;
+      if (this.resolvedStepNames.has(resolvedName)) {
+        continue;
+      }
+
+      this.expectedNextStepIndexByName.set(stepName, index + 1);
+      this.resolvedStepNames.add(resolvedName);
+      return resolvedName;
+    }
   }
 
   // ---- step.run -----------------------------------------------------------
@@ -341,10 +373,11 @@ class StepExecutor implements StepApi {
     config: Readonly<StepFunctionConfig>,
     fn: StepFunction<Output>,
   ): Promise<Output> {
-    const { name, retryPolicy: retryPolicyOverride } = config;
+    const { name: baseStepName, retryPolicy: retryPolicyOverride } = config;
+    const stepName = this.resolveStepName(baseStepName);
 
     // return cached result if available
-    const existingAttempt = getCachedStepAttempt(this.cache, name);
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) {
       return existingAttempt.output as Output;
     }
@@ -354,13 +387,14 @@ class StepExecutor implements StepApi {
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
-      stepName: name,
+      stepName,
       kind: "function",
       config: {},
       context: null,
     });
+
     this.stepCount += 1;
-    this.runningByStepName.set(name, attempt);
+    this.runningByStepName.set(stepName, attempt);
 
     try {
       // execute step function
@@ -377,37 +411,26 @@ class StepExecutor implements StepApi {
 
       // cache result
       this.cache = addToStepAttemptCache(this.cache, savedAttempt);
-      this.runningByStepName.delete(name);
+      this.runningByStepName.delete(stepName);
 
       return savedAttempt.output as Output;
     } catch (error) {
-      // mark failure
-      this.runningByStepName.delete(name);
-      await this.backend.failStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: attempt.id,
-        workerId: this.workerId,
-        error: serializeError(error),
-      });
-
-      const stepFailedAttempts =
-        (this.failedCountsByStepName.get(name) ?? 0) + 1;
-      this.failedCountsByStepName.set(name, stepFailedAttempts);
-
-      throw new StepError({
-        stepName: name,
-        stepFailedAttempts,
-        retryPolicy: resolveStepRetryPolicy(retryPolicyOverride),
+      return this.failStepWithError(
+        stepName,
+        attempt.id,
         error,
-      });
+        resolveStepRetryPolicy(retryPolicyOverride),
+      );
     }
   }
 
   // ---- step.sleep ---------------------------------------------------------
 
-  async sleep(name: string, duration: DurationString): Promise<void> {
+  async sleep(baseStepName: string, duration: DurationString): Promise<void> {
+    const stepName = this.resolveStepName(baseStepName);
+
     // return cached result if this sleep already completed
-    const existingAttempt = getCachedStepAttempt(this.cache, name);
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) return;
 
     // create new step attempt for the sleep
@@ -422,7 +445,7 @@ class StepExecutor implements StepApi {
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
-      stepName: name,
+      stepName,
       kind: "sleep",
       config: {},
       context,
@@ -438,9 +461,10 @@ class StepExecutor implements StepApi {
   // ---- step.invokeWorkflow -----------------------------------------------
 
   async invokeWorkflow<Output, Input, RunInput = Input>(
-    stepName: string,
+    baseStepName: string,
     opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
   ): Promise<Output> {
+    const stepName = this.resolveStepName(baseStepName);
     const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) {
       return existingAttempt.output as Output;

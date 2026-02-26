@@ -187,9 +187,12 @@ const welcomeEmail = await step.run({ name: "welcome-email" }, async () => {
 All steps are executed synchronously by the worker. When a worker encounters a
 new step:
 
-1.  It creates a `step_attempt` record with status `running`.
-2.  It executes the step function inline.
-3.  Upon completion, it updates the `step_attempt` to status `completed` with
+1.  It resolves the step's durable key for this execution pass. The first
+    occurrence keeps its base name; later collisions are auto-indexed as
+    `name:1`, `name:2`, and so on.
+2.  It creates a `step_attempt` record with status `running`.
+3.  It executes the step function inline.
+4.  Upon completion, it updates the `step_attempt` to status `completed` with
     the result.
 
 Workers can be configured with a high concurrency limit (e.g., 100 or more) to
@@ -223,6 +226,11 @@ await step.sleep("wait-one-hour", "1h");
 **`step.invokeWorkflow(name, options)`**: Starts a child workflow and waits for
 it durably. When the timeout is reached (default 7d), the parent step fails but
 the child workflow continues running independently.
+
+All step APIs (`step.run`, `step.sleep`, and `step.invokeWorkflow`) share the
+same collision logic for durable keys. If duplicate base names are encountered
+in one execution pass, OpenWorkflow auto-indexes them as `name`, `name:1`,
+`name:2`, and so on so each step call maps to a distinct step attempt.
 
 ## 4. Error Handling & Retries
 
