@@ -46,7 +46,7 @@ describe("Worker", () => {
     expect(result).toBe(42);
   });
 
-  test("step.run reuses cached results", async () => {
+  test("step.run auto-indexes duplicate names", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -60,7 +60,7 @@ describe("Worker", () => {
         });
         const second = await step.run({ name: "once" }, () => {
           executionCount++;
-          return "should-not-run";
+          return "second-value";
         });
         return { first, second };
       },
@@ -72,8 +72,17 @@ describe("Worker", () => {
     await worker.tick();
 
     const result = await handle.result();
-    expect(result).toEqual({ first: "value", second: "value" });
-    expect(executionCount).toBe(1);
+    expect(result).toEqual({ first: "value", second: "second-value" });
+    expect(executionCount).toBe(2);
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const stepNames = steps.data
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(stepNames).toEqual(["once", "once:1"]);
   });
 
   test("reschedules workflow when definition is missing", async () => {

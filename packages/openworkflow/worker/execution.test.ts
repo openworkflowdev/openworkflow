@@ -45,7 +45,7 @@ describe("StepExecutor", () => {
     expect(result).toBe(8);
   });
 
-  test("caches step results for same step name", async () => {
+  test("auto-indexes duplicate step.run names", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -72,9 +72,138 @@ describe("StepExecutor", () => {
     const result = await handle.result();
     expect(result).toEqual({
       first: "first-execution",
-      second: "first-execution",
+      second: "second-execution",
     });
-    expect(executionCount).toBe(1);
+    expect(executionCount).toBe(2);
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const stepNames = steps.data
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(stepNames).toEqual(["cached-step", "cached-step:1"]);
+  });
+
+  test("avoids step-name collisions with explicit numeric suffixes", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let thirdStepExecutions = 0;
+    const workflow = client.defineWorkflow(
+      { name: `executor-collision-suffix-${randomUUID()}` },
+      async ({ step }) => {
+        const first = await step.run({ name: "foo" }, () => "A");
+        const second = await step.run({ name: "foo:1" }, () => "B");
+        const third = await step.run({ name: "foo" }, () => {
+          thirdStepExecutions += 1;
+          return "C";
+        });
+        return { first, second, third };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    await worker.tick();
+
+    await expect(handle.result()).resolves.toEqual({
+      first: "A",
+      second: "B",
+      third: "C",
+    });
+    expect(thirdStepExecutions).toBe(1);
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const stepNames = steps.data
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(stepNames).toEqual(["foo", "foo:1", "foo:2"]);
+  });
+
+  test("handles chaotic explicit numeric suffix naming without collisions", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let executionCount = 0;
+    const workflow = client.defineWorkflow(
+      { name: `executor-collision-chaos-${randomUUID()}` },
+      async ({ step }) => {
+        async function runStep(name: string, value: string) {
+          return await step.run({ name }, () => {
+            executionCount += 1;
+            return value;
+          });
+        }
+
+        return [
+          await runStep("foo", "a"),
+          await runStep("foo:2", "b"),
+          await runStep("foo", "c"),
+          await runStep("foo:1", "d"),
+          await runStep("foo", "e"),
+          await runStep("foo:2", "f"),
+          await runStep("foo", "g"),
+          await runStep("foo:1", "h"),
+          await runStep("foo:3", "i"),
+          await runStep("foo", "j"),
+        ];
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    await worker.tick();
+
+    await expect(handle.result()).resolves.toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+      "i",
+      "j",
+    ]);
+    expect(executionCount).toBe(10);
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+
+    expect(steps.data).toHaveLength(10);
+    expect(
+      new Set(steps.data.map((stepAttempt) => stepAttempt.stepName)).size,
+    ).toBe(10);
+
+    const stepNameByOutput = Object.fromEntries(
+      steps.data.map((stepAttempt): readonly [string, string] => {
+        if (typeof stepAttempt.output !== "string") {
+          throw new TypeError("Expected string output for chaos naming test");
+        }
+        return [stepAttempt.output, stepAttempt.stepName];
+      }),
+    );
+
+    expect(stepNameByOutput).toEqual({
+      a: "foo",
+      b: "foo:2",
+      c: "foo:1",
+      d: "foo:1:1",
+      e: "foo:3",
+      f: "foo:2:1",
+      g: "foo:4",
+      h: "foo:1:2",
+      i: "foo:3:1",
+      j: "foo:5",
+    });
   });
 
   test("different step names execute independently", async () => {
@@ -192,6 +321,43 @@ describe("StepExecutor", () => {
 
     const result = await handle.result();
     expect(result).toBe(15);
+  });
+
+  test("auto-indexes duplicate sleep names", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `sleep-duplicate-names-${randomUUID()}` },
+      async ({ step }) => {
+        await step.sleep("pause", "10ms");
+        await step.sleep("pause", "10ms");
+        return "done";
+      },
+    );
+
+    const handle = await workflow.run();
+    const worker = client.newWorker();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      500,
+      20,
+    );
+
+    expect(status).toBe("completed");
+    await expect(handle.result()).resolves.toBe("done");
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const sleepStepNames = steps.data
+      .filter((stepAttempt) => stepAttempt.kind === "sleep")
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(sleepStepNames).toEqual(["pause", "pause:1"]);
   });
 
   test("invokes a child workflow and returns child output", async () => {
@@ -345,7 +511,64 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toBe(10);
   });
 
-  test("supports workflow-name targets, date/number timeouts, and cached invoke replay", async () => {
+  test("applies collision indexing across step.run and step.invokeWorkflow", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow(
+      { name: `invoke-child-cross-type-${randomUUID()}` },
+      ({ input }: { input: { value: number } }) => {
+        return input.value + 1;
+      },
+    );
+
+    const parent = client.defineWorkflow(
+      { name: `invoke-parent-cross-type-${randomUUID()}` },
+      async ({ step }) => {
+        const local = await step.run({ name: "shared-name" }, () => 41);
+        const invoked = await step.invokeWorkflow("shared-name", {
+          workflow: child.workflow,
+          input: { value: 1 },
+        });
+        return { local, invoked };
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const handle = await parent.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      500,
+      20,
+    );
+
+    expect(status).toBe("completed");
+    await expect(handle.result()).resolves.toEqual({ local: 41, invoked: 2 });
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const sharedSteps = steps.data.filter((stepAttempt) =>
+      stepAttempt.stepName.startsWith("shared-name"),
+    );
+    expect(sharedSteps).toHaveLength(2);
+    const kindByStepName = new Map(
+      sharedSteps.map((stepAttempt): readonly [string, string] => [
+        stepAttempt.stepName,
+        stepAttempt.kind,
+      ]),
+    );
+    expect(
+      [...kindByStepName.keys()].toSorted((a, b) => a.localeCompare(b)),
+    ).toEqual(["shared-name", "shared-name:1"]);
+    expect(kindByStepName.get("shared-name")).toBe("function");
+    expect(kindByStepName.get("shared-name:1")).toBe("invoke");
+  });
+
+  test("supports workflow-name targets, date/number timeouts, and auto-indexed duplicate invoke names", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
@@ -396,7 +619,7 @@ describe("StepExecutor", () => {
     expect(status).toBe("completed");
     await expect(handle.result()).resolves.toEqual({
       first: 5,
-      second: 5,
+      second: 100,
       numeric: 9,
       spec: 2,
     });
@@ -405,10 +628,17 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    expect(
-      steps.data.filter((stepAttempt) => stepAttempt.kind === "invoke"),
-    ).toHaveLength(3);
-  });
+    const invokeStepNames = steps.data
+      .filter((stepAttempt) => stepAttempt.kind === "invoke")
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(invokeStepNames).toEqual([
+      "invoke-cached",
+      "invoke-cached:1",
+      "invoke-number-timeout",
+      "invoke-spec-target",
+    ]);
+  }, 15_000);
 
   test("fails invoke when timeout number is invalid", async () => {
     const backend = await createBackend();
@@ -1298,6 +1528,62 @@ describe("StepExecutor", () => {
 
     expect(status).toBe("completed");
     await expect(handle.result()).resolves.toBe(10);
+  });
+
+  test("auto-indexes duplicate invoke names in parallel Promise.all", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow(
+      { name: `invoke-child-parallel-duplicate-${randomUUID()}` },
+      ({ input }: { input: { value: number } }) => {
+        return input.value * 3;
+      },
+    );
+
+    const parent = client.defineWorkflow(
+      { name: `invoke-parent-parallel-duplicate-${randomUUID()}` },
+      async ({ step }) => {
+        const [first, second] = await Promise.all([
+          step.invokeWorkflow("invoke-same", {
+            workflow: child.workflow,
+            input: { value: 2 },
+          }),
+          step.invokeWorkflow("invoke-same", {
+            workflow: child.workflow,
+            input: { value: 3 },
+          }),
+        ]);
+        return { first, second };
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 3 });
+    const handle = await parent.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      300,
+      20,
+    );
+
+    expect(status).toBe("completed");
+    await expect(handle.result()).resolves.toEqual({ first: 6, second: 9 });
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const invokeStepNames = steps.data
+      .filter(
+        (stepAttempt) =>
+          stepAttempt.kind === "invoke" &&
+          stepAttempt.stepName.startsWith("invoke-same"),
+      )
+      .map((stepAttempt) => stepAttempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(invokeStepNames).toEqual(["invoke-same", "invoke-same:1"]);
   });
 
   test("does not create duplicate child runs while waiting across replays", async () => {
