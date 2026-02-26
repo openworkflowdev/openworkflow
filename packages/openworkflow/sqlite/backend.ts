@@ -402,7 +402,61 @@ export class BackendSqlite implements Backend {
     });
     if (!updated) throw new Error("Failed to sleep workflow run");
 
-    return updated;
+    const reconciled = await this.reconcileInvokeSleepWakeUp(
+      params.workflowRunId,
+    );
+    return reconciled ?? updated;
+  }
+
+  /**
+   * Reconcile a parked parent run that is waiting on invoke replay. This closes
+   * the race where a child finished before the parent cleared workerId.
+   * @param workflowRunId - Parent workflow run id
+   * @returns Updated run when reconciliation changed availability, otherwise
+   * null
+   */
+  private async reconcileInvokeSleepWakeUp(
+    workflowRunId: string,
+  ): Promise<WorkflowRun | null> {
+    const currentTime = now();
+    const stmt = this.db.prepare(`
+      UPDATE "workflow_runs"
+      SET
+        "available_at" = CASE
+          WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+          ELSE "available_at"
+        END,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+      AND "worker_id" IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM "step_attempts" sa
+        JOIN "workflow_runs" child
+          ON child."namespace_id" = sa."child_workflow_run_namespace_id"
+          AND child."id" = sa."child_workflow_run_id"
+        WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+        AND sa."workflow_run_id" = "workflow_runs"."id"
+        AND sa."kind" = 'invoke'
+        AND sa."status" = 'running'
+        AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+      )
+    `);
+
+    const result = stmt.run(
+      currentTime,
+      currentTime,
+      currentTime,
+      this.namespaceId,
+      workflowRunId,
+    );
+    if (result.changes === 0) {
+      return null;
+    }
+
+    return await this.getWorkflowRun({ workflowRunId });
   }
 
   async completeWorkflowRun(

@@ -393,6 +393,53 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toBe(12);
   });
 
+  test("wakes parent invoke wait when child completes before parent parks", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow(
+      { name: `invoke-child-race-${randomUUID()}` },
+      () => {
+        return { ok: true };
+      },
+    );
+
+    const parent = client.defineWorkflow(
+      { name: `invoke-parent-race-${randomUUID()}` },
+      async ({ step }) => {
+        return await step.invokeWorkflow("invoke-child", {
+          workflow: child.workflow,
+        });
+      },
+    );
+
+    const originalSleepWorkflowRun = backend.sleepWorkflowRun.bind(backend);
+    const sleepWorkflowRunSpy = vi
+      .spyOn(backend, "sleepWorkflowRun")
+      .mockImplementation(async (params) => {
+        // Delay parent parking to force the child completion race window.
+        await sleep(120);
+        return await originalSleepWorkflowRun(params);
+      });
+
+    try {
+      const worker = client.newWorker({ concurrency: 2 });
+      const handle = await parent.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        250,
+        10,
+      );
+
+      expect(status).toBe("completed");
+      await expect(handle.result()).resolves.toEqual({ ok: true });
+    } finally {
+      sleepWorkflowRunSpy.mockRestore();
+    }
+  });
+
   test("completes parent immediately when invoked child already finished", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

@@ -270,3 +270,100 @@ describe("BackendPostgres legacy sleeping compatibility", () => {
     }
   });
 });
+
+describe("BackendPostgres invoke wake-up reconciliation", () => {
+  test("wakes parked parent immediately when child already finished", async () => {
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      const parent = await backend.createWorkflowRun({
+        workflowName: "invoke-parent-reconcile",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const parentWorkerId = randomUUID();
+      const claimedParent = await backend.claimWorkflowRun({
+        workerId: parentWorkerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimedParent?.id).toBe(parent.id);
+      if (!claimedParent) {
+        throw new Error("Expected parent workflow run to be claimed");
+      }
+
+      const invokeAttempt = await backend.createStepAttempt({
+        workflowRunId: parent.id,
+        workerId: parentWorkerId,
+        stepName: "invoke-child",
+        kind: "invoke",
+        config: {},
+        context: null,
+      });
+
+      const child = await backend.createWorkflowRun({
+        workflowName: "invoke-child-reconcile",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
+        parentStepAttemptId: invokeAttempt.id,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      await backend.setStepAttemptChildWorkflowRun({
+        workflowRunId: parent.id,
+        stepAttemptId: invokeAttempt.id,
+        workerId: parentWorkerId,
+        childWorkflowRunNamespaceId: child.namespaceId,
+        childWorkflowRunId: child.id,
+      });
+
+      const childWorkerId = randomUUID();
+      const claimedChild = await backend.claimWorkflowRun({
+        workerId: childWorkerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimedChild?.id).toBe(child.id);
+      if (!claimedChild) {
+        throw new Error("Expected child workflow run to be claimed");
+      }
+
+      await backend.completeWorkflowRun({
+        workflowRunId: child.id,
+        workerId: childWorkerId,
+        output: { ok: true },
+      });
+
+      const sleepTarget = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const parkedParent = await backend.sleepWorkflowRun({
+        workflowRunId: parent.id,
+        workerId: parentWorkerId,
+        availableAt: sleepTarget,
+      });
+
+      expect(parkedParent.status).toBe("running");
+      expect(parkedParent.workerId).toBeNull();
+      if (!parkedParent.availableAt) {
+        throw new Error("Expected parked parent availableAt");
+      }
+      expect(parkedParent.availableAt.getTime()).toBeLessThan(
+        Date.now() + 1000,
+      );
+    } finally {
+      await backend.stop();
+    }
+  });
+});
