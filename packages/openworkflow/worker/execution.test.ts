@@ -265,7 +265,7 @@ describe("StepExecutor", () => {
     const workflow = client.defineWorkflow(
       { name: "executor-sleep" },
       async ({ step }) => {
-        await step.sleep("sleep-1", "5s");
+        await step.sleep("sleep-1", "500ms");
         return "after sleep";
       },
     );
@@ -277,7 +277,7 @@ describe("StepExecutor", () => {
       worker,
       handle.workflowRun.id,
       200,
-      20,
+      10,
     );
 
     expect(parkedRun.status).toBe("running");
@@ -339,8 +339,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -385,8 +385,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -500,8 +500,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -537,8 +537,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -635,7 +635,7 @@ describe("StepExecutor", () => {
       "invoke-number-timeout",
       "invoke-spec-target",
     ]);
-  }, 15_000);
+  });
 
   test("fails invoke when timeout number is invalid", async () => {
     const backend = await createBackend();
@@ -658,8 +658,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      200,
-      20,
+      150,
+      10,
     );
 
     expect(status).toBe("failed");
@@ -689,8 +689,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      200,
-      20,
+      150,
+      10,
     );
 
     expect(status).toBe("failed");
@@ -736,8 +736,8 @@ describe("StepExecutor", () => {
         backend,
         worker,
         handle.workflowRun.id,
-        500,
-        20,
+        250,
+        10,
       );
 
       expect(status).toBe("completed");
@@ -786,8 +786,8 @@ describe("StepExecutor", () => {
         backend,
         worker,
         handle.workflowRun.id,
-        500,
-        20,
+        250,
+        10,
       );
 
       expect(status).toBe("completed");
@@ -1106,7 +1106,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-canceled-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "5s");
+        await step.sleep("wait", "500ms");
         return { ok: true };
       },
     );
@@ -1184,7 +1184,7 @@ describe("StepExecutor", () => {
     });
     expect(parentAfterReplay?.status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(/was canceled/);
-  }, 20_000);
+  });
 
   test("fails invoke when workflow target string is empty", async () => {
     const backend = await createBackend();
@@ -1206,8 +1206,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      200,
-      20,
+      150,
+      10,
     );
 
     expect(status).toBe("failed");
@@ -1250,13 +1250,13 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      200,
-      20,
+      150,
+      10,
     );
 
     expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(/child boom/);
-  }, 15_000);
+  });
 
   test("invoke timeout fails parent wait but child continues and completes", async () => {
     const backend = await createBackend();
@@ -1265,7 +1265,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-timeout-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "1600ms");
+        await step.sleep("wait", "600ms");
         return { ok: true };
       },
     );
@@ -1286,8 +1286,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
     expect(parentStatus).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
@@ -1320,11 +1320,11 @@ describe("StepExecutor", () => {
       worker,
       childRunId,
       "completed",
-      500,
-      20,
+      250,
+      10,
     );
     expect(childStatus).toBe("completed");
-  }, 15_000);
+  });
 
   test("invoke timeout still fails when child finishes after timeout before parent replay", async () => {
     const backend = await createBackend();
@@ -1333,7 +1333,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-timeout-order-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "5s");
+        await step.sleep("wait", "600ms");
         return { ok: true };
       },
     );
@@ -1428,7 +1428,7 @@ describe("StepExecutor", () => {
     await expect(handle.result()).rejects.toThrow(
       /Timed out waiting for invoked workflow to complete/,
     );
-  }, 20_000);
+  });
 
   test("invoke wait parks until timeout and does not use poll-loop wake-up events", async () => {
     const backend = await createBackend();
@@ -1437,7 +1437,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-parked-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "500ms");
+        await step.sleep("wait", "200ms");
         return { ok: true };
       },
     );
@@ -1459,7 +1459,7 @@ describe("StepExecutor", () => {
       worker,
       handle.workflowRun.id,
       200,
-      20,
+      10,
     );
 
     const millisecondsUntilWake =
@@ -1471,12 +1471,12 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      500,
-      20,
+      250,
+      10,
     );
     expect(parentTerminalStatus).toBe("completed");
     await expect(handle.result()).resolves.toEqual({ ok: true });
-  }, 20_000);
+  });
 
   test("supports parallel invokes via Promise.all", async () => {
     const backend = await createBackend();
@@ -1512,8 +1512,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      300,
-      20,
+      200,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -1554,8 +1554,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      300,
-      20,
+      200,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -1583,7 +1583,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-replay-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "2500ms");
+        await step.sleep("wait", "600ms");
         return { ok: true };
       },
     );
@@ -1603,8 +1603,8 @@ describe("StepExecutor", () => {
       backend,
       worker,
       handle.workflowRun.id,
-      800,
-      20,
+      300,
+      10,
     );
 
     expect(status).toBe("completed");
@@ -1626,7 +1626,7 @@ describe("StepExecutor", () => {
       (run) => run.parentStepAttemptId === invokeAttempt.id,
     );
     expect(childrenForInvokeAttempt).toHaveLength(1);
-  }, 20_000);
+  });
 
   test("canceling parent while waiting does not cancel child workflow", async () => {
     const backend = await createBackend();
@@ -1635,7 +1635,7 @@ describe("StepExecutor", () => {
     const child = client.defineWorkflow(
       { name: `invoke-child-cancel-${randomUUID()}` },
       async ({ step }) => {
-        await step.sleep("wait", "2000ms");
+        await step.sleep("wait", "600ms");
         return { childDone: true };
       },
     );
@@ -1651,7 +1651,7 @@ describe("StepExecutor", () => {
 
     const worker = client.newWorker({ concurrency: 2 });
     const handle = await parent.run();
-    await tickUntilParked(backend, worker, handle.workflowRun.id, 300, 20);
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
 
     const steps = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -1672,8 +1672,8 @@ describe("StepExecutor", () => {
       worker,
       handle.workflowRun.id,
       "canceled",
-      300,
-      20,
+      200,
+      10,
     );
     expect(parentStatus).toBe("canceled");
 
@@ -1682,11 +1682,11 @@ describe("StepExecutor", () => {
       worker,
       childRunId,
       "completed",
-      800,
-      20,
+      300,
+      10,
     );
     expect(childStatus).toBe("completed");
-  }, 20_000);
+  });
 });
 
 describe("executeWorkflow", () => {
@@ -2020,7 +2020,7 @@ describe("executeWorkflow", () => {
       const workflow = client.defineWorkflow(
         { name: "sleep-workflow" },
         async ({ step }) => {
-          await step.sleep("wait", "5s");
+          await step.sleep("wait", "500ms");
           return "after sleep";
         },
       );
@@ -2438,13 +2438,18 @@ async function tickUntilTerminal(
   maxTicks: number,
   sleepMs: number,
 ): Promise<string> {
-  for (let i = 0; i < maxTicks; i++) {
-    await worker.tick();
+  const startedAt = Date.now();
+  const maxWaitMs = Math.max(250, Math.min(maxTicks * sleepMs, 3000));
+
+  while (Date.now() - startedAt <= maxWaitMs) {
+    const claimedCount = await worker.tick();
     const run = await backend.getWorkflowRun({ workflowRunId });
     if (run && TERMINAL_RUN_STATUSES.has(run.status)) {
       return run.status;
     }
-    await sleep(sleepMs);
+    if (claimedCount === 0) {
+      await sleep(sleepMs);
+    }
   }
 
   throw new Error(`Timed out waiting for workflow run ${workflowRunId}`);
@@ -2458,13 +2463,18 @@ async function tickUntilStatus(
   maxTicks: number,
   sleepMs: number,
 ): Promise<string> {
-  for (let i = 0; i < maxTicks; i++) {
-    await worker.tick();
+  const startedAt = Date.now();
+  const maxWaitMs = Math.max(250, Math.min(maxTicks * sleepMs, 3000));
+
+  while (Date.now() - startedAt <= maxWaitMs) {
+    const claimedCount = await worker.tick();
     const run = await backend.getWorkflowRun({ workflowRunId });
     if (run?.status === expectedStatus) {
       return run.status;
     }
-    await sleep(sleepMs);
+    if (claimedCount === 0) {
+      await sleep(sleepMs);
+    }
   }
 
   throw new Error(
@@ -2479,8 +2489,11 @@ async function tickUntilParked(
   maxTicks: number,
   sleepMs: number,
 ): Promise<ParkedWorkflowRun> {
-  for (let i = 0; i < maxTicks; i++) {
-    await worker.tick();
+  const startedAt = Date.now();
+  const maxWaitMs = Math.max(250, Math.min(maxTicks * sleepMs, 3000));
+
+  while (Date.now() - startedAt <= maxWaitMs) {
+    const claimedCount = await worker.tick();
     const run = await backend.getWorkflowRun({ workflowRunId });
     if (
       run?.status === "running" &&
@@ -2489,7 +2502,9 @@ async function tickUntilParked(
     ) {
       return run as ParkedWorkflowRun;
     }
-    await sleep(sleepMs);
+    if (claimedCount === 0) {
+      await sleep(sleepMs);
+    }
   }
 
   throw new Error(
