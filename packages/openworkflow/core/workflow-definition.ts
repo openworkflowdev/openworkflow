@@ -164,6 +164,15 @@ export function computeFailedWorkflowRunUpdate(
   error: Readonly<SerializedError>,
   now: Readonly<Date>,
 ): FailedWorkflowRunUpdate {
+  if (deadlineAt && now >= deadlineAt) {
+    return {
+      status: "failed",
+      availableAt: null,
+      finishedAt: now,
+      error: { message: "Workflow run deadline exceeded" },
+    };
+  }
+
   if (
     retryPolicy.maximumAttempts > 0 && // 0 = unlimited attempts
     attempts >= retryPolicy.maximumAttempts

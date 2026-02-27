@@ -173,6 +173,23 @@ describe("computeFailedWorkflowRunUpdate", () => {
     expect(result.error).toEqual({ message: "boom" });
   });
 
+  test("fails with deadline error when deadline has already elapsed", () => {
+    const now = new Date("2026-01-01T00:00:00.001Z");
+
+    const result = computeFailedWorkflowRunUpdate(
+      policy,
+      3,
+      new Date("2026-01-01T00:00:00.000Z"),
+      { message: "boom" },
+      now,
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.availableAt).toBeNull();
+    expect(result.finishedAt).toBe(now);
+    expect(result.error).toEqual({ message: "Workflow run deadline exceeded" });
+  });
+
   test("retries indefinitely when maximumAttempts is 0", () => {
     const unlimitedPolicy: RetryPolicy = { ...policy, maximumAttempts: 0 };
     const now = new Date("2026-01-01T00:00:00.000Z");
