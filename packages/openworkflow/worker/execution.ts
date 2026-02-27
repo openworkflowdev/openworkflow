@@ -9,24 +9,27 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
-  createInvokeContext,
+  createWorkflowContext,
 } from "../core/step-attempt.js";
 import {
   computeFailedWorkflowRunUpdate,
   DEFAULT_WORKFLOW_RETRY_POLICY,
   type RetryPolicy,
-  type Workflow,
   type WorkflowSpec,
 } from "../core/workflow-definition.js";
 import type {
-  InvokeStepConfig,
+  StepRunWorkflowOptions,
   StepApi,
   StepFunction,
   StepFunctionConfig,
   WorkflowFunction,
   WorkflowRunMetadata,
 } from "../core/workflow-function.js";
-import { isTerminalStatus, type WorkflowRun } from "../core/workflow-run.js";
+import {
+  isTerminalStatus,
+  validateInput,
+  type WorkflowRun,
+} from "../core/workflow-run.js";
 
 /**
  * Signal thrown when a workflow needs to sleep. Contains the time when the
@@ -78,10 +81,10 @@ const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * Retry policy for invoke step failures (no retries - the child workflow
+ * Retry policy for workflow step failures (no retries - the child workflow
  * is responsible for retries).
  */
-const INVOKE_FAILURE_RETRY_POLICY: RetryPolicy = {
+const WORKFLOW_STEP_FAILURE_RETRY_POLICY: RetryPolicy = {
   ...DEFAULT_STEP_RETRY_POLICY,
   maximumAttempts: 1,
 };
@@ -187,16 +190,16 @@ export function createStepExecutionStateFromAttempts(
 }
 
 /**
- * Resolve invoke timeout input to an absolute deadline.
+ * Resolve workflow timeout input to an absolute deadline.
  * @param timeout - Relative/absolute timeout input
  * @returns Absolute timeout deadline
  * @throws {Error} When timeout is invalid
  */
-function resolveInvokeTimeoutAt(
+function resolveWorkflowTimeoutAt(
   timeout: number | string | Date | undefined,
 ): Date {
   if (timeout === undefined) {
-    return defaultInvokeTimeoutAt();
+    return defaultWorkflowTimeoutAt();
   }
 
   if (timeout instanceof Date) {
@@ -205,7 +208,7 @@ function resolveInvokeTimeoutAt(
 
   if (typeof timeout === "number") {
     if (!Number.isFinite(timeout) || timeout < 0) {
-      throw new Error("Invoke timeout must be a non-negative number");
+      throw new Error("Workflow timeout must be a non-negative number");
     }
     return new Date(Date.now() + timeout);
   }
@@ -218,45 +221,45 @@ function resolveInvokeTimeoutAt(
 }
 
 /**
- * Default invoke timeout: 7 days from a base time.
+ * Default workflow timeout: 7 days from a base time.
  * @param base - Base timestamp (defaults to now)
  * @returns Timeout deadline
  */
-function defaultInvokeTimeoutAt(base: Readonly<Date> = new Date()): Date {
+function defaultWorkflowTimeoutAt(base: Readonly<Date> = new Date()): Date {
   const timeoutAt = new Date(base);
   timeoutAt.setDate(timeoutAt.getDate() + 7);
   return timeoutAt;
 }
 
 /**
- * Extract the invoke timeout from a persisted step attempt's context.
- * @param attempt - Running invoke step attempt
- * @returns Timeout deadline, or null when context is not invoke
+ * Extract the workflow timeout from a persisted step attempt's context.
+ * @param attempt - Running workflow step attempt
+ * @returns Timeout deadline, or null when context is not workflow
  */
-function getInvokeTimeoutAt(attempt: Readonly<StepAttempt>): Date | null {
-  if (attempt.context?.kind !== "invoke") {
+function getWorkflowTimeoutAt(attempt: Readonly<StepAttempt>): Date | null {
+  if (attempt.context?.kind !== "workflow") {
     return null;
   }
 
   if (attempt.context.timeoutAt === null) {
-    // Backward compatibility for previously persisted invoke contexts.
-    return defaultInvokeTimeoutAt(attempt.createdAt);
+    // Backward compatibility for previously persisted workflow contexts.
+    return defaultWorkflowTimeoutAt(attempt.createdAt);
   }
 
   return new Date(attempt.context.timeoutAt);
 }
 
 /**
- * Determine whether the invoke timeout has elapsed before the child completed.
- * @param attempt - Running invoke step attempt
+ * Determine whether the workflow timeout has elapsed before the child completed.
+ * @param attempt - Running workflow step attempt
  * @param childRun - Linked child workflow run
  * @returns True when timeout elapsed before child terminal completion
  */
-function hasInvokeTimedOut(
+function hasWorkflowTimedOut(
   attempt: Readonly<StepAttempt>,
   childRun: Readonly<WorkflowRun>,
 ): boolean {
-  const timeoutAt = getInvokeTimeoutAt(attempt);
+  const timeoutAt = getWorkflowTimeoutAt(attempt);
   if (!timeoutAt) return false;
 
   const timeoutMs = timeoutAt.getTime();
@@ -271,30 +274,12 @@ function hasInvokeTimedOut(
 }
 
 /**
- * Normalize a workflow target (string | WorkflowSpec | Workflow) to a
- * WorkflowSpec.
- * @param workflow - Workflow target reference
- * @returns WorkflowSpec for child run creation
- */
-function toWorkflowSpec<Input, Output, RunInput>(
-  workflow:
-    | WorkflowSpec<Input, Output, RunInput>
-    | Workflow<Input, Output, RunInput>
-    | string,
-): WorkflowSpec<Input, Output, RunInput> {
-  if (typeof workflow === "string") {
-    return { name: workflow };
-  }
-  return "spec" in workflow ? workflow.spec : workflow;
-}
-
-/**
  * Build deterministic idempotency key for child workflow invocation.
- * @param attempt - Parent invoke step attempt
+ * @param attempt - Parent workflow step attempt
  * @returns Stable idempotency key
  */
-function buildInvokeIdempotencyKey(attempt: Readonly<StepAttempt>): string {
-  return `__invoke:${attempt.namespaceId}:${attempt.id}`;
+function buildWorkflowIdempotencyKey(attempt: Readonly<StepAttempt>): string {
+  return `__workflow:${attempt.namespaceId}:${attempt.id}`;
 }
 
 /**
@@ -306,6 +291,16 @@ export interface StepExecutorOptions {
   workerId: string;
   attempts: StepAttempt[];
   stepLimit?: number;
+}
+
+interface RunWorkflowStepRequest<
+  Input = unknown,
+  Output = unknown,
+  RunInput = Input,
+> {
+  workflowSpec: WorkflowSpec<Input, Output, RunInput>;
+  input: RunInput | undefined;
+  timeout: number | string | Date | undefined;
 }
 
 /**
@@ -458,34 +453,45 @@ class StepExecutor implements StepApi {
     throw new SleepSignal(resumeAt);
   }
 
-  // ---- step.invokeWorkflow -----------------------------------------------
+  // ---- step.runWorkflow -----------------------------------------------
 
-  async invokeWorkflow<Output, Input, RunInput = Input>(
-    baseStepName: string,
-    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  async runWorkflow<Input, Output, RunInput = Input>(
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    input?: RunInput,
+    options?: Readonly<StepRunWorkflowOptions>,
   ): Promise<Output> {
-    const stepName = this.resolveStepName(baseStepName);
+    const stepName = this.resolveStepName(options?.name ?? spec.name);
+    const request: RunWorkflowStepRequest<Input, Output, RunInput> = {
+      workflowSpec: spec,
+      input,
+      timeout: options?.timeout,
+    };
+
     const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) {
       return existingAttempt.output as Output;
     }
 
-    // Resume a running invoke attempt (replay path)
+    // Resume a running workflow attempt (replay path)
     const runningAttempt = this.runningByStepName.get(stepName);
-    if (runningAttempt?.kind === "invoke") {
-      return await this.resolveRunningInvoke(stepName, runningAttempt, opts);
+    if (runningAttempt?.kind === "workflow") {
+      return await this.resolveRunningWorkflow(
+        stepName,
+        runningAttempt,
+        request,
+      );
     }
 
-    // First encounter — create the invoke step and child workflow run
-    const timeoutAt = resolveInvokeTimeoutAt(opts.timeout);
+    // First encounter — create the workflow step and child workflow run
+    const timeoutAt = resolveWorkflowTimeoutAt(request.timeout);
     this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName,
-      kind: "invoke",
+      kind: "workflow",
       config: {},
-      context: createInvokeContext(timeoutAt),
+      context: createWorkflowContext(timeoutAt),
     });
     this.stepCount += 1;
     this.runningByStepName.set(stepName, attempt);
@@ -493,50 +499,50 @@ class StepExecutor implements StepApi {
     const linkedAttempt = await this.linkChildWorkflowRun(
       stepName,
       attempt,
-      opts,
+      request,
     ).catch(
       async (error: unknown) =>
         await this.failStepWithError(
           stepName,
           attempt.id,
           error,
-          INVOKE_FAILURE_RETRY_POLICY,
+          WORKFLOW_STEP_FAILURE_RETRY_POLICY,
         ),
     );
 
-    return await this.resolveRunningInvoke(stepName, linkedAttempt, opts);
+    return await this.resolveRunningWorkflow(stepName, linkedAttempt, request);
   }
 
   /**
-   * Resolve a running invoke attempt — check child status and either complete,
+   * Resolve a running workflow attempt — check child status and either complete,
    * fail, or go back to sleep.
-   * @param stepName - Invoke step name
-   * @param runningAttempt - Previously created invoke step attempt
-   * @param opts - Invoke step configuration
+   * @param stepName - Workflow step name
+   * @param runningAttempt - Previously created workflow step attempt
+   * @param request - Workflow step request
    * @returns The child workflow output when available
    */
-  private async resolveRunningInvoke<Output, Input, RunInput = Input>(
+  private async resolveRunningWorkflow<Input, Output, RunInput = Input>(
     stepName: string,
     runningAttempt: Readonly<StepAttempt>,
-    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+    request: Readonly<RunWorkflowStepRequest<Input, Output, RunInput>>,
   ): Promise<Output> {
-    // Ensure the invoke attempt has a linked child (may need to create one if
+    // Ensure the workflow attempt has a linked child (may need to create one if
     // a previous attempt crashed before linking)
-    const invokeAttempt =
+    const workflowAttempt =
       runningAttempt.childWorkflowRunId &&
       runningAttempt.childWorkflowRunNamespaceId
         ? runningAttempt
-        : await this.linkChildWorkflowRun(stepName, runningAttempt, opts);
+        : await this.linkChildWorkflowRun(stepName, runningAttempt, request);
 
-    const childId = invokeAttempt.childWorkflowRunId;
+    const childId = workflowAttempt.childWorkflowRunId;
     if (!childId) {
       return await this.failStepWithError(
         stepName,
-        invokeAttempt.id,
+        workflowAttempt.id,
         new Error(
-          `Invoke step "${stepName}" could not find linked child workflow run`,
+          `Workflow step "${stepName}" could not find linked child workflow run`,
         ),
-        INVOKE_FAILURE_RETRY_POLICY,
+        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
       );
     }
 
@@ -546,21 +552,21 @@ class StepExecutor implements StepApi {
     if (!childRun) {
       return await this.failStepWithError(
         stepName,
-        invokeAttempt.id,
+        workflowAttempt.id,
         new Error(
-          `Invoke step "${stepName}" could not find linked child workflow run "${childId}"`,
+          `Workflow step "${stepName}" could not find linked child workflow run "${childId}"`,
         ),
-        INVOKE_FAILURE_RETRY_POLICY,
+        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
       );
     }
 
     // Check timeout before checking child result
-    if (hasInvokeTimedOut(invokeAttempt, childRun)) {
+    if (hasWorkflowTimedOut(workflowAttempt, childRun)) {
       return await this.failStepWithError(
         stepName,
-        invokeAttempt.id,
-        new Error("Timed out waiting for invoked workflow to complete"),
-        INVOKE_FAILURE_RETRY_POLICY,
+        workflowAttempt.id,
+        new Error("Timed out waiting for child workflow to complete"),
+        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
       );
     }
 
@@ -568,7 +574,7 @@ class StepExecutor implements StepApi {
     if (childRun.status === "completed" || childRun.status === "succeeded") {
       const completed = await this.backend.completeStepAttempt({
         workflowRunId: this.workflowRunId,
-        stepAttemptId: invokeAttempt.id,
+        stepAttemptId: workflowAttempt.id,
         workerId: this.workerId,
         output: childRun.output,
       });
@@ -585,9 +591,9 @@ class StepExecutor implements StepApi {
           : deserializeError(childRun.error);
       return await this.failStepWithError(
         stepName,
-        invokeAttempt.id,
+        workflowAttempt.id,
         childError,
-        INVOKE_FAILURE_RETRY_POLICY,
+        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
       );
     }
 
@@ -595,47 +601,50 @@ class StepExecutor implements StepApi {
     if (childRun.status === "canceled") {
       return await this.failStepWithError(
         stepName,
-        invokeAttempt.id,
+        workflowAttempt.id,
         new Error(
-          `Invoke step "${stepName}" failed because child workflow run "${childRun.id}" was canceled`,
+          `Workflow step "${stepName}" failed because child workflow run "${childRun.id}" was canceled`,
         ),
-        INVOKE_FAILURE_RETRY_POLICY,
+        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
       );
     }
 
     // Child still running — sleep until timeout
-    const timeoutAt = getInvokeTimeoutAt(invokeAttempt);
+    const timeoutAt = getWorkflowTimeoutAt(workflowAttempt);
     throw new SleepSignal(
-      timeoutAt ?? defaultInvokeTimeoutAt(invokeAttempt.createdAt),
+      timeoutAt ?? defaultWorkflowTimeoutAt(workflowAttempt.createdAt),
     );
   }
 
   /**
    * Create (or dedupe) the child workflow run and persist the linkage on the
-   * parent invoke step attempt.
-   * @param stepName - Parent invoke step name
-   * @param attempt - Parent invoke step attempt
-   * @param opts - Invoke step configuration
+   * parent workflow step attempt.
+   * @param stepName - Parent workflow step name
+   * @param attempt - Parent workflow step attempt
+   * @param request - Workflow step request
    * @returns Updated step attempt with child linkage
    */
-  private async linkChildWorkflowRun<Output, Input, RunInput = Input>(
+  private async linkChildWorkflowRun<Input, Output, RunInput = Input>(
     stepName: string,
     attempt: Readonly<StepAttempt>,
-    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+    request: Readonly<RunWorkflowStepRequest<Input, Output, RunInput>>,
   ): Promise<StepAttempt> {
-    const workflow = opts.workflow;
-    if (typeof workflow === "string" && workflow.length === 0) {
-      throw new Error("Invoke workflow target must be a non-empty string");
+    const validationResult = await validateInput(
+      request.workflowSpec.schema,
+      request.input,
+    );
+    if (!validationResult.success) {
+      throw new Error(validationResult.error);
     }
+    const parsedInput = validationResult.value;
 
-    const spec = toWorkflowSpec(workflow);
     const childRun = await this.backend.createWorkflowRun({
-      workflowName: spec.name,
-      version: spec.version ?? null,
-      idempotencyKey: buildInvokeIdempotencyKey(attempt),
+      workflowName: request.workflowSpec.name,
+      version: request.workflowSpec.version ?? null,
+      idempotencyKey: buildWorkflowIdempotencyKey(attempt),
       config: {},
       context: null,
-      input: normalizeStepOutput(opts.input),
+      input: normalizeStepOutput(parsedInput),
       parentStepAttemptNamespaceId: attempt.namespaceId,
       parentStepAttemptId: attempt.id,
       availableAt: null,
@@ -656,7 +665,7 @@ class StepExecutor implements StepApi {
 
   /**
    * Record a step failure, update the failed-attempt counter, and throw a
-   * StepError. Shared by both `step.run` failures and invoke failures.
+   * StepError. Shared by both `step.run` failures and workflow failures.
    * @param stepName - Step name
    * @param stepAttemptId - Step attempt id
    * @param error - Error that caused the failure
@@ -710,7 +719,7 @@ export interface ExecuteWorkflowParams {
 /**
  * Execute a workflow run. This is the core application use case that handles:
  * - Loading step history
- * - Handling paused (sleep/invoke wait) steps
+ * - Handling paused (sleep/runWorkflow wait) steps
  * - Creating the step executor
  * - Executing the workflow function
  * - Completing, failing, or parking the workflow run based on the outcome

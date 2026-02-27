@@ -6,7 +6,7 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
-  createInvokeContext,
+  createWorkflowContext,
 } from "./step-attempt.js";
 import type { StepAttempt, StepAttemptCache } from "./step-attempt.js";
 import { describe, expect, test } from "vitest";
@@ -318,22 +318,22 @@ describe("createSleepContext", () => {
   });
 });
 
-describe("createInvokeContext", () => {
-  test("creates invoke context with timeout", () => {
+describe("createWorkflowContext", () => {
+  test("creates workflow context with timeout", () => {
     const timeoutAt = new Date("2025-06-15T10:30:00.000Z");
-    const context = createInvokeContext(timeoutAt);
+    const context = createWorkflowContext(timeoutAt);
 
     expect(context).toEqual({
-      kind: "invoke",
+      kind: "workflow",
       timeoutAt: "2025-06-15T10:30:00.000Z",
     });
   });
 
-  test("creates invoke context with null timeout", () => {
-    const context = createInvokeContext(null);
+  test("creates workflow context with null timeout", () => {
+    const context = createWorkflowContext(null);
 
     expect(context).toEqual({
-      kind: "invoke",
+      kind: "workflow",
       timeoutAt: null,
     });
   });

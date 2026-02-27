@@ -7,7 +7,7 @@ import { err, ok } from "./result.js";
 /**
  * The kind of step in a workflow.
  */
-export type StepKind = "function" | "sleep" | "invoke";
+export type StepKind = "function" | "sleep" | "workflow";
 
 /**
  * Status of a step attempt through its lifecycle.
@@ -27,10 +27,10 @@ export interface SleepStepAttemptContext {
 }
 
 /**
- * Context for an invoke step attempt.
+ * Context for a workflow step attempt.
  */
-export interface InvokeStepAttemptContext {
-  kind: "invoke";
+export interface WorkflowStepAttemptContext {
+  kind: "workflow";
   timeoutAt: string | null;
 }
 
@@ -39,7 +39,7 @@ export interface InvokeStepAttemptContext {
  */
 export type StepAttemptContext =
   | SleepStepAttemptContext
-  | InvokeStepAttemptContext;
+  | WorkflowStepAttemptContext;
 
 /**
  * StepAttempt represents a single attempt of a step within a workflow.
@@ -159,15 +159,15 @@ export function createSleepContext(
 }
 
 /**
- * Create the context object for an invoke step attempt.
+ * Create the context object for a workflow step attempt.
  * @param timeoutAt - Parent wait timeout deadline, or null for no timeout
- * @returns The context object for an invoke step
+ * @returns The context object for a workflow step
  */
-export function createInvokeContext(
+export function createWorkflowContext(
   timeoutAt: Readonly<Date> | null,
-): InvokeStepAttemptContext {
+): WorkflowStepAttemptContext {
   return {
-    kind: "invoke" as const,
+    kind: "workflow" as const,
     timeoutAt: timeoutAt?.toISOString() ?? null,
   };
 }

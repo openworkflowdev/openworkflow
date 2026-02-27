@@ -228,14 +228,16 @@ sleep but a durable pause.
 await step.sleep("wait-one-hour", "1h");
 ```
 
-**`step.invokeWorkflow(name, options)`**: Starts a child workflow and waits for
-it durably. When the timeout is reached (default 7d), the parent step fails but
-the child workflow continues running independently.
+**`step.runWorkflow(spec, input?, options?)`**: Starts a child workflow and
+waits for it durably. `options.name` sets the durable step name (defaults to the
+target workflow name in `spec`) and `options.timeout` controls the wait timeout
+(default 7d). When the timeout is reached, the parent step fails but the child
+workflow continues running independently.
 
-All step APIs (`step.run`, `step.sleep`, and `step.invokeWorkflow`) share the
-same collision logic for durable keys. If duplicate base names are encountered
-in one execution pass, OpenWorkflow auto-indexes them as `name`, `name:1`,
-`name:2`, and so on so each step call maps to a distinct step attempt.
+All step APIs (`step.run`, `step.sleep`, and `step.runWorkflow`) share the same
+collision logic for durable keys. If duplicate base names are encountered in one
+execution pass, OpenWorkflow auto-indexes them as `name`, `name:1`, `name:2`,
+and so on so each step call maps to a distinct step attempt.
 
 ## 4. Error Handling & Retries
 

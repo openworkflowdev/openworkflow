@@ -1013,13 +1013,13 @@ export function testBackend(options: TestBackendOptions): void {
 
         const parentRun = await createClaimedWorkflowRun(backend);
         const parentWorkerId = parentRun.workerId ?? "";
-        const invokeAttempt = await backend.createStepAttempt({
+        const workflowAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
           workerId: parentWorkerId,
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
-          context: { kind: "invoke", timeoutAt: null },
+          context: { kind: "workflow", timeoutAt: null },
         });
 
         const childRun = await backend.createWorkflowRun({
@@ -1029,15 +1029,15 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
-          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
-          parentStepAttemptId: invokeAttempt.id,
+          parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+          parentStepAttemptId: workflowAttempt.id,
           availableAt: null,
           deadlineAt: null,
         });
 
         await backend.setStepAttemptChildWorkflowRun({
           workflowRunId: parentRun.id,
-          stepAttemptId: invokeAttempt.id,
+          stepAttemptId: workflowAttempt.id,
           workerId: parentWorkerId,
           childWorkflowRunNamespaceId: childRun.namespaceId,
           childWorkflowRunId: childRun.id,
@@ -1099,13 +1099,13 @@ export function testBackend(options: TestBackendOptions): void {
         }
         const parentLeaseBeforeChild = parentRun.availableAt.getTime();
 
-        const invokeAttempt = await backend.createStepAttempt({
+        const workflowAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
           workerId: parentWorkerId,
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
-          context: { kind: "invoke", timeoutAt: null },
+          context: { kind: "workflow", timeoutAt: null },
         });
 
         const childRun = await backend.createWorkflowRun({
@@ -1115,15 +1115,15 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
-          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
-          parentStepAttemptId: invokeAttempt.id,
+          parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+          parentStepAttemptId: workflowAttempt.id,
           availableAt: null,
           deadlineAt: null,
         });
 
         await backend.setStepAttemptChildWorkflowRun({
           workflowRunId: parentRun.id,
-          stepAttemptId: invokeAttempt.id,
+          stepAttemptId: workflowAttempt.id,
           workerId: parentWorkerId,
           childWorkflowRunNamespaceId: childRun.namespaceId,
           childWorkflowRunId: childRun.id,
@@ -1258,13 +1258,13 @@ export function testBackend(options: TestBackendOptions): void {
 
         const parentRun = await createClaimedWorkflowRun(backend);
         const parentWorkerId = parentRun.workerId ?? "";
-        const invokeAttempt = await backend.createStepAttempt({
+        const workflowAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
           workerId: parentWorkerId,
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
-          context: { kind: "invoke", timeoutAt: null },
+          context: { kind: "workflow", timeoutAt: null },
         });
         const farFuture = new Date(Date.now() + 5 * 60 * 1000);
         await backend.sleepWorkflowRun({
@@ -1280,8 +1280,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
-          parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
-          parentStepAttemptId: invokeAttempt.id,
+          parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+          parentStepAttemptId: workflowAttempt.id,
           availableAt: null,
           deadlineAt: null,
         });
@@ -1427,7 +1427,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: parentRun.id,
           workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
           context: null,
         });
@@ -1468,7 +1468,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: parentRun.id,
           workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
           context: null,
         });
@@ -1502,7 +1502,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: parentRun.id,
           workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
           stepName: randomUUID(),
-          kind: "invoke",
+          kind: "workflow",
           config: {},
           context: null,
         });

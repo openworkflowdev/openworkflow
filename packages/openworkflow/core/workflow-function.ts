@@ -1,9 +1,5 @@
 import type { DurationString } from "./duration.js";
-import type {
-  RetryPolicy,
-  Workflow,
-  WorkflowSpec,
-} from "./workflow-definition.js";
+import type { RetryPolicy, WorkflowSpec } from "./workflow-definition.js";
 import type { WorkflowRun } from "./workflow-run.js";
 
 /**
@@ -31,41 +27,35 @@ export type StepFunction<Output> = () =>
   | undefined;
 
 /**
- * Target workflow reference for `step.invokeWorkflow`.
+ * Options for an individual step defined with `step.runWorkflow()`.
  */
-type InvokeWorkflowTarget<Input, Output, RunInput> =
-  | WorkflowSpec<Input, Output, RunInput>
-  | Workflow<Input, Output, RunInput>
-  | string;
-
-/**
- * Config for invoking a child workflow from `step.invokeWorkflow()`.
- */
-export interface InvokeStepConfig<
-  Input = unknown,
-  Output = unknown,
-  RunInput = Input,
-> {
-  workflow: InvokeWorkflowTarget<Input, Output, RunInput>;
-  input?: RunInput;
+export interface StepRunWorkflowOptions {
+  /**
+   * Optional durable step name. Defaults to the target workflow name.
+   */
+  name?: string;
+  /**
+   * Maximum time to wait for the child workflow to complete.
+   */
   timeout?: number | string | Date;
 }
 
 /**
  * Represents the API for defining steps within a workflow. Used within a
  * workflow handler to define steps by calling `step.run()`, `step.sleep()`,
- * and `step.invokeWorkflow()`.
+ * and `step.runWorkflow()`.
  */
 export interface StepApi {
   run: <Output>(
     config: Readonly<StepFunctionConfig>,
     fn: StepFunction<Output>,
   ) => Promise<Output>;
-  sleep: (name: string, duration: DurationString) => Promise<void>;
-  invokeWorkflow: <Output, Input, RunInput = Input>(
-    name: string,
-    opts: Readonly<InvokeStepConfig<Input, Output, RunInput>>,
+  runWorkflow: <Input, Output, RunInput = Input>(
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    input?: RunInput,
+    options?: Readonly<StepRunWorkflowOptions>,
   ) => Promise<Output>;
+  sleep: (name: string, duration: DurationString) => Promise<void>;
 }
 
 /**
