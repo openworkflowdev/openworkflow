@@ -1105,6 +1105,7 @@ describe("Worker", () => {
 
     // wait for tick to complete
     await tickPromise;
+    await worker.stop();
 
     // step should have been executed but workflow should be canceled
     expect(stepExecuted).toBe(true);
