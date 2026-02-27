@@ -86,7 +86,7 @@ export class OpenWorkflow {
    * @returns Handle for awaiting the result
    * @example
    * ```ts
-   * const handle = await ow.runWorkflow(emailWorkflow, { to: 'user@example.com' });
+   * const handle = await ow.runWorkflow(emailWorkflow.spec, { to: 'user@example.com' });
    * const result = await handle.result();
    * ```
    */

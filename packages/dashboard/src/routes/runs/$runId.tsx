@@ -53,7 +53,7 @@ export const Route = createFileRoute("/runs/$runId")({
       ...new Set(
         steps
           .map((step) =>
-            step.kind === "invoke" ? step.childWorkflowRunId : null,
+            step.kind === "workflow" ? step.childWorkflowRunId : null,
           )
           .filter((childRunId): childRunId is string => childRunId !== null),
       ),
@@ -186,7 +186,7 @@ function RunDetailsPage() {
                     const stepTypeLabel =
                       step.kind === "function" ? "run" : step.kind;
                     const childRunId =
-                      step.kind === "invoke" ? step.childWorkflowRunId : null;
+                      step.kind === "workflow" ? step.childWorkflowRunId : null;
                     const childRun = childRunId
                       ? (childRunsById[childRunId] ?? null)
                       : null;

@@ -15,6 +15,7 @@ import {
 } from "./execution.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, test, expect, vi } from "vitest";
+import { z } from "zod";
 
 const backendsToStop: BackendPostgres[] = [];
 
@@ -357,23 +358,22 @@ describe("StepExecutor", () => {
     expect(sleepStepNames).toEqual(["pause", "pause:1"]);
   });
 
-  test("invokes a child workflow and returns child output", async () => {
+  test("runs a child workflow and returns child output", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-success-${randomUUID()}` },
+      { name: `workflow-child-success-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value + 1;
       },
     );
 
     const parent = client.defineWorkflow<{ value: number }, number>(
-      { name: `invoke-parent-success-${randomUUID()}` },
+      { name: `workflow-parent-success-${randomUUID()}` },
       async ({ input, step }) => {
-        const childResult = await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-          input: { value: input.value },
+        const childResult = await step.runWorkflow(child.workflow.spec, {
+          value: input.value,
         });
         return childResult * 2;
       },
@@ -391,25 +391,31 @@ describe("StepExecutor", () => {
 
     expect(status).toBe("completed");
     await expect(handle.result()).resolves.toBe(12);
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const workflowAttempt = attempts.data.find(
+      (stepAttempt) => stepAttempt.kind === "workflow",
+    );
+    expect(workflowAttempt?.stepName).toBe(child.workflow.spec.name);
   });
 
-  test("wakes parent invoke wait when child completes before parent parks", async () => {
+  test("wakes parent runWorkflow wait when child completes before parent parks", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-race-${randomUUID()}` },
+      { name: `workflow-child-race-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-race-${randomUUID()}` },
+      { name: `workflow-parent-race-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -440,23 +446,21 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("completes parent immediately when invoked child already finished", async () => {
+  test("completes parent immediately when child workflow already finished", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-early-finish-${randomUUID()}` },
+      { name: `workflow-child-early-finish-${randomUUID()}` },
       () => {
         return { ignored: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-early-finish-${randomUUID()}` },
+      { name: `workflow-parent-early-finish-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -520,24 +524,25 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toEqual({ fast: true });
   });
 
-  test("supports invoke step string name options", async () => {
+  test("supports explicit runWorkflow options.name override", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-step-shape-${randomUUID()}` },
+      { name: `workflow-child-step-shape-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value + 1;
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-step-shape-${randomUUID()}` },
+      { name: `workflow-parent-step-shape-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-          input: { value: 9 },
-        });
+        return await step.runWorkflow(
+          child.workflow.spec,
+          { value: 9 },
+          { name: "workflow-child" },
+        );
       },
     );
 
@@ -555,26 +560,27 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toBe(10);
   });
 
-  test("applies collision indexing across step.run and step.invokeWorkflow", async () => {
+  test("applies collision indexing across step.run and step.runWorkflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-cross-type-${randomUUID()}` },
+      { name: `workflow-child-cross-type-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value + 1;
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-cross-type-${randomUUID()}` },
+      { name: `workflow-parent-cross-type-${randomUUID()}` },
       async ({ step }) => {
         const local = await step.run({ name: "shared-name" }, () => 41);
-        const invoked = await step.invokeWorkflow("shared-name", {
-          workflow: child.workflow,
-          input: { value: 1 },
-        });
-        return { local, invoked };
+        const childWorkflowResult = await step.runWorkflow(
+          child.workflow.spec,
+          { value: 1 },
+          { name: "shared-name" },
+        );
+        return { local, childWorkflowResult };
       },
     );
 
@@ -589,7 +595,10 @@ describe("StepExecutor", () => {
     );
 
     expect(status).toBe("completed");
-    await expect(handle.result()).resolves.toEqual({ local: 41, invoked: 2 });
+    await expect(handle.result()).resolves.toEqual({
+      local: 41,
+      childWorkflowResult: 2,
+    });
 
     const steps = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -609,43 +618,43 @@ describe("StepExecutor", () => {
       [...kindByStepName.keys()].toSorted((a, b) => a.localeCompare(b)),
     ).toEqual(["shared-name", "shared-name:1"]);
     expect(kindByStepName.get("shared-name")).toBe("function");
-    expect(kindByStepName.get("shared-name:1")).toBe("invoke");
+    expect(kindByStepName.get("shared-name:1")).toBe("workflow");
   });
 
-  test("supports workflow-name targets, date/number timeouts, and auto-indexed duplicate invoke names", async () => {
+  test("supports workflow spec targets, date/number timeouts, and auto-indexed duplicate workflow names", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-timeout-shapes-${randomUUID()}` },
+      { name: `workflow-child-timeout-shapes-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value + 1;
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-timeout-shapes-${randomUUID()}` },
+      { name: `workflow-parent-timeout-shapes-${randomUUID()}` },
       async ({ step }) => {
-        const first = await step.invokeWorkflow("invoke-cached", {
-          workflow: child.workflow.spec.name,
-          input: { value: 4 },
-          timeout: new Date(Date.now() + 60_000),
-        });
-        const second = await step.invokeWorkflow("invoke-cached", {
-          workflow: child.workflow.spec.name,
-          input: { value: 99 },
-          timeout: 60_000,
-        });
-        const numeric = await step.invokeWorkflow("invoke-number-timeout", {
-          workflow: child.workflow.spec.name,
-          input: { value: 8 },
-          timeout: 60_000,
-        });
-        const spec = await step.invokeWorkflow("invoke-spec-target", {
-          workflow: { name: child.workflow.spec.name },
-          input: { value: 1 },
-          timeout: 60_000,
-        });
+        const first = await step.runWorkflow(
+          child.workflow.spec,
+          { value: 4 },
+          { timeout: new Date(Date.now() + 60_000) },
+        );
+        const second = await step.runWorkflow(
+          child.workflow.spec,
+          { value: 99 },
+          { timeout: 60_000 },
+        );
+        const numeric = await step.runWorkflow(
+          child.workflow.spec,
+          { value: 8 },
+          { timeout: 60_000 },
+        );
+        const spec = await step.runWorkflow(
+          { name: child.workflow.spec.name },
+          { value: 1 },
+          { timeout: 60_000 },
+        );
         return { first, second, numeric, spec };
       },
     );
@@ -672,29 +681,30 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeStepNames = steps.data
-      .filter((stepAttempt) => stepAttempt.kind === "invoke")
+    const workflowStepNames = steps.data
+      .filter((stepAttempt) => stepAttempt.kind === "workflow")
       .map((stepAttempt) => stepAttempt.stepName)
       .toSorted((a, b) => a.localeCompare(b));
-    expect(invokeStepNames).toEqual([
-      "invoke-cached",
-      "invoke-cached:1",
-      "invoke-number-timeout",
-      "invoke-spec-target",
+    expect(workflowStepNames).toEqual([
+      child.workflow.spec.name,
+      `${child.workflow.spec.name}:1`,
+      `${child.workflow.spec.name}:2`,
+      `${child.workflow.spec.name}:3`,
     ]);
   });
 
-  test("fails invoke when timeout number is invalid", async () => {
+  test("fails workflow when timeout number is invalid", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-invalid-timeout-number-${randomUUID()}` },
+      { name: `workflow-parent-invalid-timeout-number-${randomUUID()}` },
       async ({ step }) => {
-        await step.invokeWorkflow("invoke-child", {
-          workflow: `invoke-child-invalid-timeout-number-${randomUUID()}`,
-          timeout: -1,
-        });
+        await step.runWorkflow(
+          { name: `workflow-child-invalid-timeout-number-${randomUUID()}` },
+          undefined,
+          { timeout: -1 },
+        );
         return "never";
       },
     );
@@ -711,21 +721,24 @@ describe("StepExecutor", () => {
 
     expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
-      /Invoke timeout must be a non-negative number/,
+      /Workflow timeout must be a non-negative number/,
     );
   });
 
-  test("fails invoke when timeout duration string is invalid", async () => {
+  test("fails workflow when timeout duration string is invalid", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-invalid-timeout-duration-${randomUUID()}` },
+      { name: `workflow-parent-invalid-timeout-duration-${randomUUID()}` },
       async ({ step }) => {
-        await step.invokeWorkflow("invoke-child", {
-          workflow: `invoke-child-invalid-timeout-duration-${randomUUID()}`,
-          timeout: "not-a-duration" as DurationString,
-        });
+        await step.runWorkflow(
+          { name: `workflow-child-invalid-timeout-duration-${randomUUID()}` },
+          undefined,
+          {
+            timeout: "not-a-duration" as DurationString,
+          },
+        );
         return "never";
       },
     );
@@ -744,23 +757,65 @@ describe("StepExecutor", () => {
     await expect(handle.result()).rejects.toThrow(/not-a-duration/);
   });
 
-  test("handles invoke replay with non-invoke context shape", async () => {
+  test("validates child input before creating child run", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-context-null-${randomUUID()}` },
+      {
+        name: `workflow-child-schema-${randomUUID()}`,
+        schema: z.object({ email: z.email() }),
+      },
+      ({ input }: { input: { email: string } }) => {
+        return input.email;
+      },
+    );
+
+    const parent = client.defineWorkflow(
+      { name: `workflow-parent-schema-${randomUUID()}` },
+      async ({ step }) => {
+        await step.runWorkflow(child.workflow.spec, {
+          email: "not-an-email",
+        });
+        return "never";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await parent.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      150,
+      10,
+    );
+
+    expect(status).toBe("failed");
+    await expect(handle.result()).rejects.toThrow();
+
+    const runs = await backend.listWorkflowRuns({ limit: 100 });
+    const childRuns = runs.data.filter(
+      (run) => run.parentStepAttemptId !== null,
+    );
+    expect(childRuns).toHaveLength(0);
+  });
+
+  test("handles runWorkflow replay with non-workflow context shape", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow(
+      { name: `workflow-child-context-null-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-context-null-${randomUUID()}` },
+      { name: `workflow-parent-context-null-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -794,23 +849,21 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("handles invoke replay with legacy null timeout context", async () => {
+  test("handles runWorkflow replay with legacy null timeout context", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-legacy-timeout-${randomUUID()}` },
+      { name: `workflow-child-legacy-timeout-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-legacy-timeout-${randomUUID()}` },
+      { name: `workflow-parent-legacy-timeout-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -822,7 +875,7 @@ describe("StepExecutor", () => {
         const linked = await originalSetStepAttemptChildWorkflowRun(params);
         return {
           ...linked,
-          context: { kind: "invoke", timeoutAt: null },
+          context: { kind: "workflow", timeoutAt: null },
         };
       });
 
@@ -844,23 +897,21 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("handles invoke replay with invalid timeout timestamp context", async () => {
+  test("handles runWorkflow replay with invalid timeout timestamp context", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-invalid-timeout-context-${randomUUID()}` },
+      { name: `workflow-child-invalid-timeout-context-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-invalid-timeout-context-${randomUUID()}` },
+      { name: `workflow-parent-invalid-timeout-context-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -874,7 +925,7 @@ describe("StepExecutor", () => {
         const linked = await originalSetStepAttemptChildWorkflowRun(params);
         return {
           ...linked,
-          context: { kind: "invoke", timeoutAt: "not-a-date" },
+          context: { kind: "workflow", timeoutAt: "not-a-date" },
         };
       });
 
@@ -928,23 +979,21 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("fails invoke when child linkage is missing run id", async () => {
+  test("fails workflow when child linkage is missing run id", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-link-missing-id-${randomUUID()}` },
+      { name: `workflow-child-link-missing-id-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-link-missing-id-${randomUUID()}` },
+      { name: `workflow-parent-link-missing-id-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -993,23 +1042,21 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("fails invoke when linked child run cannot be loaded", async () => {
+  test("fails workflow when linked child run cannot be loaded", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-not-found-${randomUUID()}` },
+      { name: `workflow-child-not-found-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-child-not-found-${randomUUID()}` },
+      { name: `workflow-parent-child-not-found-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1071,18 +1118,16 @@ describe("StepExecutor", () => {
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-failed-null-error-${randomUUID()}` },
+      { name: `workflow-child-failed-null-error-${randomUUID()}` },
       () => {
         return { ok: true };
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-failed-null-error-${randomUUID()}` },
+      { name: `workflow-parent-failed-null-error-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1146,12 +1191,12 @@ describe("StepExecutor", () => {
     }
   });
 
-  test("surfaces canceled child workflow through parent invoke step", async () => {
+  test("surfaces canceled child workflow through parent workflow step", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-canceled-${randomUUID()}` },
+      { name: `workflow-child-canceled-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "500ms");
         return { ok: true };
@@ -1159,11 +1204,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-canceled-${randomUUID()}` },
+      { name: `workflow-parent-canceled-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1196,12 +1239,12 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeAttempt = attempts.data.find(
-      (stepAttempt) => stepAttempt.stepName === "invoke-child",
+    const workflowAttempt = attempts.data.find(
+      (stepAttempt) => stepAttempt.stepName === child.workflow.spec.name,
     );
-    const childRunId = invokeAttempt?.childWorkflowRunId;
+    const childRunId = workflowAttempt?.childWorkflowRunId;
     if (!childRunId) {
-      throw new Error("Expected invoke attempt child workflow run id");
+      throw new Error("Expected workflow attempt child workflow run id");
     }
 
     await backend.cancelWorkflowRun({
@@ -1233,42 +1276,12 @@ describe("StepExecutor", () => {
     await expect(handle.result()).rejects.toThrow(/was canceled/);
   });
 
-  test("fails invoke when workflow target string is empty", async () => {
-    const backend = await createBackend();
-    const client = new OpenWorkflow({ backend });
-
-    const parent = client.defineWorkflow(
-      { name: `invoke-parent-empty-target-${randomUUID()}` },
-      async ({ step }) => {
-        await step.invokeWorkflow("invoke-child", {
-          workflow: "",
-        });
-        return "never";
-      },
-    );
-
-    const worker = client.newWorker();
-    const handle = await parent.run();
-    const status = await tickUntilTerminal(
-      backend,
-      worker,
-      handle.workflowRun.id,
-      150,
-      10,
-    );
-
-    expect(status).toBe("failed");
-    await expect(handle.result()).rejects.toThrow(
-      /Invoke workflow target must be a non-empty string/,
-    );
-  });
-
-  test("surfaces child failure through parent invoke step", async () => {
+  test("surfaces child failure through parent workflow step", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-failure-${randomUUID()}` },
+      { name: `workflow-child-failure-${randomUUID()}` },
       async ({ step }) => {
         await step.run(
           { name: "fail", retryPolicy: { maximumAttempts: 1 } },
@@ -1281,12 +1294,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-failure-${randomUUID()}` },
+      { name: `workflow-parent-failure-${randomUUID()}` },
       async ({ step }) => {
-        await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-          input: null,
-        });
+        await step.runWorkflow(child.workflow.spec, null);
         return "never";
       },
     );
@@ -1305,12 +1315,12 @@ describe("StepExecutor", () => {
     await expect(handle.result()).rejects.toThrow(/child boom/);
   });
 
-  test("invoke timeout fails parent wait but child continues and completes", async () => {
+  test("workflow timeout fails parent wait but child continues and completes", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-timeout-${randomUUID()}` },
+      { name: `workflow-child-timeout-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "600ms");
         return { ok: true };
@@ -1318,10 +1328,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-timeout-${randomUUID()}` },
+      { name: `workflow-parent-timeout-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
+        return await step.runWorkflow(child.workflow.spec, undefined, {
           timeout: "100ms",
         });
       },
@@ -1338,29 +1347,29 @@ describe("StepExecutor", () => {
     );
     expect(parentStatus).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
-      /Timed out waiting for invoked workflow to complete/,
+      /Timed out waiting for child workflow to complete/,
     );
 
     const steps = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeAttempt = steps.data.find(
-      (step) => step.stepName === "invoke-child",
+    const workflowAttempt = steps.data.find(
+      (step) => step.stepName === child.workflow.spec.name,
     );
-    expect(invokeAttempt?.childWorkflowRunId).not.toBeNull();
-    expect(invokeAttempt?.childWorkflowRunId).toHaveLength(36);
+    expect(workflowAttempt?.childWorkflowRunId).not.toBeNull();
+    expect(workflowAttempt?.childWorkflowRunId).toHaveLength(36);
 
-    const childRunId = invokeAttempt?.childWorkflowRunId;
+    const childRunId = workflowAttempt?.childWorkflowRunId;
     if (!childRunId) {
-      throw new Error("Expected invoke attempt child workflow run id");
+      throw new Error("Expected workflow attempt child workflow run id");
     }
 
     const runs = await backend.listWorkflowRuns({ limit: 100 });
-    const childrenForInvokeAttempt = runs.data.filter(
-      (run) => run.parentStepAttemptId === invokeAttempt.id,
+    const childrenForWorkflowAttempt = runs.data.filter(
+      (run) => run.parentStepAttemptId === workflowAttempt.id,
     );
-    expect(childrenForInvokeAttempt).toHaveLength(1);
+    expect(childrenForWorkflowAttempt).toHaveLength(1);
 
     const childStatus = await tickUntilStatus(
       backend,
@@ -1373,12 +1382,12 @@ describe("StepExecutor", () => {
     expect(childStatus).toBe("completed");
   });
 
-  test("invoke timeout still fails when child finishes after timeout before parent replay", async () => {
+  test("workflow timeout still fails when child finishes after timeout before parent replay", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-timeout-order-${randomUUID()}` },
+      { name: `workflow-child-timeout-order-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "600ms");
         return { ok: true };
@@ -1386,10 +1395,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-timeout-order-${randomUUID()}` },
+      { name: `workflow-parent-timeout-order-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
+        return await step.runWorkflow(child.workflow.spec, undefined, {
           timeout: "100ms",
         });
       },
@@ -1419,12 +1427,12 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeAttempt = steps.data.find(
-      (step) => step.stepName === "invoke-child",
+    const workflowAttempt = steps.data.find(
+      (step) => step.stepName === child.workflow.spec.name,
     );
-    const childRunId = invokeAttempt?.childWorkflowRunId;
+    const childRunId = workflowAttempt?.childWorkflowRunId;
     if (!childRunId) {
-      throw new Error("Expected invoke attempt child workflow run id");
+      throw new Error("Expected workflow attempt child workflow run id");
     }
 
     const parentAfterFirstPass = await backend.getWorkflowRun({
@@ -1473,16 +1481,16 @@ describe("StepExecutor", () => {
     });
     expect(parentAfterReplay?.status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
-      /Timed out waiting for invoked workflow to complete/,
+      /Timed out waiting for child workflow to complete/,
     );
   });
 
-  test("invoke wait parks until timeout and does not use poll-loop wake-up events", async () => {
+  test("runWorkflow wait parks until timeout and does not use poll-loop wake-up events", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-parked-${randomUUID()}` },
+      { name: `workflow-child-parked-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "200ms");
         return { ok: true };
@@ -1490,11 +1498,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-parked-${randomUUID()}` },
+      { name: `workflow-parent-parked-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1525,28 +1531,26 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toEqual({ ok: true });
   });
 
-  test("supports parallel invokes via Promise.all", async () => {
+  test("supports parallel workflows via Promise.all", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-parallel-${randomUUID()}` },
+      { name: `workflow-child-parallel-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value * 2;
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-parallel-${randomUUID()}` },
+      { name: `workflow-parent-parallel-${randomUUID()}` },
       async ({ step }) => {
         const [a, b] = await Promise.all([
-          step.invokeWorkflow("invoke-a", {
-            workflow: child.workflow,
-            input: { value: 2 },
+          step.runWorkflow(child.workflow.spec, {
+            value: 2,
           }),
-          step.invokeWorkflow("invoke-b", {
-            workflow: child.workflow,
-            input: { value: 3 },
+          step.runWorkflow(child.workflow.spec, {
+            value: 3,
           }),
         ]);
         return a + b;
@@ -1567,28 +1571,26 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toBe(10);
   });
 
-  test("auto-indexes duplicate invoke names in parallel Promise.all", async () => {
+  test("auto-indexes duplicate workflow names in parallel Promise.all", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-parallel-duplicate-${randomUUID()}` },
+      { name: `workflow-child-parallel-duplicate-${randomUUID()}` },
       ({ input }: { input: { value: number } }) => {
         return input.value * 3;
       },
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-parallel-duplicate-${randomUUID()}` },
+      { name: `workflow-parent-parallel-duplicate-${randomUUID()}` },
       async ({ step }) => {
         const [first, second] = await Promise.all([
-          step.invokeWorkflow("invoke-same", {
-            workflow: child.workflow,
-            input: { value: 2 },
+          step.runWorkflow(child.workflow.spec, {
+            value: 2,
           }),
-          step.invokeWorkflow("invoke-same", {
-            workflow: child.workflow,
-            input: { value: 3 },
+          step.runWorkflow(child.workflow.spec, {
+            value: 3,
           }),
         ]);
         return { first, second };
@@ -1612,15 +1614,18 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeStepNames = steps.data
+    const workflowStepNames = steps.data
       .filter(
         (stepAttempt) =>
-          stepAttempt.kind === "invoke" &&
-          stepAttempt.stepName.startsWith("invoke-same"),
+          stepAttempt.kind === "workflow" &&
+          stepAttempt.stepName.startsWith(child.workflow.spec.name),
       )
       .map((stepAttempt) => stepAttempt.stepName)
       .toSorted((a, b) => a.localeCompare(b));
-    expect(invokeStepNames).toEqual(["invoke-same", "invoke-same:1"]);
+    expect(workflowStepNames).toEqual([
+      child.workflow.spec.name,
+      `${child.workflow.spec.name}:1`,
+    ]);
   });
 
   test("does not create duplicate child runs while waiting across replays", async () => {
@@ -1628,7 +1633,7 @@ describe("StepExecutor", () => {
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-replay-${randomUUID()}` },
+      { name: `workflow-child-replay-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "600ms");
         return { ok: true };
@@ -1636,11 +1641,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-replay-${randomUUID()}` },
+      { name: `workflow-parent-replay-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1661,18 +1664,20 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeAttempt = steps.data.find(
-      (step) => step.stepName === "invoke-child",
+    const workflowAttempt = steps.data.find(
+      (step) => step.stepName === child.workflow.spec.name,
     );
-    if (!invokeAttempt) {
-      throw new Error("Expected invoke attempt for step invoke-child");
+    if (!workflowAttempt) {
+      throw new Error(
+        `Expected workflow attempt for step ${child.workflow.spec.name}`,
+      );
     }
 
     const runs = await backend.listWorkflowRuns({ limit: 100 });
-    const childrenForInvokeAttempt = runs.data.filter(
-      (run) => run.parentStepAttemptId === invokeAttempt.id,
+    const childrenForWorkflowAttempt = runs.data.filter(
+      (run) => run.parentStepAttemptId === workflowAttempt.id,
     );
-    expect(childrenForInvokeAttempt).toHaveLength(1);
+    expect(childrenForWorkflowAttempt).toHaveLength(1);
   });
 
   test("canceling parent while waiting does not cancel child workflow", async () => {
@@ -1680,7 +1685,7 @@ describe("StepExecutor", () => {
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
-      { name: `invoke-child-cancel-${randomUUID()}` },
+      { name: `workflow-child-cancel-${randomUUID()}` },
       async ({ step }) => {
         await step.sleep("wait", "600ms");
         return { childDone: true };
@@ -1688,11 +1693,9 @@ describe("StepExecutor", () => {
     );
 
     const parent = client.defineWorkflow(
-      { name: `invoke-parent-cancel-${randomUUID()}` },
+      { name: `workflow-parent-cancel-${randomUUID()}` },
       async ({ step }) => {
-        return await step.invokeWorkflow("invoke-child", {
-          workflow: child.workflow,
-        });
+        return await step.runWorkflow(child.workflow.spec);
       },
     );
 
@@ -1704,12 +1707,12 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const invokeAttempt = steps.data.find(
-      (step) => step.stepName === "invoke-child",
+    const workflowAttempt = steps.data.find(
+      (step) => step.stepName === child.workflow.spec.name,
     );
-    const childRunId = invokeAttempt?.childWorkflowRunId;
+    const childRunId = workflowAttempt?.childWorkflowRunId;
     if (!childRunId) {
-      throw new Error("Expected invoke attempt child workflow run id");
+      throw new Error("Expected workflow attempt child workflow run id");
     }
 
     await handle.cancel();

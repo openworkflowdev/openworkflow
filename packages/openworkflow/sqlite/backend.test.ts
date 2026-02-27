@@ -193,7 +193,7 @@ describe("BackendSqlite.setStepAttemptChildWorkflowRun error handling", () => {
         workflowRunId: claimed.id,
         workerId,
         stepName: randomUUID(),
-        kind: "invoke",
+        kind: "workflow",
         config: {},
         context: null,
       });
@@ -294,7 +294,7 @@ describe("BackendSqlite legacy sleeping compatibility", () => {
   });
 });
 
-describe("BackendSqlite invoke wake-up reconciliation", () => {
+describe("BackendSqlite workflow wake-up reconciliation", () => {
   test("wakes parked parent immediately when child already finished", async () => {
     const backend = BackendSqlite.connect(":memory:", {
       namespaceId: randomUUID(),
@@ -302,7 +302,7 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
 
     try {
       const parent = await backend.createWorkflowRun({
-        workflowName: "invoke-parent-reconcile",
+        workflowName: "workflow-parent-reconcile",
         version: null,
         idempotencyKey: null,
         input: null,
@@ -324,31 +324,31 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
         throw new Error("Expected parent workflow run to be claimed");
       }
 
-      const invokeAttempt = await backend.createStepAttempt({
+      const workflowAttempt = await backend.createStepAttempt({
         workflowRunId: parent.id,
         workerId: parentWorkerId,
-        stepName: "invoke-child",
-        kind: "invoke",
+        stepName: "workflow-child",
+        kind: "workflow",
         config: {},
         context: null,
       });
 
       const child = await backend.createWorkflowRun({
-        workflowName: "invoke-child-reconcile",
+        workflowName: "workflow-child-reconcile",
         version: null,
         idempotencyKey: null,
         input: null,
         config: {},
         context: null,
-        parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
-        parentStepAttemptId: invokeAttempt.id,
+        parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+        parentStepAttemptId: workflowAttempt.id,
         availableAt: null,
         deadlineAt: null,
       });
 
       await backend.setStepAttemptChildWorkflowRun({
         workflowRunId: parent.id,
-        stepAttemptId: invokeAttempt.id,
+        stepAttemptId: workflowAttempt.id,
         workerId: parentWorkerId,
         childWorkflowRunNamespaceId: child.namespaceId,
         childWorkflowRunId: child.id,
@@ -390,14 +390,14 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
     }
   });
 
-  test("does not wake parked parent when invoke step is no longer running", async () => {
+  test("does not wake parked parent when workflow step is no longer running", async () => {
     const backend = BackendSqlite.connect(":memory:", {
       namespaceId: randomUUID(),
     });
 
     try {
       const parent = await backend.createWorkflowRun({
-        workflowName: "invoke-parent-no-wake-after-failed-invoke",
+        workflowName: "workflow-parent-no-wake-after-failed-workflow",
         version: null,
         idempotencyKey: null,
         input: null,
@@ -419,31 +419,31 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
         throw new Error("Expected parent workflow run to be claimed");
       }
 
-      const invokeAttempt = await backend.createStepAttempt({
+      const workflowAttempt = await backend.createStepAttempt({
         workflowRunId: parent.id,
         workerId: parentWorkerId,
-        stepName: "invoke-child",
-        kind: "invoke",
+        stepName: "workflow-child",
+        kind: "workflow",
         config: {},
         context: null,
       });
 
       const child = await backend.createWorkflowRun({
-        workflowName: "invoke-child-no-wake-after-failed-invoke",
+        workflowName: "workflow-child-no-wake-after-failed-workflow",
         version: null,
         idempotencyKey: null,
         input: null,
         config: {},
         context: null,
-        parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
-        parentStepAttemptId: invokeAttempt.id,
+        parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+        parentStepAttemptId: workflowAttempt.id,
         availableAt: null,
         deadlineAt: null,
       });
 
       await backend.setStepAttemptChildWorkflowRun({
         workflowRunId: parent.id,
-        stepAttemptId: invokeAttempt.id,
+        stepAttemptId: workflowAttempt.id,
         workerId: parentWorkerId,
         childWorkflowRunNamespaceId: child.namespaceId,
         childWorkflowRunId: child.id,
@@ -451,9 +451,9 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
 
       await backend.failStepAttempt({
         workflowRunId: parent.id,
-        stepAttemptId: invokeAttempt.id,
+        stepAttemptId: workflowAttempt.id,
         workerId: parentWorkerId,
-        error: { message: "invoke failed in parent" },
+        error: { message: "workflow failed in parent" },
       });
 
       const sleepTarget = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

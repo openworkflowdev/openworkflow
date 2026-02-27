@@ -1,10 +1,10 @@
 ---
 title: Child Workflows
-description: Invoke workflows from other workflows and wait for their results
+description: Run workflows from other workflows and wait for their results
 ---
 
 A parent workflow can start a child workflow and durably wait for its result
-using `step.invokeWorkflow()`. This lets you compose complex processes from
+using `step.runWorkflow()`. This lets you compose complex processes from
 smaller, reusable workflows — like splitting an order pipeline into separate
 payment and shipping workflows.
 
@@ -39,9 +39,8 @@ const processOrder = defineWorkflow(
     });
 
     // Start the report workflow and wait for it to finish
-    const report = await step.invokeWorkflow("generate-report", {
-      workflow: generateReport,
-      input: { reportId: input.orderId },
+    const report = await step.runWorkflow(generateReport.spec, {
+      reportId: input.orderId,
     });
 
     await step.run({ name: "send-confirmation" }, async () => {
@@ -58,29 +57,28 @@ const processOrder = defineWorkflow(
 ## Timeout
 
 By default, the parent waits up to **7 days** for the child to finish. You can
-customize this with the `timeout` option:
+customize this with `options.timeout`:
 
 ```ts
-const result = await step.invokeWorkflow("quick-task", {
-  workflow: quickTaskWorkflow,
-  input: { taskId: "abc" },
-  timeout: "5m", // wait at most 5 minutes
-});
+const result = await step.runWorkflow(
+  quickTaskWorkflow.spec,
+  { taskId: "abc" },
+  { timeout: "5m" }, // wait at most 5 minutes
+);
 ```
 
-`timeout` accepts a [duration string](/docs/sleeping#duration-formats), a
-number of milliseconds, or a `Date`:
+`timeout` accepts a [duration string](/docs/sleeping#duration-formats), a number
+of milliseconds, or a `Date`:
 
 ```ts
 // Duration string
-await step.invokeWorkflow("task", { workflow: w, timeout: "1h" });
+await step.runWorkflow(w.spec, undefined, { timeout: "1h" });
 
 // Milliseconds
-await step.invokeWorkflow("task", { workflow: w, timeout: 60_000 });
+await step.runWorkflow(w.spec, undefined, { timeout: 60_000 });
 
 // Absolute deadline
-await step.invokeWorkflow("task", {
-  workflow: w,
+await step.runWorkflow(w.spec, undefined, {
   timeout: new Date("2026-03-01"),
 });
 ```
@@ -91,43 +89,34 @@ await step.invokeWorkflow("task", {
   canceled.
 </Warning>
 
-## Workflow Target
+## Workflow Spec
 
-The `workflow` option accepts a workflow definition, a workflow spec, or a plain
-string name:
+The first argument accepts a workflow spec:
 
 ```ts
-// Workflow definition (recommended — type-safe input/output)
-await step.invokeWorkflow("run-child", {
-  workflow: myWorkflow,
-  input: { key: "value" },
-});
+// From a defined workflow
+await step.runWorkflow(myWorkflow.spec, { key: "value" });
 
-// Workflow spec
-await step.invokeWorkflow("run-child", {
-  workflow: myWorkflow.spec,
-  input: { key: "value" },
-});
-
-// String name (useful when the child is defined in another package)
-await step.invokeWorkflow("run-child", {
-  workflow: "my-workflow",
-  input: { key: "value" },
-});
+// Or any WorkflowSpec-compatible object
+await step.runWorkflow({ name: "my-workflow" }, { key: "value" });
 ```
+
+## Step Name
+
+Set `options.name` to control the durable step name. If omitted, OpenWorkflow
+uses the target workflow name.
 
 ## Error Handling
 
-If the child workflow **fails**, the parent invoke step also fails:
+If the child workflow **fails**, the parent workflow step also fails:
 
 ```ts
 const orderPipeline = defineWorkflow(
   { name: "order-pipeline" },
   async ({ input, step }) => {
     try {
-      const result = await step.invokeWorkflow("charge", {
-        workflow: chargeWorkflow,
-        input: { orderId: input.orderId },
+      const result = await step.runWorkflow(chargeWorkflow.spec, {
+        orderId: input.orderId,
       });
       return result;
     } catch (error) {
@@ -140,13 +129,13 @@ const orderPipeline = defineWorkflow(
 );
 ```
 
-If the child workflow is **canceled**, the parent invoke step fails with an
+If the child workflow is **canceled**, the parent workflow step fails with an
 error indicating the child was canceled.
 
 <Note>
-  Invoke steps do not retry automatically. The child workflow is responsible for
-  its own retries. If the child fails permanently, the error propagates to the
-  parent.
+  Workflow steps do not retry automatically. The child workflow is responsible
+  for its own retries. If the child fails permanently, the error propagates to
+  the parent.
 </Note>
 
 ## Parallel Child Workflows
@@ -155,13 +144,11 @@ Start multiple child workflows concurrently with `Promise.all`:
 
 ```ts
 const [payment, shipping] = await Promise.all([
-  step.invokeWorkflow("process-payment", {
-    workflow: paymentWorkflow,
-    input: { orderId: input.orderId },
+  step.runWorkflow(paymentWorkflow.spec, {
+    orderId: input.orderId,
   }),
-  step.invokeWorkflow("prepare-shipping", {
-    workflow: shippingWorkflow,
-    input: { orderId: input.orderId },
+  step.runWorkflow(shippingWorkflow.spec, {
+    orderId: input.orderId,
   }),
 ]);
 ```

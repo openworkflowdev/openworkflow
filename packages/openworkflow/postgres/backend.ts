@@ -399,21 +399,21 @@ export class BackendPostgres implements Backend {
 
     if (!updated) throw new Error("Failed to sleep workflow run");
 
-    const reconciled = await this.reconcileInvokeSleepWakeUp(
+    const reconciled = await this.reconcileWorkflowSleepWakeUp(
       params.workflowRunId,
     );
     return reconciled ?? updated;
   }
 
   /**
-   * Reconcile a just-parked parent run that is waiting on invoke replay. If the
+   * Reconcile a just-parked parent run that is waiting on workflow replay. If the
    * child already reached a terminal state before the parent cleared workerId,
    * the normal child-completion wake-up can be missed. This forces an immediate
    * wake-up for that case.
    * @param workflowRunId - Parent workflow run id
    * @returns Updated run when reconciliation changed availability, otherwise null
    */
-  private async reconcileInvokeSleepWakeUp(
+  private async reconcileWorkflowSleepWakeUp(
     workflowRunId: string,
   ): Promise<WorkflowRun | null> {
     const workflowRunsTable = this.workflowRunsTable();
@@ -440,7 +440,7 @@ export class BackendPostgres implements Backend {
           AND child."id" = sa."child_workflow_run_id"
         WHERE sa."namespace_id" = wr."namespace_id"
         AND sa."workflow_run_id" = wr."id"
-        AND sa."kind" = 'invoke'
+        AND sa."kind" = 'workflow'
         AND sa."status" = 'running'
         AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
       )
@@ -627,7 +627,7 @@ export class BackendPostgres implements Backend {
       FROM ${stepAttemptsTable} sa
       WHERE sa."namespace_id" = ${childWorkflowRun.parentStepAttemptNamespaceId}
       AND sa."id" = ${childWorkflowRun.parentStepAttemptId}
-      AND sa."kind" = 'invoke'
+      AND sa."kind" = 'workflow'
       AND sa."status" = 'running'
       AND sa."child_workflow_run_namespace_id" = ${childWorkflowRun.namespaceId}
       AND sa."child_workflow_run_id" = ${childWorkflowRun.id}
