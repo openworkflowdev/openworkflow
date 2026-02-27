@@ -95,11 +95,13 @@ A typical version migration:
 
 The worker matches workflow runs to implementations by name and version:
 
-| Run Version | Registered Versions | Matched |
-| ----------- | ------------------- | ------- |
-| `1.0.0`     | `1.0.0`, `2.0.0`    | `1.0.0` |
-| `2.0.0`     | `1.0.0`, `2.0.0`    | `2.0.0` |
-| `null`      | `null`, `1.0.0`     | `null`  |
-| `3.0.0`     | `1.0.0`, `2.0.0`    | Error   |
+| Run Version | Registered Versions | Matched          |
+| ----------- | ------------------- | ---------------- |
+| `1.0.0`     | `1.0.0`, `2.0.0`    | `1.0.0`          |
+| `2.0.0`     | `1.0.0`, `2.0.0`    | `2.0.0`          |
+| `null`      | `null`, `1.0.0`     | `null`           |
+| `3.0.0`     | `1.0.0`, `2.0.0`    | No match (retry) |
 
-If no matching version is found, the run fails with an error.
+If no matching version is found, the worker records an error and reschedules the
+run as `pending` with retry backoff so a worker that has the matching version
+can pick it up later.
