@@ -40,7 +40,6 @@ You should see output like:
 # TYPE openworkflow_workflow_runs gauge
 openworkflow_workflow_runs{status="pending"} 12
 openworkflow_workflow_runs{status="running"} 3
-openworkflow_workflow_runs{status="sleeping"} 1
 openworkflow_workflow_runs{status="completed"} 847
 openworkflow_workflow_runs{status="failed"} 2
 openworkflow_workflow_runs{status="canceled"} 0
@@ -64,19 +63,21 @@ Replace `localhost:3000` with the address where your dashboard is running.
 
 ### `openworkflow_workflow_runs`
 
-| Field  | Value                                                               |
-| ------ | ------------------------------------------------------------------- |
-| Type   | Gauge                                                               |
-| Labels | `status`                                                            |
-| Values | `pending`, `running`, `sleeping`, `completed`, `failed`, `canceled` |
+| Field  | Value                                                   |
+| ------ | ------------------------------------------------------- |
+| Type   | Gauge                                                   |
+| Labels | `status`                                                |
+| Values | `pending`, `running`, `completed`, `failed`, `canceled` |
 
 Current count of workflow runs in each status. One query is executed per
 scrape — there is no caching.
 
-- **Active statuses** (`pending`, `running`, `sleeping`) — Is work piling up?
-  Are runs stuck?
+- **Active statuses** (`pending`, `running`) — Is work piling up? Are runs
+  stuck?
 - **Terminal statuses** (`completed`, `failed`, `canceled`) — Are failures
   increasing? Is throughput steady?
+
+Legacy `sleeping` runs are folded into the `running` metric label.
 
 ## Alert examples
 

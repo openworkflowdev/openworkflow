@@ -3,7 +3,7 @@ title: Canceling Workflows
 description: Cancel running or pending workflow runs
 ---
 
-You can cancel workflow runs that are pending, running, or sleeping.
+You can cancel workflow runs that are `pending` or `running`.
 
 ## Cancel a Workflow Run
 
@@ -36,7 +36,7 @@ Only workflows in these states can be canceled:
 | ----------- | --------------------- |
 | `pending`   | Yes                   |
 | `running`   | Yes                   |
-| `sleeping`  | Yes                   |
+| `sleeping`  | Yes (legacy only)     |
 | `completed` | No                    |
 | `failed`    | No                    |
 | `canceled`  | No (already canceled) |
@@ -58,7 +58,6 @@ When a workflow is canceled:
 1. The status changes to `canceled`
 2. The worker releases the workflow (sets `worker_id` to null)
 3. The `finished_at` timestamp is set
-4. Any sleeping workflow is woken and canceled
 
 If a workflow is mid-execution when canceled, the current step may complete, but
 no new steps will run on the next poll.

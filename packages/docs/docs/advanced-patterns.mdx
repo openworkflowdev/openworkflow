@@ -125,8 +125,7 @@ const result = await run.result();
 
 ## Canceling Workflows
 
-Cancel a workflow that is pending, running, or sleeping to prevent it from
-continuing:
+Cancel a workflow that is pending or running to prevent it from continuing:
 
 ```ts
 const handle = await ow.runWorkflow(myWorkflow.spec, { data: "..." });
