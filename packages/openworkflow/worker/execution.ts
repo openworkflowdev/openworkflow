@@ -734,7 +734,7 @@ export async function executeWorkflow(
         limit: WORKFLOW_STEP_LIMIT,
       });
       attempts.push(...response.data);
-      if (attempts.length >= WORKFLOW_STEP_LIMIT) {
+      if (attempts.length > WORKFLOW_STEP_LIMIT) {
         throw new StepLimitExceededError(WORKFLOW_STEP_LIMIT, attempts.length);
       }
       cursor = response.pagination.next ?? undefined;

@@ -1814,13 +1814,15 @@ describe("executeWorkflow", () => {
   });
 
   describe("error handling", () => {
-    test("fails terminally when replay step history reaches the step limit", async () => {
-      const attempts = Array.from({ length: WORKFLOW_STEP_LIMIT }, (_, index) =>
-        createMockStepAttempt({
-          id: `history-step-${String(index)}`,
-          stepName: `history-step-${String(index)}`,
-          status: "completed",
-        }),
+    test("fails terminally when replay step history exceeds the step limit", async () => {
+      const attempts = Array.from(
+        { length: WORKFLOW_STEP_LIMIT + 1 },
+        (_, index) =>
+          createMockStepAttempt({
+            id: `history-step-${String(index)}`,
+            stepName: `history-step-${String(index)}`,
+            status: "completed",
+          }),
       );
 
       const listStepAttempts = vi.fn(() =>
@@ -1877,11 +1879,73 @@ describe("executeWorkflow", () => {
       expect(failCall.retryPolicy).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
       expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
       expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
-      expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT);
+      expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT + 1);
       if (typeof failCall.error.message !== "string") {
         throw new TypeError("Expected step-limit message to be a string");
       }
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
+    });
+
+    test("completes when replay step history is exactly at the step limit", async () => {
+      const attempts = Array.from({ length: WORKFLOW_STEP_LIMIT }, (_, index) =>
+        createMockStepAttempt({
+          id: `history-step-${String(index)}`,
+          stepName: `history-step-${String(index)}`,
+          status: "completed",
+        }),
+      );
+
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: attempts,
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              workerId: params.workerId,
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const failWorkflowRun = vi.fn(
+        (params: Parameters<Backend["failWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "failed",
+            }),
+          ),
+      );
+      const workflowFn = vi.fn(() => "replayed-success");
+      const workflowRun = createMockWorkflowRun({
+        id: "replay-step-limit-exact-run",
+        workerId: "worker-step-limit-exact",
+      });
+
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          completeWorkflowRun,
+          failWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn,
+        workflowVersion: null,
+        workerId: "worker-step-limit-exact",
+        retryPolicy: {
+          ...DEFAULT_WORKFLOW_RETRY_POLICY,
+          maximumAttempts: 5,
+        },
+      });
+
+      expect(workflowFn).toHaveBeenCalledTimes(1);
+      expect(completeWorkflowRun).toHaveBeenCalledTimes(1);
+      expect(failWorkflowRun).not.toHaveBeenCalled();
     });
 
     test("fails terminally when new steps would exceed the step limit", async () => {
