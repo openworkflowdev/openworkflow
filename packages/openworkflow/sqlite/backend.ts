@@ -138,7 +138,8 @@ export class BackendSqlite implements Backend {
     const availableAt = params.availableAt
       ? toISO(params.availableAt)
       : currentTime;
-    const parentStepAttemptNamespaceId = params.parentStepAttemptNamespaceId;
+    const parentStepAttemptNamespaceId =
+      params.parentStepAttemptNamespaceId ?? null;
     const parentStepAttemptId = params.parentStepAttemptId ?? null;
 
     const stmt = this.db.prepare(`

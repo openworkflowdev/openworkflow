@@ -117,6 +117,24 @@ export function testBackend(options: TestBackendOptions): void {
         expect(createdMin.deadlineAt).toBeNull();
       });
 
+      test("defaults missing parent linkage fields to null for legacy payloads", async () => {
+        const legacyParams = {
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          availableAt: null,
+          deadlineAt: null,
+        } as unknown as Parameters<Backend["createWorkflowRun"]>[0];
+
+        const created = await backend.createWorkflowRun(legacyParams);
+
+        expect(created.parentStepAttemptNamespaceId).toBeNull();
+        expect(created.parentStepAttemptId).toBeNull();
+      });
+
       test("persists parent step attempt linkage when provided", async () => {
         const parentRun = await createClaimedWorkflowRun(backend);
         const parentStepAttempt = await backend.createStepAttempt({
