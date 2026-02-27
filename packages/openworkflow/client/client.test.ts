@@ -290,6 +290,36 @@ describe("OpenWorkflow", () => {
     );
   });
 
+  test("result rejects when completion is observed after timeout", async () => {
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-timeout-completed-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        new Promise<WorkflowRun>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              ...workflowRun,
+              status: "completed",
+              output: { ok: true },
+            });
+          }, 50);
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-timeout-completed-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    await expect(handle.result({ timeoutMs: 10 })).rejects.toThrow(
+      `Timed out waiting for workflow run ${workflowRun.id} to finish`,
+    );
+  });
+
   test("creates workflow run with deadline", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

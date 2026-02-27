@@ -308,6 +308,12 @@ class WorkflowRunHandle<Output> {
         throw new Error(`Workflow run ${this.workflowRun.id} no longer exists`);
       }
 
+      if (Date.now() - start > timeout) {
+        throw new Error(
+          `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
+        );
+      }
+
       // 'succeeded' status is deprecated
       if (latest.status === "succeeded" || latest.status === "completed") {
         return latest.output as Output;
@@ -322,12 +328,6 @@ class WorkflowRunHandle<Output> {
       if (latest.status === "canceled") {
         throw new Error(
           `Workflow ${this.workflowRun.workflowName} was canceled`,
-        );
-      }
-
-      if (Date.now() - start > timeout) {
-        throw new Error(
-          `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
         );
       }
 
