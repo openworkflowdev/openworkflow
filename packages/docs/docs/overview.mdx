@@ -26,7 +26,8 @@ input)`), creating a `pending` run in the database
 2. A worker claims the run and marks it `running`
 3. The worker replays workflow code from the beginning
 4. Completed steps return cached outputs; new steps execute and persist results
-5. The run transitions to `completed`, `failed`, `sleeping`, or `canceled`
+5. The run transitions to `completed`, `failed`, or `canceled` (or stays
+   `running` while durably parked for sleep)
 
 Because replay is deterministic, crash recovery is reliable. A replacement
 worker can continue from the last durable checkpoint without redoing completed
