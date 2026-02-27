@@ -52,10 +52,10 @@ const backend = BackendSqlite.connect(path, {
 
 ## Git Ignore
 
-Add the database file to `.gitignore`:
+Add the database file and SQLite sidecar files to `.gitignore`:
 
 ```gitignore
-openworkflow/backend.db
+openworkflow/backend.db*
 ```
 
 The CLI's `init` command does this automatically when you choose SQLite.
