@@ -390,6 +390,114 @@ describe("BackendSqlite invoke wake-up reconciliation", () => {
     }
   });
 
+  test("does not wake parked parent when invoke step is no longer running", async () => {
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      const parent = await backend.createWorkflowRun({
+        workflowName: "invoke-parent-no-wake-after-failed-invoke",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      const parentWorkerId = randomUUID();
+      const claimedParent = await backend.claimWorkflowRun({
+        workerId: parentWorkerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimedParent?.id).toBe(parent.id);
+      if (!claimedParent) {
+        throw new Error("Expected parent workflow run to be claimed");
+      }
+
+      const invokeAttempt = await backend.createStepAttempt({
+        workflowRunId: parent.id,
+        workerId: parentWorkerId,
+        stepName: "invoke-child",
+        kind: "invoke",
+        config: {},
+        context: null,
+      });
+
+      const child = await backend.createWorkflowRun({
+        workflowName: "invoke-child-no-wake-after-failed-invoke",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: invokeAttempt.namespaceId,
+        parentStepAttemptId: invokeAttempt.id,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      await backend.setStepAttemptChildWorkflowRun({
+        workflowRunId: parent.id,
+        stepAttemptId: invokeAttempt.id,
+        workerId: parentWorkerId,
+        childWorkflowRunNamespaceId: child.namespaceId,
+        childWorkflowRunId: child.id,
+      });
+
+      await backend.failStepAttempt({
+        workflowRunId: parent.id,
+        stepAttemptId: invokeAttempt.id,
+        workerId: parentWorkerId,
+        error: { message: "invoke failed in parent" },
+      });
+
+      const sleepTarget = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const parkedParent = await backend.sleepWorkflowRun({
+        workflowRunId: parent.id,
+        workerId: parentWorkerId,
+        availableAt: sleepTarget,
+      });
+
+      expect(parkedParent.status).toBe("running");
+      expect(parkedParent.workerId).toBeNull();
+
+      const childWorkerId = randomUUID();
+      const claimedChild = await backend.claimWorkflowRun({
+        workerId: childWorkerId,
+        leaseDurationMs: 60_000,
+      });
+      expect(claimedChild?.id).toBe(child.id);
+      if (!claimedChild) {
+        throw new Error("Expected child workflow run to be claimed");
+      }
+
+      await backend.completeWorkflowRun({
+        workflowRunId: child.id,
+        workerId: childWorkerId,
+        output: { ok: true },
+      });
+
+      const parentAfterChild = await backend.getWorkflowRun({
+        workflowRunId: parent.id,
+      });
+      expect(parentAfterChild?.status).toBe("running");
+      expect(parentAfterChild?.workerId).toBeNull();
+      if (!parentAfterChild?.availableAt) {
+        throw new Error("Expected parent availableAt after child completion");
+      }
+      expect(parentAfterChild.availableAt.getTime()).toBeGreaterThan(
+        Date.now() + 30 * 60 * 1000,
+      );
+    } finally {
+      await backend.stop();
+    }
+  });
+
   test("sleepWorkflowRun overwrites stale due availableAt with new resume time", async () => {
     const namespaceId = randomUUID();
     const backend = BackendSqlite.connect(":memory:", {

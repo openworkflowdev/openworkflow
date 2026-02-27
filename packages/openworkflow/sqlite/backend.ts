@@ -680,6 +680,10 @@ export class BackendSqlite implements Backend {
         FROM "step_attempts"
         WHERE "namespace_id" = ?
         AND "id" = ?
+        AND "kind" = 'invoke'
+        AND "status" = 'running'
+        AND "child_workflow_run_namespace_id" = ?
+        AND "child_workflow_run_id" = ?
         LIMIT 1
       )
       AND (
@@ -695,6 +699,8 @@ export class BackendSqlite implements Backend {
       childWorkflowRun.parentStepAttemptNamespaceId,
       childWorkflowRun.parentStepAttemptNamespaceId,
       childWorkflowRun.parentStepAttemptId,
+      childWorkflowRun.namespaceId,
+      childWorkflowRun.id,
     );
   }
 

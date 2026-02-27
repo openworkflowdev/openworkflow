@@ -627,6 +627,10 @@ export class BackendPostgres implements Backend {
       FROM ${stepAttemptsTable} sa
       WHERE sa."namespace_id" = ${childWorkflowRun.parentStepAttemptNamespaceId}
       AND sa."id" = ${childWorkflowRun.parentStepAttemptId}
+      AND sa."kind" = 'invoke'
+      AND sa."status" = 'running'
+      AND sa."child_workflow_run_namespace_id" = ${childWorkflowRun.namespaceId}
+      AND sa."child_workflow_run_id" = ${childWorkflowRun.id}
       AND wr."namespace_id" = sa."namespace_id"
       AND wr."id" = sa."workflow_run_id"
       AND (
