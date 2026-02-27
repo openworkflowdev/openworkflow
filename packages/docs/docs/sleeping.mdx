@@ -48,7 +48,8 @@ export const reminderWorkflow = defineWorkflow(
 When a workflow encounters `step.sleep()`:
 
 1. A step attempt is created with the resume time
-2. The workflow status changes to `sleeping`
+2. The workflow is durably parked in `running` with `workerId = null` and
+   `availableAt` set to the resume time
 3. The worker releases the workflow (frees the slot)
 4. When the sleep duration elapses, the workflow becomes available again
 5. A worker claims it and resumes from after the sleep
