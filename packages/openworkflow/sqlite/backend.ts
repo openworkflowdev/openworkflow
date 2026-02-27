@@ -20,6 +20,8 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
+  DeliverSignalParams,
+  DeliverSignalResult,
   toWorkflowRunCounts,
 } from "../core/backend.js";
 import { wrapError } from "../core/error.js";
@@ -406,11 +408,12 @@ export class BackendSqlite implements Backend {
   }
 
   /**
-   * Reconcile a parked parent run that is waiting on workflow replay. This closes
-   * the race where a child finished before the parent cleared workerId.
-   * @param workflowRunId - Parent workflow run id
-   * @returns Updated run when reconciliation changed availability, otherwise
-   * null
+   * Reconcile a just-parked run that may have missed a wake-up while the
+   * worker still held its lease. Covers two cases:
+   * 1. A child workflow finished before the parent cleared workerId.
+   * 2. A signal was delivered before the parent cleared workerId.
+   * @param workflowRunId - Workflow run id to reconcile
+   * @returns Updated run when reconciliation changed availability, otherwise null
    */
   private async reconcileWorkflowSleepWakeUp(
     workflowRunId: string,
@@ -428,17 +431,28 @@ export class BackendSqlite implements Backend {
       AND "id" = ?
       AND "status" = 'running'
       AND "worker_id" IS NULL
-      AND EXISTS (
-        SELECT 1
-        FROM "step_attempts" sa
-        JOIN "workflow_runs" child
-          ON child."namespace_id" = sa."child_workflow_run_namespace_id"
-          AND child."id" = sa."child_workflow_run_id"
-        WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
-        AND sa."workflow_run_id" = "workflow_runs"."id"
-        AND sa."kind" = 'workflow'
-        AND sa."status" = 'running'
-        AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM "step_attempts" sa
+          JOIN "workflow_runs" child
+            ON child."namespace_id" = sa."child_workflow_run_namespace_id"
+            AND child."id" = sa."child_workflow_run_id"
+          WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+          AND sa."workflow_run_id" = "workflow_runs"."id"
+          AND sa."kind" = 'workflow'
+          AND sa."status" = 'running'
+          AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM "step_attempts" sa
+          WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+          AND sa."workflow_run_id" = "workflow_runs"."id"
+          AND sa."kind" = 'signal'
+          AND sa."status" = 'running'
+          AND json_extract(sa."context", '$.delivered') IS TRUE
+        )
       )
     `);
 
@@ -656,6 +670,90 @@ export class BackendSqlite implements Backend {
     this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async deliverSignal(
+    params: DeliverSignalParams,
+  ): Promise<DeliverSignalResult> {
+    const currentTime = now();
+
+    // Check the workflow run exists and is active
+    const workflowRow = this.db
+      .prepare(
+        `
+      SELECT "id", "status"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ? AND "id" = ?
+      LIMIT 1
+    `,
+      )
+      .get(this.namespaceId, params.workflowRunId) as
+      | { id: string; status: string }
+      | undefined;
+
+    if (!workflowRow) {
+      return { delivered: false, reason: "workflow_not_found" };
+    }
+
+    // Write the signal payload and mark it delivered via context.delivered.
+    // Use context.delivered as the delivery flag so null payloads work correctly.
+    const updateResult = this.db
+      .prepare(
+        `
+      UPDATE "step_attempts"
+      SET
+        "output" = ?,
+        "context" = json_patch("context", '{"delivered":true}'),
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+        AND "workflow_run_id" = ?
+        AND "step_name" = ?
+        AND "kind" = 'signal'
+        AND "status" = 'running'
+        AND json_extract("context", '$.delivered') IS NOT TRUE
+    `,
+      )
+      .run(
+        toJSON(params.payload),
+        currentTime,
+        this.namespaceId,
+        params.workflowRunId,
+        params.signalName,
+      );
+
+    if (updateResult.changes === 0) {
+      return { delivered: false, reason: "signal_not_waiting" };
+    }
+
+    // Wake the workflow run so it picks up the signal on next execution.
+    // No worker_id guard: signal can arrive while the worker still holds the
+    // lease, and sleepWorkflowRun's reconcile step will correct available_at
+    // after the worker parks.
+    this.db
+      .prepare(
+        `
+      UPDATE "workflow_runs"
+      SET
+        "available_at" = CASE
+          WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+          ELSE "available_at"
+        END,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+        AND "id" = ?
+        AND "status" IN ('pending', 'running')
+    `,
+      )
+      .run(
+        currentTime,
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        params.workflowRunId,
+      );
+
+    return { delivered: true };
   }
 
   private wakeParentWorkflowRun(childWorkflowRun: Readonly<WorkflowRun>): void {

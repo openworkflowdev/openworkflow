@@ -39,6 +39,7 @@
         "group": "Guides",
         "pages": [
           "docs/sleeping",
+          "docs/signals",
           "docs/parallel-steps",
           "docs/dynamic-steps",
           "docs/child-workflows",
