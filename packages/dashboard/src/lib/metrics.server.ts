@@ -30,10 +30,19 @@ export async function getMetricsResponse(): Promise<Response> {
   }
 }
 
+const PROMETHEUS_WORKFLOW_RUN_STATUSES = [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "canceled",
+] as const;
+
 function registerWorkflowRunCounts(
   registry: Registry,
   workflowRunCounts: WorkflowRunCounts,
 ) {
+  const prometheusCounts = toPrometheusWorkflowRunCounts(workflowRunCounts);
   const workflowRunsGauge = new Gauge({
     name: "openworkflow_workflow_runs",
     help: "Current count of workflow runs in each status.",
@@ -41,10 +50,18 @@ function registerWorkflowRunCounts(
     registers: [registry],
   });
 
-  for (const status of Object.keys(workflowRunCounts)) {
-    workflowRunsGauge.set(
-      { status },
-      workflowRunCounts[status as keyof WorkflowRunCounts],
-    );
+  for (const status of PROMETHEUS_WORKFLOW_RUN_STATUSES) {
+    workflowRunsGauge.set({ status }, prometheusCounts[status]);
   }
+}
+
+function toPrometheusWorkflowRunCounts(workflowRunCounts: WorkflowRunCounts) {
+  return {
+    pending: workflowRunCounts.pending,
+    // fold legacy `sleeping` into `running` for Prometheus export.
+    running: workflowRunCounts.running + workflowRunCounts.sleeping,
+    completed: workflowRunCounts.completed,
+    failed: workflowRunCounts.failed,
+    canceled: workflowRunCounts.canceled,
+  };
 }

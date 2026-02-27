@@ -28,6 +28,7 @@ describe("getMetricsResponse()", () => {
       ...ZERO_COUNTS,
       pending: 3,
       running: 1,
+      sleeping: 2,
       completed: 4,
       failed: 2,
     };
@@ -47,8 +48,8 @@ describe("getMetricsResponse()", () => {
     expect(body).toContain("# HELP openworkflow_workflow_runs");
     expect(body).toContain("# TYPE openworkflow_workflow_runs gauge");
     expect(body).toContain('openworkflow_workflow_runs{status="pending"} 3');
-    expect(body).toContain('openworkflow_workflow_runs{status="running"} 1');
-    expect(body).toContain('openworkflow_workflow_runs{status="sleeping"} 0');
+    expect(body).toContain('openworkflow_workflow_runs{status="running"} 3');
+    expect(body).not.toContain('openworkflow_workflow_runs{status="sleeping"}');
     expect(body).toContain('openworkflow_workflow_runs{status="completed"} 4');
     expect(body).toContain('openworkflow_workflow_runs{status="failed"} 2');
     expect(body).toContain('openworkflow_workflow_runs{status="canceled"} 0');
