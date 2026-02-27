@@ -179,7 +179,7 @@ export class BackendSqlite implements Backend {
         "created_at",
         "updated_at"
       )
-      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -260,9 +260,10 @@ export class BackendSqlite implements Backend {
           "concurrency_key" = ?
           OR ("concurrency_key" IS NULL AND ? IS NULL)
         )
-        -- Sleeping runs are excluded so long sleeps do not pin historical
-        -- limits and block new run creation after config changes.
-        AND "status" IN ('pending', 'running')
+        -- Parked/sleeping runs (worker_id IS NULL, status 'running') are excluded
+        -- so long sleeps do not pin historical limits and block new run creation
+        -- after config changes.
+        AND ("status" = 'pending' OR ("status" = 'running' AND "worker_id" IS NOT NULL))
         -- "params.limit" is always non-null because this is called only when
         -- toConcurrencyBucket() returns a constrained bucket.
         AND ("concurrency_limit" <> ? OR "concurrency_limit" IS NULL)
@@ -366,6 +367,7 @@ export class BackendSqlite implements Backend {
                   )
                 )
                 AND active."status" = 'running'
+                AND active."worker_id" IS NOT NULL
                 -- Candidates require available_at <= now; active leased runs
                 -- require available_at > now. Keep explicit self-exclusion
                 -- for readability/safety.

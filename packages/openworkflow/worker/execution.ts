@@ -642,6 +642,8 @@ class StepExecutor implements StepApi {
       workflowName: request.workflowSpec.name,
       version: request.workflowSpec.version ?? null,
       idempotencyKey: buildWorkflowIdempotencyKey(attempt),
+      concurrencyKey: null,
+      concurrencyLimit: null,
       config: {},
       context: null,
       input: normalizeStepOutput(parsedInput),

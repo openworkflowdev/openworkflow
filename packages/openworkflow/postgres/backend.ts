@@ -293,9 +293,11 @@ export class BackendPostgres implements Backend {
         AND "workflow_name" = ${params.workflowName}
         AND "version" IS NOT DISTINCT FROM ${params.version}
         AND "concurrency_key" IS NOT DISTINCT FROM ${params.key}
-        -- Sleeping runs are excluded so long sleeps do not pin historical
-        -- limits and block new run creation after config changes.
-        AND "status" IN ('pending', 'running')
+        -- Parked/sleeping runs (worker_id IS NULL, status 'running') are excluded
+        -- so long sleeps do not pin historical limits and block new run creation
+        -- after config changes. Pending runs are included since they're not yet
+        -- leased but will be soon.
+        AND ("status" = 'pending' OR ("status" = 'running' AND "worker_id" IS NOT NULL))
         AND "concurrency_limit" IS DISTINCT FROM ${params.limit}
       LIMIT 1
     `;
@@ -452,6 +454,7 @@ export class BackendPostgres implements Backend {
                   AND active."version" IS NOT DISTINCT FROM wr."version"
                   AND active."concurrency_key" IS NOT DISTINCT FROM wr."concurrency_key"
                   AND active."status" = 'running'
+                  AND active."worker_id" IS NOT NULL
                   -- Candidates require available_at <= NOW(); active leased runs
                   -- require available_at > NOW(). Keep explicit self-exclusion
                   -- for readability/safety.

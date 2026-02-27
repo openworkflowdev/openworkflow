@@ -153,6 +153,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -196,6 +198,8 @@ export function testBackend(options: TestBackendOptions): void {
           ...base,
           concurrencyKey: "tenant:acme",
           concurrencyLimit: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
         };
         await expect(
           Promise.resolve().then(() => backend.createWorkflowRun(keyOnly)),
@@ -220,6 +224,8 @@ export function testBackend(options: TestBackendOptions): void {
           ...base,
           concurrencyKey: null,
           concurrencyLimit: 1,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
         };
         const created = await backend.createWorkflowRun(limitOnly);
         expect(created.concurrencyKey).toBeNull();
@@ -299,6 +305,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           }),
@@ -328,6 +336,8 @@ export function testBackend(options: TestBackendOptions): void {
             input: null,
             config: {},
             context: null,
+            parentStepAttemptNamespaceId: null,
+            parentStepAttemptId: null,
             availableAt: null,
             deadlineAt: null,
           }),
@@ -371,6 +381,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -414,6 +426,8 @@ export function testBackend(options: TestBackendOptions): void {
           input: null,
           config: {},
           context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
           availableAt: null,
           deadlineAt: null,
         });
@@ -455,6 +469,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: { key: "val" },
           config: {},
           context: null,
@@ -1598,7 +1614,7 @@ export function testBackend(options: TestBackendOptions): void {
           workerId,
           availableAt: new Date(Date.now() + 200),
         });
-        expect(sleeping.status).toBe("sleeping");
+        expect(sleeping.status).toBe("running");
 
         const secondClaimed = await backend.claimWorkflowRun({
           workerId: randomUUID(),
@@ -1907,6 +1923,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,
@@ -1993,6 +2011,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,
@@ -2158,6 +2178,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,
@@ -2316,6 +2338,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,
@@ -2357,6 +2381,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,
@@ -2397,6 +2423,8 @@ export function testBackend(options: TestBackendOptions): void {
           workflowName: randomUUID(),
           version: null,
           idempotencyKey: null,
+          concurrencyKey: null,
+          concurrencyLimit: null,
           input: null,
           config: {},
           context: null,

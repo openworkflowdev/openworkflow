@@ -2663,6 +2663,8 @@ function createMockWorkflowRun(
     version: null,
     status: "running",
     idempotencyKey: null,
+    concurrencyKey: null,
+    concurrencyLimit: null,
     config: {},
     context: null,
     input: null,

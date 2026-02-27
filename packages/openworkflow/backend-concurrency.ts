@@ -1,4 +1,4 @@
-import type { CreateWorkflowRunParams } from "./backend.js";
+import type { CreateWorkflowRunParams } from "./core/backend.js";
 
 const INVALID_CONCURRENCY_KEY_TYPE_ERROR =
   'Invalid workflow concurrency metadata: "concurrencyKey" must be a string or null.';
