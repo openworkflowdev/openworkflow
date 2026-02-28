@@ -377,6 +377,55 @@ function getEarliestRunningWaitResumeAt(
 }
 
 /**
+ * Complete running sleep step attempts whose resume timestamp has elapsed.
+ * Malformed historical resume timestamps are treated as elapsed for backward
+ * compatibility.
+ * @param options - Sleep pre-pass options
+ * @returns Whether any running sleep remains pending after completion pass
+ */
+async function completeElapsedRunningSleepAttempts(
+  options: Readonly<{
+    backend: Backend;
+    workflowRunId: string;
+    workerId: string;
+    attempts: StepAttempt[];
+  }>,
+): Promise<boolean> {
+  let hasPendingRunningSleep = false;
+
+  for (let i = 0; i < options.attempts.length; i += 1) {
+    const attempt = options.attempts[i];
+    if (!attempt) continue;
+
+    if (
+      attempt.status !== "running" ||
+      attempt.kind !== "sleep" ||
+      attempt.context?.kind !== "sleep"
+    ) {
+      continue;
+    }
+
+    const resumeAt = new Date(attempt.context.resumeAt);
+    const resumeAtMs = resumeAt.getTime();
+    if (Number.isFinite(resumeAtMs) && Date.now() < resumeAtMs) {
+      hasPendingRunningSleep = true;
+      continue;
+    }
+
+    const completed = await options.backend.completeStepAttempt({
+      workflowRunId: options.workflowRunId,
+      stepAttemptId: attempt.id,
+      workerId: options.workerId,
+      output: null,
+    });
+
+    options.attempts[i] = completed;
+  }
+
+  return hasPendingRunningSleep;
+}
+
+/**
  * Load all step attempts for a workflow run.
  * @param backend - Backend instance
  * @param workflowRunId - Workflow run id
@@ -1009,37 +1058,23 @@ export async function executeWorkflow(
       workflowRun.id,
     );
 
-    // mark any sleep steps as completed if their sleep duration has elapsed,
-    // or rethrow SleepSignal if still sleeping
-    for (let i = 0; i < attempts.length; i++) {
-      const attempt = attempts[i];
-      if (!attempt) continue;
+    // complete any elapsed sleep waits first, then park on the earliest
+    // remaining running wait (sleep or runWorkflow timeout).
+    const hasPendingRunningSleep = await completeElapsedRunningSleepAttempts({
+      backend,
+      workflowRunId: workflowRun.id,
+      workerId,
+      attempts,
+    });
 
+    if (hasPendingRunningSleep) {
+      const earliestRunningWaitResumeAt =
+        getEarliestRunningWaitResumeAt(attempts);
       if (
-        attempt.status === "running" &&
-        attempt.kind === "sleep" &&
-        attempt.context?.kind === "sleep"
+        earliestRunningWaitResumeAt &&
+        Date.now() < earliestRunningWaitResumeAt.getTime()
       ) {
-        const now = Date.now();
-        const resumeAt = new Date(attempt.context.resumeAt);
-        const resumeAtMs = resumeAt.getTime();
-
-        if (now < resumeAtMs) {
-          // sleep duration HAS NOT elapsed yet, throw signal to put workflow
-          // back to sleep
-          throw new SleepSignal(resumeAt);
-        }
-
-        // sleep duration HAS elapsed, mark the step as completed and continue
-        const completed = await backend.completeStepAttempt({
-          workflowRunId: workflowRun.id,
-          stepAttemptId: attempt.id,
-          workerId,
-          output: null,
-        });
-
-        // update cache w/ completed attempt
-        attempts[i] = completed;
+        throw new SleepSignal(earliestRunningWaitResumeAt);
       }
     }
 

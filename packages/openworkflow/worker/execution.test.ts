@@ -1636,6 +1636,81 @@ describe("StepExecutor", () => {
     expect(runningWorkflowStepNames).toEqual(["wait-long", "wait-short"]);
   });
 
+  test("replay pre-pass parks on earliest running wait across sleep and runWorkflow history", async () => {
+    const backend = await createBackend();
+
+    const workflowRun = await backend.createWorkflowRun({
+      workflowName: `workflow-replay-earliest-wait-${randomUUID()}`,
+      version: null,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: null,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
+      availableAt: null,
+      deadlineAt: null,
+    });
+
+    const claimedWorkflowRun = await backend.claimWorkflowRun({
+      workerId: randomUUID(),
+      leaseDurationMs: 5000,
+    });
+    if (!claimedWorkflowRun) {
+      throw new Error("Expected workflow run to be claimed");
+    }
+    expect(claimedWorkflowRun.id).toBe(workflowRun.id);
+    if (!claimedWorkflowRun.workerId) {
+      throw new Error("Expected claimed workflow run worker id");
+    }
+
+    await backend.createStepAttempt({
+      workflowRunId: claimedWorkflowRun.id,
+      workerId: claimedWorkflowRun.workerId,
+      stepName: "sleep-late",
+      kind: "sleep",
+      config: {},
+      context: {
+        kind: "sleep",
+        resumeAt: new Date(Date.now() + 120_000).toISOString(),
+      },
+    });
+    await backend.createStepAttempt({
+      workflowRunId: claimedWorkflowRun.id,
+      workerId: claimedWorkflowRun.workerId,
+      stepName: "wait-early",
+      kind: "workflow",
+      config: {},
+      context: {
+        kind: "workflow",
+        timeoutAt: new Date(Date.now() + 5000).toISOString(),
+      },
+    });
+
+    await executeWorkflow({
+      backend,
+      workflowRun: claimedWorkflowRun,
+      workflowFn: () => "unreachable",
+      workflowVersion: null,
+      workerId: claimedWorkflowRun.workerId,
+      retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+    });
+
+    const parkedRun = await backend.getWorkflowRun({
+      workflowRunId: workflowRun.id,
+    });
+    expect(parkedRun?.status).toBe("running");
+    expect(parkedRun?.workerId).toBeNull();
+    expect(parkedRun?.availableAt).not.toBeNull();
+    if (!parkedRun?.availableAt) {
+      throw new Error("Expected parked workflow availableAt");
+    }
+
+    const millisecondsUntilWake = parkedRun.availableAt.getTime() - Date.now();
+    expect(millisecondsUntilWake).toBeGreaterThan(1000);
+    expect(millisecondsUntilWake).toBeLessThan(20_000);
+  });
+
   test("best-effort fences late parallel branches after parent parks", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
