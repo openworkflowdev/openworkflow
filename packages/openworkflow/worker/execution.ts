@@ -936,6 +936,44 @@ class StepExecutor implements StepApi {
 }
 
 /**
+ * Execute a workflow-run transition and swallow expected stale-write races when
+ * this worker no longer owns an actively running execution.
+ * @param options - Transition execution options
+ */
+async function executeWorkflowRunTransition(
+  options: Readonly<{
+    backend: Backend;
+    workflowRunId: string;
+    workerId: string;
+    transition: () => Promise<unknown>;
+  }>,
+): Promise<void> {
+  try {
+    await options.transition();
+  } catch (error) {
+    let currentRun: WorkflowRun | null = null;
+
+    try {
+      currentRun = await options.backend.getWorkflowRun({
+        workflowRunId: options.workflowRunId,
+      });
+    } catch {
+      throw error;
+    }
+
+    if (
+      currentRun &&
+      (currentRun.status !== "running" ||
+        currentRun.workerId !== options.workerId)
+    ) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+/**
  * Parameters for the workflow execution use case.
  */
 export interface ExecuteWorkflowParams {
@@ -1030,31 +1068,52 @@ export async function executeWorkflow(
 
     // mark success
     executionFence.deactivate();
-    await backend.completeWorkflowRun({
+    await executeWorkflowRunTransition({
+      backend,
       workflowRunId: workflowRun.id,
       workerId,
-      output: (output ?? null) as JsonValue,
+      transition: async () => {
+        await backend.completeWorkflowRun({
+          workflowRunId: workflowRun.id,
+          workerId,
+          output: (output ?? null) as JsonValue,
+        });
+      },
     });
   } catch (error) {
     executionFence.deactivate();
 
     // handle sleep signal by parking the workflow in running status
     if (error instanceof SleepSignal) {
-      await backend.sleepWorkflowRun({
+      await executeWorkflowRunTransition({
+        backend,
         workflowRunId: workflowRun.id,
         workerId,
-        availableAt: error.resumeAt,
+        transition: async () => {
+          await backend.sleepWorkflowRun({
+            workflowRunId: workflowRun.id,
+            workerId,
+            availableAt: error.resumeAt,
+          });
+        },
       });
 
       return;
     }
 
     if (error instanceof StepLimitExceededError) {
-      await backend.failWorkflowRun({
+      await executeWorkflowRunTransition({
+        backend,
         workflowRunId: workflowRun.id,
         workerId,
-        error: serializeStepLimitExceededError(error),
-        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+        transition: async () => {
+          await backend.failWorkflowRun({
+            workflowRunId: workflowRun.id,
+            workerId,
+            error: serializeStepLimitExceededError(error),
+            retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          });
+        },
       });
       return;
     }
@@ -1071,11 +1130,18 @@ export async function executeWorkflow(
       );
 
       if (retryDecision.status === "failed") {
-        await backend.failWorkflowRun({
+        await executeWorkflowRunTransition({
+          backend,
           workflowRunId: workflowRun.id,
           workerId,
-          error: serializedError,
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+          transition: async () => {
+            await backend.failWorkflowRun({
+              workflowRunId: workflowRun.id,
+              workerId,
+              error: serializedError,
+              retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+            });
+          },
         });
         return;
       }
@@ -1089,11 +1155,20 @@ export async function executeWorkflow(
       }
       /* v8 ignore stop */
 
-      await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+      const availableAt = retryDecision.availableAt;
+
+      await executeWorkflowRunTransition({
+        backend,
         workflowRunId: workflowRun.id,
         workerId,
-        error: serializedError,
-        availableAt: retryDecision.availableAt,
+        transition: async () => {
+          await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
+            workflowRunId: workflowRun.id,
+            workerId,
+            error: serializedError,
+            availableAt,
+          });
+        },
       });
       return;
     }
@@ -1103,11 +1178,18 @@ export async function executeWorkflow(
     }
 
     // mark failure
-    await backend.failWorkflowRun({
+    await executeWorkflowRunTransition({
+      backend,
       workflowRunId: workflowRun.id,
       workerId,
-      error: serializeError(error),
-      retryPolicy: params.retryPolicy,
+      transition: async () => {
+        await backend.failWorkflowRun({
+          workflowRunId: workflowRun.id,
+          workerId,
+          error: serializeError(error),
+          retryPolicy: params.retryPolicy,
+        });
+      },
     });
   }
 }

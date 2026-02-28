@@ -2726,6 +2726,56 @@ describe("executeWorkflow", () => {
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
     });
 
+    test("ignores fail-transition races after run cancel", async () => {
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: [],
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const failWorkflowRun = vi.fn(() =>
+        Promise.reject(new Error("Failed to mark workflow run failed")),
+      );
+      const getWorkflowRun = vi.fn(() =>
+        Promise.resolve(
+          createMockWorkflowRun({
+            id: "workflow-cancel-race-run",
+            status: "canceled",
+            workerId: null,
+            finishedAt: new Date("2026-01-01T00:00:02.000Z"),
+          }),
+        ),
+      );
+      const workflowFn = vi.fn(() => {
+        throw new Error("workflow failed");
+      });
+      const workflowRun = createMockWorkflowRun({
+        id: "workflow-cancel-race-run",
+        workerId: "worker-cancel-race",
+      });
+
+      await expect(
+        executeWorkflow({
+          backend: {
+            listStepAttempts,
+            failWorkflowRun,
+            getWorkflowRun,
+          } as unknown as Backend,
+          workflowRun,
+          workflowFn,
+          workflowVersion: null,
+          workerId: "worker-cancel-race",
+          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(workflowFn).toHaveBeenCalledTimes(1);
+      expect(failWorkflowRun).toHaveBeenCalledTimes(1);
+      expect(getWorkflowRun).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+      });
+    });
+
     test("handles workflow errors with deadline exceeded", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });

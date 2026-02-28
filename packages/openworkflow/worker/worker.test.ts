@@ -1078,6 +1078,9 @@ describe("Worker", () => {
   test("worker handles when canceled workflow during execution", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => 0);
 
     let stepExecuted = false;
     const workflow = client.defineWorkflow(
@@ -1094,25 +1097,33 @@ describe("Worker", () => {
     );
     const worker = client.newWorker();
 
-    const handle = await workflow.run();
+    try {
+      const handle = await workflow.run();
 
-    // start processing in the background
-    const tickPromise = worker.tick();
-    await sleep(25);
+      // start processing in the background
+      const tickPromise = worker.tick();
+      await sleep(25);
 
-    // cancel while step is executing
-    await handle.cancel();
+      // cancel while step is executing
+      await handle.cancel();
 
-    // wait for tick to complete
-    await tickPromise;
-    await worker.stop();
+      // wait for tick to complete
+      await tickPromise;
+      await worker.stop();
 
-    // step should have been executed but workflow should be canceled
-    expect(stepExecuted).toBe(true);
-    const canceled = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(canceled?.status).toBe("canceled");
+      // step should have been executed but workflow should be canceled
+      expect(stepExecuted).toBe(true);
+      const canceled = await backend.getWorkflowRun({
+        workflowRunId: handle.workflowRun.id,
+      });
+      expect(canceled?.status).toBe("canceled");
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Critical error during workflow execution"),
+        expect.anything(),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 
   test("result() rejects for canceled workflows", async () => {
