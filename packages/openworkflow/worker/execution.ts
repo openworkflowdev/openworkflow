@@ -1,6 +1,10 @@
 import type { Backend } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
-import { deserializeError, serializeError } from "../core/error.js";
+import {
+  deserializeError,
+  serializeError,
+  type SerializedError,
+} from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
 import {
@@ -152,6 +156,7 @@ function resolveStepRetryPolicy(partial?: Partial<RetryPolicy>): RetryPolicy {
 export interface StepExecutionState {
   cache: StepAttemptCache;
   failedCountsByStepName: ReadonlyMap<string, number>;
+  failedByStepName: ReadonlyMap<string, StepAttempt>;
   runningByStepName: ReadonlyMap<string, StepAttempt>;
 }
 
@@ -165,6 +170,7 @@ export function createStepExecutionStateFromAttempts(
 ): StepExecutionState {
   const cache = new Map<string, StepAttempt>();
   const failedCountsByStepName = new Map<string, number>();
+  const failedByStepName = new Map<string, StepAttempt>();
   const runningByStepName = new Map<string, StepAttempt>();
 
   for (const attempt of attempts) {
@@ -176,6 +182,7 @@ export function createStepExecutionStateFromAttempts(
     if (attempt.status === "failed") {
       const previousCount = failedCountsByStepName.get(attempt.stepName) ?? 0;
       failedCountsByStepName.set(attempt.stepName, previousCount + 1);
+      failedByStepName.set(attempt.stepName, attempt);
       continue;
     }
 
@@ -185,6 +192,7 @@ export function createStepExecutionStateFromAttempts(
   return {
     cache,
     failedCountsByStepName,
+    failedByStepName,
     runningByStepName,
   };
 }
@@ -315,6 +323,7 @@ class StepExecutor implements StepApi {
   private stepCount: number;
   private cache: StepAttemptCache;
   private readonly failedCountsByStepName: Map<string, number>;
+  private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
   private readonly expectedNextStepIndexByName: Map<string, number>;
   private readonly resolvedStepNames: Set<string>;
@@ -329,6 +338,7 @@ class StepExecutor implements StepApi {
     const state = createStepExecutionStateFromAttempts(options.attempts);
     this.cache = state.cache;
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
+    this.failedByStepName = new Map(state.failedByStepName);
     this.runningByStepName = new Map(state.runningByStepName);
     this.expectedNextStepIndexByName = new Map();
     this.resolvedStepNames = new Set();
@@ -470,6 +480,31 @@ class StepExecutor implements StepApi {
     const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) {
       return existingAttempt.output as Output;
+    }
+
+    // Workflow steps are terminal once a failure is persisted. This prevents
+    // replay from spawning duplicate children when Promise.all short-circuits
+    // on a sibling SleepSignal in the same pass.
+    const failedAttempt = this.failedByStepName.get(stepName);
+    if (
+      failedAttempt?.kind === "workflow" &&
+      failedAttempt.childWorkflowRunNamespaceId &&
+      failedAttempt.childWorkflowRunId
+    ) {
+      const serializedFailedError = failedAttempt.error;
+      const failedError =
+        serializedFailedError &&
+        typeof serializedFailedError === "object" &&
+        "message" in serializedFailedError &&
+        typeof serializedFailedError["message"] === "string"
+          ? deserializeError(serializedFailedError as SerializedError)
+          : new Error(`Workflow step "${stepName}" previously failed`);
+      throw new StepError({
+        stepName,
+        stepFailedAttempts: this.failedCountsByStepName.get(stepName) ?? 1,
+        retryPolicy: WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        error: failedError,
+      });
     }
 
     // Resume a running workflow attempt (replay path)
@@ -678,7 +713,7 @@ class StepExecutor implements StepApi {
     retryPolicy: RetryPolicy,
   ): Promise<never> {
     this.runningByStepName.delete(stepName);
-    await this.backend.failStepAttempt({
+    const failedAttempt = await this.backend.failStepAttempt({
       workflowRunId: this.workflowRunId,
       stepAttemptId,
       workerId: this.workerId,
@@ -688,6 +723,7 @@ class StepExecutor implements StepApi {
     const stepFailedAttempts =
       (this.failedCountsByStepName.get(stepName) ?? 0) + 1;
     this.failedCountsByStepName.set(stepName, stepFailedAttempts);
+    this.failedByStepName.set(stepName, failedAttempt);
 
     throw new StepError({
       stepName,

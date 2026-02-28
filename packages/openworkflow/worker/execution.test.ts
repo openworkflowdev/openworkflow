@@ -2031,6 +2031,158 @@ describe("StepExecutor", () => {
     expect(childrenForWorkflowAttempt).toHaveLength(1);
   });
 
+  test("does not replay a failed workflow step when Promise.all has waiting siblings", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow<
+      { childId: string },
+      { childId: string }
+    >({ name: `workflow-child-no-replay-${randomUUID()}` }, ({ input }) => ({
+      childId: input.childId,
+    }));
+
+    const parent = client.defineWorkflow(
+      { name: `workflow-parent-no-replay-${randomUUID()}` },
+      async ({ step }) => {
+        await Promise.all([
+          step.runWorkflow(
+            child.workflow.spec,
+            { childId: "running" },
+            { name: "child-running" },
+          ),
+          step.runWorkflow(
+            child.workflow.spec,
+            { childId: "failed" },
+            { name: "child-failed" },
+          ),
+        ]);
+
+        return "never";
+      },
+    );
+
+    const handle = await parent.run();
+    const claimedParent = await backend.claimWorkflowRun({
+      workerId: randomUUID(),
+      leaseDurationMs: 5000,
+    });
+    if (!claimedParent) {
+      throw new Error("Expected parent workflow run to be claimed");
+    }
+    expect(claimedParent.id).toBe(handle.workflowRun.id);
+    if (!claimedParent.workerId) {
+      throw new Error("Expected claimed parent worker id");
+    }
+
+    const timeoutAt = new Date(Date.now() + 60_000).toISOString();
+    const runningAttempt = await backend.createStepAttempt({
+      workflowRunId: claimedParent.id,
+      workerId: claimedParent.workerId,
+      stepName: "child-running",
+      kind: "workflow",
+      config: {},
+      context: {
+        kind: "workflow",
+        timeoutAt,
+      },
+    });
+    const failedAttempt = await backend.createStepAttempt({
+      workflowRunId: claimedParent.id,
+      workerId: claimedParent.workerId,
+      stepName: "child-failed",
+      kind: "workflow",
+      config: {},
+      context: {
+        kind: "workflow",
+        timeoutAt,
+      },
+    });
+
+    const runningChildRun = await backend.createWorkflowRun({
+      workflowName: child.workflow.spec.name,
+      version: child.workflow.spec.version ?? null,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: { childId: "running" },
+      parentStepAttemptNamespaceId: runningAttempt.namespaceId,
+      parentStepAttemptId: runningAttempt.id,
+      availableAt: null,
+      deadlineAt: null,
+    });
+    const failedChildRun = await backend.createWorkflowRun({
+      workflowName: child.workflow.spec.name,
+      version: child.workflow.spec.version ?? null,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: { childId: "failed" },
+      parentStepAttemptNamespaceId: failedAttempt.namespaceId,
+      parentStepAttemptId: failedAttempt.id,
+      availableAt: null,
+      deadlineAt: null,
+    });
+
+    await backend.setStepAttemptChildWorkflowRun({
+      workflowRunId: claimedParent.id,
+      stepAttemptId: runningAttempt.id,
+      workerId: claimedParent.workerId,
+      childWorkflowRunNamespaceId: runningChildRun.namespaceId,
+      childWorkflowRunId: runningChildRun.id,
+    });
+    await backend.setStepAttemptChildWorkflowRun({
+      workflowRunId: claimedParent.id,
+      stepAttemptId: failedAttempt.id,
+      workerId: claimedParent.workerId,
+      childWorkflowRunNamespaceId: failedChildRun.namespaceId,
+      childWorkflowRunId: failedChildRun.id,
+    });
+    await backend.failStepAttempt({
+      workflowRunId: claimedParent.id,
+      stepAttemptId: failedAttempt.id,
+      workerId: claimedParent.workerId,
+      error: { message: "historical child failure" },
+    });
+
+    await executeWorkflow({
+      backend,
+      workflowRun: claimedParent,
+      workflowFn: parent.workflow.fn,
+      workflowVersion: parent.workflow.spec.version ?? null,
+      workerId: claimedParent.workerId,
+      retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+    });
+
+    const parentAfterReplay = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(parentAfterReplay?.status).toBe("failed");
+    expect(parentAfterReplay?.error?.message).toContain(
+      "historical child failure",
+    );
+    await expect(handle.result()).rejects.toThrow(/historical child failure/);
+
+    const parentAttempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 50,
+    });
+    const failedStepAttempts = parentAttempts.data.filter(
+      (stepAttempt) => stepAttempt.stepName === "child-failed",
+    );
+    expect(failedStepAttempts).toHaveLength(1);
+    expect(failedStepAttempts[0]?.status).toBe("failed");
+
+    const runs = await backend.listWorkflowRuns({ limit: 50 });
+    const linkedChildRuns = runs.data.filter(
+      (run) =>
+        run.workflowName === child.workflow.spec.name &&
+        run.parentStepAttemptNamespaceId !== null &&
+        run.parentStepAttemptId !== null,
+    );
+    expect(linkedChildRuns).toHaveLength(2);
+  });
+
   test("canceling parent while waiting does not cancel child workflow", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
@@ -2863,6 +3015,9 @@ describe("createStepExecutionStateFromAttempts", () => {
     expect(state.failedCountsByStepName.get("step-a")).toBe(2);
     expect(state.failedCountsByStepName.get("step-b")).toBe(1);
     expect(state.failedCountsByStepName.has("step-c")).toBe(false);
+    expect(state.failedByStepName.get("step-a")).toBe(failedA2);
+    expect(state.failedByStepName.get("step-b")).toBe(failedB);
+    expect(state.failedByStepName.has("step-c")).toBe(false);
     expect(state.runningByStepName.get("step-c")).toBe(running);
     expect(state.runningByStepName.has("step-b")).toBe(false);
   });
@@ -2872,6 +3027,7 @@ describe("createStepExecutionStateFromAttempts", () => {
 
     expect(state.cache.size).toBe(0);
     expect(state.failedCountsByStepName.size).toBe(0);
+    expect(state.failedByStepName.size).toBe(0);
     expect(state.runningByStepName.size).toBe(0);
   });
 });
