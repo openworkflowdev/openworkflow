@@ -49,7 +49,7 @@ When a worker picks up a workflow:
 5. **Execute**: New steps are executed and their results are stored
 6. **Complete**: The workflow status is updated to `completed` or `failed`
 
-## Concurrency
+## Worker Concurrency
 
 Workers can process multiple workflow runs simultaneously. Configure concurrency
 in your `openworkflow.config.ts`:
@@ -87,6 +87,40 @@ bunx @openworkflow/cli worker start --concurrency 10
   Start with `concurrency: 10` and tune based on your workload and database
   capacity.
 </Note>
+
+## Workflow Concurrency
+
+Workflow specs can also define concurrency buckets that are enforced at claim
+time:
+
+```ts
+defineWorkflow(
+  {
+    name: "process-order",
+    concurrency: {
+      key: ({ input }) => `tenant:${input.tenantId}`, // optional
+      limit: ({ input }) => input.maxConcurrentOrders, // or: 5
+    },
+  },
+  async ({ step }) => {
+    // ...
+  },
+);
+```
+
+Workers will only claim a run when the bucket has capacity. Bucket scope is:
+
+- namespace
+- workflow name
+- workflow version
+- resolved concurrency key (or default bucket when key is omitted)
+
+Only active leased `running` runs consume workflow-concurrency slots.
+Resolved keys are stored verbatim; only empty/all-whitespace keys are rejected.
+Sleeping runs are non-consuming until they are claimed again as actively leased
+`running` runs.
+Within active `pending` and actively leased `running` runs for the same
+workflow+version+key bucket, the resolved `limit` must remain consistent.
 
 ## Heartbeats and Crash Recovery
 
@@ -134,6 +168,8 @@ Workers coordinate through the database:
 - Each workflow run is claimed by exactly one worker at a time
 - Workers use atomic database operations to prevent duplicate processing
 - If a worker crashes, its workflows become available to other workers
+- SQLite relies on transaction-level single-writer locking (`BEGIN IMMEDIATE`)
+  while Postgres uses row locks plus advisory locks for constrained buckets
 
 ## Graceful Shutdown
 

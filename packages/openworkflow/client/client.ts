@@ -4,6 +4,7 @@ import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
   defineWorkflow,
+  type WorkflowConcurrency,
   type Workflow,
   type WorkflowSpec,
 } from "../core/workflow-definition.js";
@@ -100,11 +101,18 @@ export class OpenWorkflow {
       throw new Error(validationResult.error);
     }
     const parsedInput = validationResult.value;
+    const resolvedConcurrency = resolveWorkflowConcurrency(
+      spec.name,
+      spec.concurrency,
+      parsedInput,
+    );
 
     const workflowRun = await this.backend.createWorkflowRun({
       workflowName: spec.name,
       version: spec.version ?? null,
       idempotencyKey: options?.idempotencyKey ?? null,
+      concurrencyKey: resolvedConcurrency.concurrencyKey,
+      concurrencyLimit: resolvedConcurrency.concurrencyLimit,
       config: {},
       context: null,
       input: parsedInput ?? null,
@@ -248,6 +256,86 @@ function resolveAvailableAt(
   }
 
   return result.value;
+}
+
+/**
+ * Resolved workflow concurrency values persisted on a workflow run.
+ */
+interface ResolvedWorkflowConcurrency {
+  concurrencyKey: string | null;
+  concurrencyLimit: number | null;
+}
+
+/**
+ * Resolve and validate workflow concurrency configuration.
+ * @param workflowName - Workflow name (for error messages)
+ * @param concurrency - Workflow concurrency definition
+ * @param input - Validated workflow input
+ * @returns Resolved concurrency fields to persist on the run
+ * @throws {Error} When resolver execution fails or resolved values are invalid
+ */
+function resolveWorkflowConcurrency<Input>(
+  workflowName: string,
+  concurrency: WorkflowConcurrency<Input> | undefined,
+  input: Input,
+): ResolvedWorkflowConcurrency {
+  if (!concurrency) {
+    return {
+      concurrencyKey: null,
+      concurrencyLimit: null,
+    };
+  }
+
+  let limitValue: unknown;
+  try {
+    limitValue =
+      typeof concurrency.limit === "function"
+        ? concurrency.limit({ input })
+        : concurrency.limit;
+  } catch (error) {
+    throw new Error(
+      `Failed to resolve concurrency limit for workflow "${workflowName}"`,
+      { cause: error },
+    );
+  }
+
+  if (
+    typeof limitValue !== "number" ||
+    !Number.isInteger(limitValue) ||
+    limitValue <= 0
+  ) {
+    throw new Error(
+      `Invalid concurrency limit for workflow "${workflowName}": expected a positive integer`,
+    );
+  }
+
+  let keyValue: string | null = null;
+  if (concurrency.key !== undefined) {
+    let resolvedKey: unknown;
+    try {
+      resolvedKey =
+        typeof concurrency.key === "function"
+          ? concurrency.key({ input })
+          : concurrency.key;
+    } catch (error) {
+      throw new Error(
+        `Failed to resolve concurrency key for workflow "${workflowName}"`,
+        { cause: error },
+      );
+    }
+
+    if (typeof resolvedKey !== "string" || resolvedKey.trim().length === 0) {
+      throw new Error(
+        `Invalid concurrency key for workflow "${workflowName}": expected a non-empty string`,
+      );
+    }
+    keyValue = resolvedKey;
+  }
+
+  return {
+    concurrencyKey: keyValue,
+    concurrencyLimit: limitValue,
+  };
 }
 
 /**
