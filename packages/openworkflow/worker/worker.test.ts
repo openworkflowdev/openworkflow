@@ -479,6 +479,36 @@ describe("Worker", () => {
     await worker.stop();
   });
 
+  test("tick() claims only unoccupied worker IDs", async () => {
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+    const worker = new Worker({
+      backend: {
+        claimWorkflowRun,
+      } as unknown as Backend,
+      workflows: [],
+      concurrency: 3,
+    });
+
+    const internalWorker = worker as unknown as {
+      workerIds: string[];
+      activeExecutions: Set<{ workerId: string }>;
+    };
+
+    internalWorker.workerIds = ["slot-0", "slot-1", "slot-2"];
+    internalWorker.activeExecutions.add({ workerId: "slot-0" });
+    internalWorker.activeExecutions.add({ workerId: "slot-2" });
+
+    const claimed = await worker.tick();
+
+    expect(claimed).toBe(0);
+    expect(claimWorkflowRun).toHaveBeenCalledTimes(1);
+    expect(claimWorkflowRun).toHaveBeenCalledWith({
+      workerId: "slot-1",
+      leaseDurationMs: 30 * 1000,
+    });
+  });
+
   test("worker only sleeps between claims when no work is available", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

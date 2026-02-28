@@ -101,13 +101,17 @@ export class Worker {
     const availableSlots = this.concurrency - this.activeExecutions.size;
     if (availableSlots <= 0) return 0;
 
+    const activeWorkerIds = new Set(
+      Array.from(this.activeExecutions, (execution) => execution.workerId),
+    );
+    const availableWorkerIds = this.workerIds
+      .filter((workerId) => !activeWorkerIds.has(workerId))
+      .slice(0, availableSlots);
+
     // claim work for each available slot
-    const claims = Array.from({ length: availableSlots }, (_, i) => {
-      const availableWorkerId = this.workerIds[i % this.workerIds.length];
-      return availableWorkerId
-        ? this.claimAndProcessWorkflowRunInBackground(availableWorkerId)
-        : Promise.resolve(null);
-    });
+    const claims = availableWorkerIds.map((workerId) =>
+      this.claimAndProcessWorkflowRunInBackground(workerId),
+    );
 
     const claimed = await Promise.all(claims);
     return claimed.filter((run) => run !== null).length;
