@@ -1531,6 +1531,64 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toEqual({ ok: true });
   });
 
+  test("best-effort fences late parallel branches after parent parks", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+    const lateStepName = "late-after-park";
+
+    const workflow = client.defineWorkflow(
+      { name: `workflow-stale-branch-fence-${randomUUID()}` },
+      async ({ step }) => {
+        await Promise.all([
+          step.sleep("park-now", "600ms"),
+          (async () => {
+            await sleep(200);
+            await step.run({ name: lateStepName }, () => "late-result");
+          })(),
+        ]);
+
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const handle = await workflow.run();
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
+
+    // Give the late branch enough time to continue after the parent is parked.
+    await sleep(250);
+
+    const attemptsWhileParked = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    expect(
+      attemptsWhileParked.data.some(
+        (stepAttempt) => stepAttempt.stepName === lateStepName,
+      ),
+    ).toBe(false);
+
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      400,
+      10,
+    );
+    expect(status).toBe("completed");
+    await expect(handle.result()).resolves.toBe("done");
+
+    const finalAttempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const lateAttempts = finalAttempts.data.filter(
+      (stepAttempt) => stepAttempt.stepName === lateStepName,
+    );
+    expect(lateAttempts).toHaveLength(1);
+    expect(lateAttempts[0]?.status).toBe("completed");
+  });
+
   test("supports parallel workflows via Promise.all", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

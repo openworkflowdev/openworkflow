@@ -50,6 +50,45 @@ class SleepSignal extends Error {
 }
 
 /**
+ * Raised when a parallel branch continues after the parent execution has been
+ * parked or otherwise finalized for this replay pass.
+ */
+class StaleExecutionBranchError extends Error {
+  constructor() {
+    super("Workflow execution branch is no longer active");
+    this.name = "StaleExecutionBranchError";
+  }
+}
+
+/**
+ * Lightweight in-memory fence used to stop stale parallel branches from
+ * writing new step attempts after execution is parked/finalized.
+ */
+class ExecutionFence {
+  private active = true;
+
+  deactivate(): void {
+    this.active = false;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  assertActive(): void {
+    if (!this.active) {
+      throw new StaleExecutionBranchError();
+    }
+  }
+}
+
+interface ExecutionFenceController {
+  deactivate(): void;
+  isActive(): boolean;
+  assertActive(): void;
+}
+
+/**
  * Error wrapper used to pass step failure metadata to executeWorkflow.
  */
 class StepError extends Error {
@@ -299,6 +338,7 @@ export interface StepExecutorOptions {
   workerId: string;
   attempts: StepAttempt[];
   stepLimit?: number;
+  executionFence: ExecutionFenceController;
 }
 
 interface RunWorkflowStepRequest<
@@ -327,6 +367,7 @@ class StepExecutor implements StepApi {
   private readonly runningByStepName: Map<string, StepAttempt>;
   private readonly expectedNextStepIndexByName: Map<string, number>;
   private readonly resolvedStepNames: Set<string>;
+  private readonly executionFence: ExecutionFenceController;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
@@ -342,6 +383,11 @@ class StepExecutor implements StepApi {
     this.runningByStepName = new Map(state.runningByStepName);
     this.expectedNextStepIndexByName = new Map();
     this.resolvedStepNames = new Set();
+    this.executionFence = options.executionFence;
+  }
+
+  private assertExecutionActive(): void {
+    this.executionFence.assertActive();
   }
 
   /**
@@ -388,6 +434,7 @@ class StepExecutor implements StepApi {
     }
 
     // not in cache, create new step attempt
+    this.assertExecutionActive();
     this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
@@ -446,6 +493,7 @@ class StepExecutor implements StepApi {
     const resumeAt = result.value;
     const context = createSleepContext(resumeAt);
 
+    this.assertExecutionActive();
     this.ensureStepLimitNotReached();
     await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
@@ -519,6 +567,7 @@ class StepExecutor implements StepApi {
 
     // First encounter — create the workflow step and child workflow run
     const timeoutAt = resolveWorkflowTimeoutAt(request.timeout);
+    this.assertExecutionActive();
     this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
@@ -537,12 +586,7 @@ class StepExecutor implements StepApi {
       request,
     ).catch(
       async (error: unknown) =>
-        await this.failStepWithError(
-          stepName,
-          attempt.id,
-          error,
-          WORKFLOW_STEP_FAILURE_RETRY_POLICY,
-        ),
+        await this.failWorkflowStepUnlessStale(stepName, attempt.id, error),
     );
 
     return await this.resolveRunningWorkflow(stepName, linkedAttempt, request);
@@ -664,6 +708,7 @@ class StepExecutor implements StepApi {
     attempt: Readonly<StepAttempt>,
     request: Readonly<RunWorkflowStepRequest<Input, Output, RunInput>>,
   ): Promise<StepAttempt> {
+    this.assertExecutionActive();
     const validationResult = await validateInput(
       request.workflowSpec.schema,
       request.input,
@@ -686,6 +731,7 @@ class StepExecutor implements StepApi {
       deadlineAt: null,
     });
 
+    this.assertExecutionActive();
     const linked = await this.backend.setStepAttemptChildWorkflowRun({
       workflowRunId: this.workflowRunId,
       stepAttemptId: attempt.id,
@@ -712,13 +758,25 @@ class StepExecutor implements StepApi {
     error: unknown,
     retryPolicy: RetryPolicy,
   ): Promise<never> {
+    if (!this.executionFence.isActive()) {
+      throw new StaleExecutionBranchError();
+    }
+
     this.runningByStepName.delete(stepName);
-    const failedAttempt = await this.backend.failStepAttempt({
-      workflowRunId: this.workflowRunId,
-      stepAttemptId,
-      workerId: this.workerId,
-      error: serializeError(error),
-    });
+    let failedAttempt: StepAttempt;
+    try {
+      failedAttempt = await this.backend.failStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId,
+        workerId: this.workerId,
+        error: serializeError(error),
+      });
+    } catch (stepFailError) {
+      if (!this.executionFence.isActive()) {
+        throw new StaleExecutionBranchError();
+      }
+      throw stepFailError;
+    }
 
     const stepFailedAttempts =
       (this.failedCountsByStepName.get(stepName) ?? 0) + 1;
@@ -731,6 +789,27 @@ class StepExecutor implements StepApi {
       retryPolicy,
       error,
     });
+  }
+
+  private async failWorkflowStepUnlessStale(
+    stepName: string,
+    stepAttemptId: string,
+    error: unknown,
+  ): Promise<never> {
+    if (error instanceof StaleExecutionBranchError) {
+      throw error;
+    }
+
+    if (!this.executionFence.isActive()) {
+      throw new StaleExecutionBranchError();
+    }
+
+    return await this.failStepWithError(
+      stepName,
+      stepAttemptId,
+      error,
+      WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+    );
   }
 
   private ensureStepLimitNotReached(): void {
@@ -767,6 +846,7 @@ export async function executeWorkflow(
 ): Promise<void> {
   const { backend, workflowRun, workflowFn, workflowVersion, workerId } =
     params;
+  const executionFence = new ExecutionFence();
 
   try {
     // load all pages of step history
@@ -824,6 +904,7 @@ export async function executeWorkflow(
       workflowRunId: workflowRun.id,
       workerId,
       attempts,
+      executionFence,
     });
 
     const run = Object.freeze<WorkflowRunMetadata>({
@@ -842,12 +923,15 @@ export async function executeWorkflow(
     });
 
     // mark success
+    executionFence.deactivate();
     await backend.completeWorkflowRun({
       workflowRunId: workflowRun.id,
       workerId,
       output: (output ?? null) as JsonValue,
     });
   } catch (error) {
+    executionFence.deactivate();
+
     // handle sleep signal by parking the workflow in running status
     if (error instanceof SleepSignal) {
       await backend.sleepWorkflowRun({
@@ -905,6 +989,10 @@ export async function executeWorkflow(
         error: serializedError,
         availableAt: retryDecision.availableAt,
       });
+      return;
+    }
+
+    if (error instanceof StaleExecutionBranchError) {
       return;
     }
 
