@@ -321,6 +321,91 @@ function hasWorkflowTimedOut(
 }
 
 /**
+ * Resolve the next wake-up timestamp for a running wait step attempt.
+ * @param attempt - Running step attempt
+ * @returns Wake-up timestamp, or null when the attempt is not a wait step
+ */
+function getRunningWaitAttemptResumeAt(
+  attempt: Readonly<StepAttempt>,
+): Date | null {
+  if (attempt.status !== "running") {
+    return null;
+  }
+
+  if (attempt.kind === "sleep" && attempt.context?.kind === "sleep") {
+    const resumeAt = new Date(attempt.context.resumeAt);
+    return Number.isFinite(resumeAt.getTime()) ? resumeAt : null;
+  }
+
+  if (attempt.kind !== "workflow") {
+    return null;
+  }
+
+  const timeoutAt =
+    getWorkflowTimeoutAt(attempt) ??
+    defaultWorkflowTimeoutAt(attempt.createdAt);
+  if (Number.isFinite(timeoutAt.getTime())) {
+    return timeoutAt;
+  }
+
+  // Backward compatibility for malformed historical workflow timeout values.
+  return defaultWorkflowTimeoutAt(attempt.createdAt);
+}
+
+/**
+ * Compute the earliest wake-up timestamp across running wait step attempts.
+ * @param attempts - Persisted step attempts for the workflow run
+ * @returns Earliest wake-up timestamp, or null when no running wait exists
+ */
+function getEarliestRunningWaitResumeAt(
+  attempts: readonly StepAttempt[],
+): Date | null {
+  let earliest: Date | null = null;
+
+  for (const attempt of attempts) {
+    const resumeAt = getRunningWaitAttemptResumeAt(attempt);
+    if (!resumeAt) {
+      continue;
+    }
+
+    if (!earliest || resumeAt.getTime() < earliest.getTime()) {
+      earliest = resumeAt;
+    }
+  }
+
+  return earliest;
+}
+
+/**
+ * Load all step attempts for a workflow run.
+ * @param backend - Backend instance
+ * @param workflowRunId - Workflow run id
+ * @returns All step attempts for the workflow run
+ * @throws {StepLimitExceededError} When step-attempt count exceeds the limit
+ */
+async function listAllStepAttemptsForWorkflowRun(
+  backend: Readonly<Backend>,
+  workflowRunId: string,
+): Promise<StepAttempt[]> {
+  const attempts: StepAttempt[] = [];
+  let cursor: string | undefined;
+  do {
+    const response = await backend.listStepAttempts({
+      workflowRunId,
+      ...(cursor ? { after: cursor } : {}),
+      limit: WORKFLOW_STEP_LIMIT,
+    });
+    attempts.push(...response.data);
+    if (attempts.length > WORKFLOW_STEP_LIMIT) {
+      throw new StepLimitExceededError(WORKFLOW_STEP_LIMIT, attempts.length);
+    }
+    cursor = response.pagination.next ?? undefined;
+  } while (cursor);
+
+  return attempts;
+}
+
+/**
  * Build deterministic idempotency key for child workflow invocation.
  * @param attempt - Parent workflow step attempt
  * @returns Stable idempotency key
@@ -388,6 +473,34 @@ class StepExecutor implements StepApi {
 
   private assertExecutionActive(): void {
     this.executionFence.assertActive();
+  }
+
+  /**
+   * Resolve the earliest known wake-up timestamp for running wait attempts in
+   * this execution pass.
+   * @param fallbackResumeAt - Candidate wake-up timestamp for the current wait
+   * @returns Earliest known wake-up timestamp
+   */
+  private resolveEarliestRunningWaitResumeAt(
+    fallbackResumeAt: Readonly<Date>,
+  ): Date {
+    const earliestRunningWaitResumeAt = getEarliestRunningWaitResumeAt([
+      ...this.runningByStepName.values(),
+    ]);
+    if (!earliestRunningWaitResumeAt) {
+      return new Date(fallbackResumeAt);
+    }
+
+    const fallbackMs = fallbackResumeAt.getTime();
+    if (!Number.isFinite(fallbackMs)) {
+      return earliestRunningWaitResumeAt;
+    }
+
+    if (earliestRunningWaitResumeAt.getTime() < fallbackMs) {
+      return earliestRunningWaitResumeAt;
+    }
+
+    return new Date(fallbackResumeAt);
   }
 
   /**
@@ -495,7 +608,7 @@ class StepExecutor implements StepApi {
 
     this.assertExecutionActive();
     this.ensureStepLimitNotReached();
-    await this.backend.createStepAttempt({
+    const attempt = await this.backend.createStepAttempt({
       workflowRunId: this.workflowRunId,
       workerId: this.workerId,
       stepName,
@@ -504,11 +617,12 @@ class StepExecutor implements StepApi {
       context,
     });
     this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
 
     // throw sleep signal to trigger postponement
     // we do not mark the step as completed here; it will be updated
     // when the workflow resumes
-    throw new SleepSignal(resumeAt);
+    throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(resumeAt));
   }
 
   // ---- step.runWorkflow -----------------------------------------------
@@ -690,9 +804,11 @@ class StepExecutor implements StepApi {
 
     // Child still running — sleep until timeout
     const timeoutAt = getWorkflowTimeoutAt(workflowAttempt);
-    throw new SleepSignal(
-      timeoutAt ?? defaultWorkflowTimeoutAt(workflowAttempt.createdAt),
-    );
+    const resumeAt =
+      timeoutAt && Number.isFinite(timeoutAt.getTime())
+        ? timeoutAt
+        : defaultWorkflowTimeoutAt(workflowAttempt.createdAt);
+    throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(resumeAt));
   }
 
   /**
@@ -850,20 +966,10 @@ export async function executeWorkflow(
 
   try {
     // load all pages of step history
-    const attempts: StepAttempt[] = [];
-    let cursor: string | undefined;
-    do {
-      const response = await backend.listStepAttempts({
-        workflowRunId: workflowRun.id,
-        ...(cursor ? { after: cursor } : {}),
-        limit: WORKFLOW_STEP_LIMIT,
-      });
-      attempts.push(...response.data);
-      if (attempts.length > WORKFLOW_STEP_LIMIT) {
-        throw new StepLimitExceededError(WORKFLOW_STEP_LIMIT, attempts.length);
-      }
-      cursor = response.pagination.next ?? undefined;
-    } while (cursor);
+    const attempts = await listAllStepAttemptsForWorkflowRun(
+      backend,
+      workflowRun.id,
+    );
 
     // mark any sleep steps as completed if their sleep duration has elapsed,
     // or rethrow SleepSignal if still sleeping

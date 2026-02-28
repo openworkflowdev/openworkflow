@@ -1531,6 +1531,111 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toEqual({ ok: true });
   });
 
+  test("parks using earliest timeout across parallel runWorkflow waits", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const child = client.defineWorkflow(
+      { name: `workflow-child-timeout-fan-out-${randomUUID()}` },
+      () => {
+        return { ok: true };
+      },
+    );
+
+    const parent = client.defineWorkflow(
+      { name: `workflow-parent-timeout-fan-out-${randomUUID()}` },
+      async ({ step }) => {
+        await Promise.all([
+          step.runWorkflow(child.workflow.spec, undefined, {
+            name: "wait-long",
+            timeout: 120_000,
+          }),
+          step.runWorkflow(child.workflow.spec, undefined, {
+            name: "wait-short",
+            timeout: 5000,
+          }),
+        ]);
+        return "never";
+      },
+    );
+
+    const handle = await parent.run();
+    const claimedParent = await backend.claimWorkflowRun({
+      workerId: randomUUID(),
+      leaseDurationMs: 5000,
+    });
+    if (!claimedParent) {
+      throw new Error("Expected parent workflow run to be claimed");
+    }
+    expect(claimedParent.id).toBe(handle.workflowRun.id);
+
+    const childStepNameByRunId = new Map<string, string>();
+    const originalSetStepAttemptChildWorkflowRun =
+      backend.setStepAttemptChildWorkflowRun.bind(backend);
+    const setStepAttemptChildWorkflowRunSpy = vi
+      .spyOn(backend, "setStepAttemptChildWorkflowRun")
+      .mockImplementation(async (params) => {
+        const linked = await originalSetStepAttemptChildWorkflowRun(params);
+        childStepNameByRunId.set(params.childWorkflowRunId, linked.stepName);
+        return linked;
+      });
+
+    const originalGetWorkflowRun = backend.getWorkflowRun.bind(backend);
+    const getWorkflowRunSpy = vi
+      .spyOn(backend, "getWorkflowRun")
+      .mockImplementation(async (params) => {
+        const stepName = childStepNameByRunId.get(params.workflowRunId);
+        if (stepName === "wait-long") {
+          await sleep(40);
+        } else if (stepName === "wait-short") {
+          await sleep(120);
+        }
+        return await originalGetWorkflowRun(params);
+      });
+
+    try {
+      await executeWorkflow({
+        backend,
+        workflowRun: claimedParent,
+        workflowFn: parent.workflow.fn,
+        workflowVersion: parent.workflow.spec.version ?? null,
+        workerId: claimedParent.workerId ?? "",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+    } finally {
+      getWorkflowRunSpy.mockRestore();
+      setStepAttemptChildWorkflowRunSpy.mockRestore();
+    }
+
+    const parentAfter = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(parentAfter?.status).toBe("running");
+    expect(parentAfter?.workerId).toBeNull();
+    expect(parentAfter?.availableAt).not.toBeNull();
+    if (!parentAfter?.availableAt) {
+      throw new Error("Expected parked parent availableAt");
+    }
+
+    const millisecondsUntilWake =
+      parentAfter.availableAt.getTime() - Date.now();
+    expect(millisecondsUntilWake).toBeGreaterThan(1500);
+    expect(millisecondsUntilWake).toBeLessThan(20_000);
+
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const runningWorkflowStepNames = attempts.data
+      .filter(
+        (attempt) =>
+          attempt.kind === "workflow" && attempt.status === "running",
+      )
+      .map((attempt) => attempt.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(runningWorkflowStepNames).toEqual(["wait-long", "wait-short"]);
+  });
+
   test("best-effort fences late parallel branches after parent parks", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
