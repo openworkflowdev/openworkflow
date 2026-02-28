@@ -231,7 +231,7 @@ await step.sleep("wait-one-hour", "1h");
 **`step.runWorkflow(spec, input?, options?)`**: Starts a child workflow and
 waits for it durably. `options.name` sets the durable step name (defaults to the
 target workflow name in `spec`) and `options.timeout` controls the wait timeout
-(default 7d). When the timeout is reached, the parent step fails but the child
+(default 1y). When the timeout is reached, the parent step fails but the child
 workflow continues running independently.
 
 All step APIs (`step.run`, `step.sleep`, and `step.runWorkflow`) share the same

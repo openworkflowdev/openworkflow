@@ -1517,8 +1517,10 @@ describe("StepExecutor", () => {
 
     const millisecondsUntilWake =
       parkedParent.availableAt.getTime() - Date.now();
-    expect(millisecondsUntilWake).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
-    expect(millisecondsUntilWake).toBeLessThan(8 * 24 * 60 * 60 * 1000);
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    // Default runWorkflow timeout is 1 year.
+    expect(millisecondsUntilWake).toBeGreaterThan(300 * oneDayMs);
+    expect(millisecondsUntilWake).toBeLessThan(370 * oneDayMs);
 
     const parentTerminalStatus = await tickUntilTerminal(
       backend,

@@ -268,13 +268,13 @@ function resolveWorkflowTimeoutAt(
 }
 
 /**
- * Default workflow timeout: 7 days from a base time.
+ * Default workflow timeout: 1 year from a base time.
  * @param base - Base timestamp (defaults to now)
  * @returns Timeout deadline
  */
 function defaultWorkflowTimeoutAt(base: Readonly<Date> = new Date()): Date {
   const timeoutAt = new Date(base);
-  timeoutAt.setDate(timeoutAt.getDate() + 7);
+  timeoutAt.setFullYear(timeoutAt.getFullYear() + 1);
   return timeoutAt;
 }
 

@@ -144,7 +144,7 @@ Starts a child workflow and waits for its result durably:
 const childOutput = await step.runWorkflow(
   generateReportWorkflow.spec,
   { reportId: input.reportId },
-  { timeout: "5m" }, // optional, defaults to 7 days
+  { timeout: "5m" }, // optional, defaults to 1 year
 );
 ```
 
