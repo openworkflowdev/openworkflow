@@ -343,26 +343,19 @@ export class BackendSqlite implements Backend {
       AND "id" = ?
       AND "status" = 'running'
       AND "worker_id" = ?
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       newAvailableAt,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
       params.workerId,
-    );
+    ) as WorkflowRunRow | undefined;
+    if (!row) throw new Error("Failed to extend lease for workflow run");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to extend lease for workflow run");
-    }
-
-    const updated = await this.getWorkflowRun({
-      workflowRunId: params.workflowRunId,
-    });
-    if (!updated) throw new Error("Failed to extend lease for workflow run");
-
-    return updated;
+    return await Promise.resolve(rowToWorkflowRun(row));
   }
 
   async sleepWorkflowRun(params: SleepWorkflowRunParams): Promise<WorkflowRun> {
@@ -373,87 +366,43 @@ export class BackendSqlite implements Backend {
       UPDATE "workflow_runs"
       SET
         "status" = 'running',
-        "available_at" = ?,
+        "available_at" = CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM "step_attempts" sa
+            JOIN "workflow_runs" child
+              ON child."namespace_id" = sa."child_workflow_run_namespace_id"
+              AND child."id" = sa."child_workflow_run_id"
+            WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+            AND sa."workflow_run_id" = "workflow_runs"."id"
+            AND sa."kind" = 'workflow'
+            AND sa."status" = 'running'
+            AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+          ) AND ? > ? THEN ?
+          ELSE ?
+        END,
         "worker_id" = NULL,
         "updated_at" = ?
       WHERE "namespace_id" = ?
       AND "id" = ?
       AND "status" NOT IN ('succeeded', 'completed', 'failed', 'canceled')
       AND "worker_id" = ?
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
+      resumeAt,
+      currentTime,
+      currentTime,
       resumeAt,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
       params.workerId,
-    );
+    ) as WorkflowRunRow | undefined;
+    if (!row) throw new Error("Failed to sleep workflow run");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to sleep workflow run");
-    }
-
-    const updated = await this.getWorkflowRun({
-      workflowRunId: params.workflowRunId,
-    });
-    if (!updated) throw new Error("Failed to sleep workflow run");
-
-    const reconciled = await this.reconcileWorkflowSleepWakeUp(
-      params.workflowRunId,
-    );
-    return reconciled ?? updated;
-  }
-
-  /**
-   * Reconcile a parked parent run that is waiting on workflow replay. This closes
-   * the race where a child finished before the parent cleared workerId.
-   * @param workflowRunId - Parent workflow run id
-   * @returns Updated run when reconciliation changed availability, otherwise
-   * null
-   */
-  private async reconcileWorkflowSleepWakeUp(
-    workflowRunId: string,
-  ): Promise<WorkflowRun | null> {
-    const currentTime = now();
-    const stmt = this.db.prepare(`
-      UPDATE "workflow_runs"
-      SET
-        "available_at" = CASE
-          WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
-          ELSE "available_at"
-        END,
-        "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" IS NULL
-      AND EXISTS (
-        SELECT 1
-        FROM "step_attempts" sa
-        JOIN "workflow_runs" child
-          ON child."namespace_id" = sa."child_workflow_run_namespace_id"
-          AND child."id" = sa."child_workflow_run_id"
-        WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
-        AND sa."workflow_run_id" = "workflow_runs"."id"
-        AND sa."kind" = 'workflow'
-        AND sa."status" = 'running'
-        AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
-      )
-    `);
-
-    const result = stmt.run(
-      currentTime,
-      currentTime,
-      currentTime,
-      this.namespaceId,
-      workflowRunId,
-    );
-    if (result.changes === 0) {
-      return null;
-    }
-
-    return await this.getWorkflowRun({ workflowRunId });
+    return await Promise.resolve(rowToWorkflowRun(row));
   }
 
   async completeWorkflowRun(
@@ -475,9 +424,10 @@ export class BackendSqlite implements Backend {
       AND "id" = ?
       AND "status" = 'running'
       AND "worker_id" = ?
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       toJSON(params.output),
       params.workerId,
       currentTime,
@@ -485,34 +435,33 @@ export class BackendSqlite implements Backend {
       this.namespaceId,
       params.workflowRunId,
       params.workerId,
-    );
+    ) as WorkflowRunRow | undefined;
+    if (!row) throw new Error("Failed to mark workflow run completed");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to mark workflow run completed");
-    }
-
-    const updated = await this.getWorkflowRun({
-      workflowRunId: params.workflowRunId,
-    });
-    if (!updated) throw new Error("Failed to mark workflow run completed");
-
+    const updated = rowToWorkflowRun(row);
     this.wakeParentWorkflowRun(updated);
-
-    return updated;
+    return await Promise.resolve(updated);
   }
 
   async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const currentTime = new Date();
     const currentTimeIso = currentTime.toISOString();
+    let attempts = params.attempts;
+    let deadlineAt = params.deadlineAt;
 
-    const workflowRun = await this.getWorkflowRun({ workflowRunId });
-    if (!workflowRun) throw new Error("Workflow run not found");
+    // Backward-compatible fallback for external callers that don't pass state.
+    if (attempts === undefined || deadlineAt === undefined) {
+      const workflowRun = await this.getWorkflowRun({ workflowRunId });
+      if (!workflowRun) throw new Error("Workflow run not found");
+      attempts = workflowRun.attempts;
+      deadlineAt = workflowRun.deadlineAt;
+    }
 
     const failureUpdate = computeFailedWorkflowRunUpdate(
       params.retryPolicy,
-      workflowRun.attempts,
-      workflowRun.deadlineAt,
+      attempts,
+      deadlineAt,
       error,
       currentTime,
     );
@@ -531,9 +480,10 @@ export class BackendSqlite implements Backend {
       AND "id" = ?
       AND "status" = 'running'
       AND "worker_id" = ?
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       failureUpdate.status,
       failureUpdate.availableAt?.toISOString() ?? null,
       failureUpdate.finishedAt?.toISOString() ?? null,
@@ -542,19 +492,12 @@ export class BackendSqlite implements Backend {
       this.namespaceId,
       workflowRunId,
       params.workerId,
-    );
-
-    if (result.changes === 0) {
-      throw new Error("Failed to mark workflow run failed");
-    }
-
-    const updated = await this.getWorkflowRun({ workflowRunId });
-    if (!updated) throw new Error("Failed to mark workflow run failed");
-
+    ) as WorkflowRunRow | undefined;
+    if (!row) throw new Error("Failed to mark workflow run failed");
+    const updated = rowToWorkflowRun(row);
     if (updated.status === "failed") {
       this.wakeParentWorkflowRun(updated);
     }
-
     return updated;
   }
 
@@ -914,9 +857,10 @@ export class BackendSqlite implements Backend {
         "updated_at"
       )
       VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)
+      RETURNING *
     `);
 
-    stmt.run(
+    const row = stmt.get(
       this.namespaceId,
       id,
       params.workflowRunId,
@@ -927,37 +871,16 @@ export class BackendSqlite implements Backend {
       currentTime,
       currentTime,
       currentTime,
-    );
+    ) as StepAttemptRow | undefined;
+    if (!row) throw new Error("Failed to create step attempt");
 
-    const stepAttempt = await this.getStepAttempt({ stepAttemptId: id });
-    if (!stepAttempt) throw new Error("Failed to create step attempt");
-
-    return stepAttempt;
+    return await Promise.resolve(rowToStepAttempt(row));
   }
 
   async setStepAttemptChildWorkflowRun(
     params: SetStepAttemptChildWorkflowRunParams,
   ): Promise<StepAttempt> {
     const currentTime = now();
-
-    const workflowStmt = this.db.prepare(`
-      SELECT "id"
-      FROM "workflow_runs"
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
-    `);
-
-    const workflowRow = workflowStmt.get(
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
-    ) as { id: string } | undefined;
-
-    if (!workflowRow) {
-      throw new Error("Failed to set step attempt child workflow run");
-    }
 
     const stmt = this.db.prepare(`
       UPDATE "step_attempts"
@@ -969,29 +892,31 @@ export class BackendSqlite implements Backend {
       AND "workflow_run_id" = ?
       AND "id" = ?
       AND "status" = 'running'
+      AND EXISTS (
+        SELECT 1
+        FROM "workflow_runs" wr
+        WHERE wr."namespace_id" = ?
+        AND wr."id" = ?
+        AND wr."status" = 'running'
+        AND wr."worker_id" = ?
+      )
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       params.childWorkflowRunNamespaceId,
       params.childWorkflowRunId,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
       params.stepAttemptId,
-    );
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    ) as StepAttemptRow | undefined;
+    if (!row) throw new Error("Failed to set step attempt child workflow run");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to set step attempt child workflow run");
-    }
-
-    const updated = await this.getStepAttempt({
-      stepAttemptId: params.stepAttemptId,
-    });
-    if (!updated) {
-      throw new Error("Failed to set step attempt child workflow run");
-    }
-
-    return updated;
+    return await Promise.resolve(rowToStepAttempt(row));
   }
 
   getStepAttempt(params: GetStepAttemptParams): Promise<StepAttempt | null> {
@@ -1014,26 +939,6 @@ export class BackendSqlite implements Backend {
   ): Promise<StepAttempt> {
     const currentTime = now();
 
-    // Check that the workflow is running and owned by the worker
-    const workflowStmt = this.db.prepare(`
-      SELECT "id"
-      FROM "workflow_runs"
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
-    `);
-
-    const workflowRow = workflowStmt.get(
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
-    ) as { id: string } | undefined;
-
-    if (!workflowRow) {
-      throw new Error("Failed to mark step attempt completed");
-    }
-
     const stmt = this.db.prepare(`
       UPDATE "step_attempts"
       SET
@@ -1046,51 +951,35 @@ export class BackendSqlite implements Backend {
       AND "workflow_run_id" = ?
       AND "id" = ?
       AND "status" = 'running'
+      AND EXISTS (
+        SELECT 1
+        FROM "workflow_runs" wr
+        WHERE wr."namespace_id" = ?
+        AND wr."id" = ?
+        AND wr."status" = 'running'
+        AND wr."worker_id" = ?
+      )
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       toJSON(params.output),
       currentTime,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
       params.stepAttemptId,
-    );
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    ) as StepAttemptRow | undefined;
+    if (!row) throw new Error("Failed to mark step attempt completed");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to mark step attempt completed");
-    }
-
-    const updated = await this.getStepAttempt({
-      stepAttemptId: params.stepAttemptId,
-    });
-    if (!updated) throw new Error("Failed to mark step attempt completed");
-
-    return updated;
+    return await Promise.resolve(rowToStepAttempt(row));
   }
 
   async failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt> {
     const currentTime = now();
-
-    // Check that the workflow is running and owned by the worker
-    const workflowStmt = this.db.prepare(`
-      SELECT "id"
-      FROM "workflow_runs"
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
-    `);
-
-    const workflowRow = workflowStmt.get(
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
-    ) as { id: string } | undefined;
-
-    if (!workflowRow) {
-      throw new Error("Failed to mark step attempt failed");
-    }
 
     const stmt = this.db.prepare(`
       UPDATE "step_attempts"
@@ -1104,27 +993,31 @@ export class BackendSqlite implements Backend {
       AND "workflow_run_id" = ?
       AND "id" = ?
       AND "status" = 'running'
+      AND EXISTS (
+        SELECT 1
+        FROM "workflow_runs" wr
+        WHERE wr."namespace_id" = ?
+        AND wr."id" = ?
+        AND wr."status" = 'running'
+        AND wr."worker_id" = ?
+      )
+      RETURNING *
     `);
 
-    const result = stmt.run(
+    const row = stmt.get(
       toJSON(params.error),
       currentTime,
       currentTime,
       this.namespaceId,
       params.workflowRunId,
       params.stepAttemptId,
-    );
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    ) as StepAttemptRow | undefined;
+    if (!row) throw new Error("Failed to mark step attempt failed");
 
-    if (result.changes === 0) {
-      throw new Error("Failed to mark step attempt failed");
-    }
-
-    const updated = await this.getStepAttempt({
-      stepAttemptId: params.stepAttemptId,
-    });
-    if (!updated) throw new Error("Failed to mark step attempt failed");
-
-    return updated;
+    return await Promise.resolve(rowToStepAttempt(row));
   }
 }
 

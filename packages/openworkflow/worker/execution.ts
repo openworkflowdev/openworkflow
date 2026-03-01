@@ -1147,6 +1147,8 @@ export async function executeWorkflow(
             workerId,
             error: serializeStepLimitExceededError(error),
             retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+            attempts: workflowRun.attempts,
+            deadlineAt: workflowRun.deadlineAt,
           });
         },
       });
@@ -1175,6 +1177,8 @@ export async function executeWorkflow(
               workerId,
               error: serializedError,
               retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+              attempts: workflowRun.attempts,
+              deadlineAt: workflowRun.deadlineAt,
             });
           },
         });
@@ -1223,6 +1227,8 @@ export async function executeWorkflow(
           workerId,
           error: serializeError(error),
           retryPolicy: params.retryPolicy,
+          attempts: workflowRun.attempts,
+          deadlineAt: workflowRun.deadlineAt,
         });
       },
     });

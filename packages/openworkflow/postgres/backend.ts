@@ -114,28 +114,45 @@ export class BackendPostgres implements Backend {
       idempotencyKey,
     });
 
-    return await this.pg.begin(async (_tx) => {
-      const pgTx = _tx as unknown as Postgres;
+    const pgReserved = (await this.pg.reserve()) as unknown as Postgres & {
+      release: () => void;
+    };
 
+    try {
       /* eslint-disable @cspell/spellchecker */
-      await pgTx.unsafe(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+      await pgReserved.unsafe(
+        "SELECT pg_advisory_lock(hashtextextended($1, 0::bigint))",
         [lockScope],
       );
       /* eslint-enable @cspell/spellchecker */
 
-      const existing = await this.getWorkflowRunByIdempotencyKey(
-        pgTx,
-        workflowName,
-        idempotencyKey,
-        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-      );
-      if (existing) {
-        return existing;
-      }
+      try {
+        const existing = await this.getWorkflowRunByIdempotencyKey(
+          pgReserved,
+          workflowName,
+          idempotencyKey,
+          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+        );
+        if (existing) {
+          return existing;
+        }
 
-      return await this.insertWorkflowRun(pgTx, params);
-    });
+        return await this.insertWorkflowRun(pgReserved, params);
+      } finally {
+        /* eslint-disable @cspell/spellchecker */
+        await pgReserved
+          .unsafe(
+            "SELECT pg_advisory_unlock(hashtextextended($1, 0::bigint))",
+            [lockScope],
+          )
+          .catch(() => {
+            // best effort unlock; session close also releases session advisory locks
+          });
+        /* eslint-enable @cspell/spellchecker */
+      }
+    } finally {
+      pgReserved.release();
+    }
   }
 
   private async insertWorkflowRun(
@@ -482,42 +499,74 @@ export class BackendPostgres implements Backend {
   async failWorkflowRun(params: FailWorkflowRunParams): Promise<WorkflowRun> {
     const { workflowRunId, error } = params;
     const currentTime = new Date();
+    let attempts = params.attempts;
+    let deadlineAt = params.deadlineAt;
 
-    const workflowRun = await this.getWorkflowRun({ workflowRunId });
-    if (!workflowRun) throw new Error("Workflow run not found");
+    // Backward-compatible fallback for external callers that don't pass state.
+    if (attempts === undefined || deadlineAt === undefined) {
+      const workflowRun = await this.getWorkflowRun({ workflowRunId });
+      if (!workflowRun) throw new Error("Workflow run not found");
+      attempts = workflowRun.attempts;
+      deadlineAt = workflowRun.deadlineAt;
+    }
 
     const failureUpdate = computeFailedWorkflowRunUpdate(
       params.retryPolicy,
-      workflowRun.attempts,
-      workflowRun.deadlineAt,
+      attempts,
+      deadlineAt,
       error,
       currentTime,
     );
 
     const workflowRunsTable = this.workflowRunsTable();
+    const stepAttemptsTable = this.stepAttemptsTable();
 
     const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE ${workflowRunsTable}
-      SET
-        "status" = ${failureUpdate.status},
-        "available_at" = ${failureUpdate.availableAt},
-        "finished_at" = ${failureUpdate.finishedAt},
-        "error" = ${this.pg.json(failureUpdate.error)},
-        "worker_id" = NULL,
-        "started_at" = NULL,
-        "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${workflowRunId}
-      AND "status" = 'running'
-      AND "worker_id" = ${params.workerId}
-      RETURNING *
+      WITH updated AS (
+        UPDATE ${workflowRunsTable}
+        SET
+          "status" = ${failureUpdate.status},
+          "available_at" = ${failureUpdate.availableAt},
+          "finished_at" = ${failureUpdate.finishedAt},
+          "error" = ${this.pg.json(failureUpdate.error)},
+          "worker_id" = NULL,
+          "started_at" = NULL,
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+        AND "id" = ${workflowRunId}
+        AND "status" = 'running'
+        AND "worker_id" = ${params.workerId}
+        RETURNING *
+      ),
+      wake_parent AS (
+        UPDATE ${workflowRunsTable} wr
+        SET
+          "available_at" = CASE
+            WHEN wr."available_at" IS NULL OR wr."available_at" > NOW()
+              THEN NOW()
+            ELSE wr."available_at"
+          END,
+          "updated_at" = NOW()
+        FROM updated, ${stepAttemptsTable} sa
+        WHERE updated."status" = 'failed'
+        AND sa."namespace_id" = updated."parent_step_attempt_namespace_id"
+        AND sa."id" = updated."parent_step_attempt_id"
+        AND sa."kind" = 'workflow'
+        AND sa."status" = 'running'
+        AND sa."child_workflow_run_namespace_id" = updated."namespace_id"
+        AND sa."child_workflow_run_id" = updated."id"
+        AND wr."namespace_id" = sa."namespace_id"
+        AND wr."id" = sa."workflow_run_id"
+        AND (
+          wr."status" = 'sleeping'
+          OR (wr."status" = 'running' AND wr."worker_id" IS NULL)
+        )
+      )
+      SELECT *
+      FROM updated
     `;
 
     if (!updated) throw new Error("Failed to mark workflow run failed");
-
-    if (updated.status === "failed") {
-      await this.wakeParentWorkflowRun(updated);
-    }
 
     return updated;
   }

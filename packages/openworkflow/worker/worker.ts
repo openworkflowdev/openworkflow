@@ -178,6 +178,8 @@ export class Worker {
           message: `Workflow "${workflowRun.workflowName}"${versionStr} is not registered`,
         },
         retryPolicy: MISSING_DEFINITION_RETRY_POLICY,
+        attempts: workflowRun.attempts,
+        deadlineAt: workflowRun.deadlineAt,
       });
       return null;
     }

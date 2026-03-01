@@ -161,7 +161,7 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
 });
 
 describe("BackendSqlite.setStepAttemptChildWorkflowRun error handling", () => {
-  test("throws when linked step attempt cannot be reloaded", async () => {
+  test("does not rely on a follow-up getStepAttempt reload", async () => {
     const backend = BackendSqlite.connect(":memory:", {
       namespaceId: randomUUID(),
     });
@@ -221,15 +221,16 @@ describe("BackendSqlite.setStepAttemptChildWorkflowRun error handling", () => {
         });
 
       try {
-        await expect(
-          backend.setStepAttemptChildWorkflowRun({
-            workflowRunId: claimed.id,
-            stepAttemptId: stepAttempt.id,
-            workerId,
-            childWorkflowRunNamespaceId: childRun.namespaceId,
-            childWorkflowRunId: childRun.id,
-          }),
-        ).rejects.toThrow("Failed to set step attempt child workflow run");
+        const linked = await backend.setStepAttemptChildWorkflowRun({
+          workflowRunId: claimed.id,
+          stepAttemptId: stepAttempt.id,
+          workerId,
+          childWorkflowRunNamespaceId: childRun.namespaceId,
+          childWorkflowRunId: childRun.id,
+        });
+
+        expect(linked.id).toBe(stepAttempt.id);
+        expect(getStepAttemptSpy).not.toHaveBeenCalled();
       } finally {
         getStepAttemptSpy.mockRestore();
       }

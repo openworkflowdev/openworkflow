@@ -119,6 +119,8 @@ export interface FailWorkflowRunParams {
   workerId: string;
   error: SerializedError;
   retryPolicy: RetryPolicy;
+  attempts?: number;
+  deadlineAt?: Date | null;
 }
 
 export interface RescheduleWorkflowRunAfterFailedStepAttemptParams {
