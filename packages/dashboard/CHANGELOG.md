@@ -1,5 +1,11 @@
 # @openworkflow/dashboard
 
+## 0.1.7
+
+- Add child workflow visibility in run list and run details (#342)
+- Treat legacy `sleeping` runs as `running` in dashboard status displays (#347)
+- Merge legacy `sleeping` counts into `running` Prometheus metrics
+
 ## 0.1.6
 
 - Switch to global backend run stats

@@ -1,5 +1,10 @@
 # @openworkflow/cli
 
+## 0.4.2
+
+- Stop the backend at the end of the default `hello-world.run` script template
+- Add `openworkflow/backend.db*` to generated `.gitignore` entries for SQLite
+
 ## 0.4.1
 
 - Add support for `openworkflow` v0.7.0

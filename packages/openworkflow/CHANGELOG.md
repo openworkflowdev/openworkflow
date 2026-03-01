@@ -1,5 +1,17 @@
 # openworkflow
 
+## 0.8.0
+
+- Add child workflow support with `step.runWorkflow` (#342, #349)
+- Add auto-indexing for duplicate step names (#344)
+- Various backend query improvements
+- Enforce a hard cap of 1000 step attempts per workflow run (#343)
+- Park workflow runs in `running` instead of legacy `sleeping` status (#347)
+- Fix invoke race handling for parked parent workflows and parent wakeups
+- Fix replay and parallel execution edge cases around retries and parked waits
+- Fix stale-write and worker-claim race conditions in workflow run transitions
+- Fix deadline-exceeded retry computation and workflow completion timeout logic
+
 ## 0.7.3
 
 - Add `run` metadata to workflows
