@@ -124,7 +124,25 @@ bunx @openworkflow/cli dashboard
 
 </CodeGroup>
 
-This launches the OpenWorkflow dashboard on `http://localhost:3000`. See
+Use `--port` to run the dashboard on a custom port:
+
+<CodeGroup>
+```bash npm
+npx @openworkflow/cli dashboard --port 4000
+```
+
+```bash pnpm
+pnpx @openworkflow/cli dashboard --port 4000
+```
+
+```bash bun
+bunx @openworkflow/cli dashboard --port 4000
+```
+
+</CodeGroup>
+
+Without `--port`, this launches the OpenWorkflow dashboard on
+`http://localhost:3000`. See
 [Dashboard](/docs/dashboard) for details.
 
 ### `doctor`

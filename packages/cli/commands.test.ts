@@ -1,9 +1,11 @@
 import {
   discoverWorkflowFiles,
+  getDashboardSpawnOptions,
   getClientFileName,
   getConfigFileName,
   getExampleWorkflowFileName,
   getRunFileName,
+  validateDashboardPort,
 } from "./commands.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -139,5 +141,51 @@ describe("discoverWorkflowFiles", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("getDashboardSpawnOptions", () => {
+  test("uses default npx command without a custom port env", () => {
+    const options = getDashboardSpawnOptions();
+
+    expect(options.command).toBe("npx");
+    expect(options.args).toEqual(["@openworkflow/dashboard"]);
+    expect(options.spawnOptions.env?.PORT).toBeUndefined();
+    expect(options.spawnOptions.stdio).toBe("inherit");
+  });
+
+  test("sets PORT env when a custom dashboard port is provided", () => {
+    const options = getDashboardSpawnOptions(4321);
+
+    expect(options.command).toBe("npx");
+    expect(options.args).toEqual(["@openworkflow/dashboard"]);
+    expect(options.spawnOptions.env?.PORT).toBe("4321");
+    expect(options.spawnOptions.stdio).toBe("inherit");
+  });
+});
+
+describe("validateDashboardPort", () => {
+  test("returns undefined when no custom port is provided", () => {
+    expect(validateDashboardPort(undefined)).toBeUndefined();
+  });
+
+  test("returns the port when it is within range", () => {
+    expect(validateDashboardPort(3001)).toBe(3001);
+  });
+
+  test("throws for non-integer ports", () => {
+    expect(() => validateDashboardPort(Number.NaN)).toThrow(
+      "Invalid dashboard port.",
+    );
+    expect(() => validateDashboardPort(3000.5)).toThrow(
+      "Invalid dashboard port.",
+    );
+  });
+
+  test("throws for out-of-range ports", () => {
+    expect(() => validateDashboardPort(0)).toThrow("Invalid dashboard port.");
+    expect(() => validateDashboardPort(65_536)).toThrow(
+      "Invalid dashboard port.",
+    );
   });
 });
