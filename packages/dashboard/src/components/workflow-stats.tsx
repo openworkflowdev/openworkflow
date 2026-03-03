@@ -4,7 +4,6 @@ import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   ClockIcon,
-  HourglassIcon,
   ProhibitIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
@@ -15,27 +14,19 @@ export interface WorkflowStatsProps {
 }
 
 export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
-  const { pending, running, sleeping, completed, failed, canceled } =
-    workflowRunCounts;
+  const { pending, running, completed, failed, canceled } = workflowRunCounts;
 
   const stats = [
     {
       label: "Pending",
       value: pending.toLocaleString(),
       icon: ClockIcon,
-      class: "bg-warning/10 ring-warning/20",
     },
     {
       label: "Running",
       value: running.toLocaleString(),
       icon: ArrowsClockwiseIcon,
       class: "bg-info/10 ring-info/20",
-    },
-    {
-      label: "Sleeping",
-      value: sleeping.toLocaleString(),
-      icon: HourglassIcon,
-      class: "bg-sleeping/10 ring-sleeping/20",
     },
     {
       label: "Completed",
@@ -58,16 +49,13 @@ export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-5">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
           <Card
             key={stat.label}
-            className={cn(
-              "bg-card p-3 transition-colors sm:p-5",
-              stat.class,
-            )}
+            className={cn("bg-card p-3 transition-colors sm:p-5", stat.class)}
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
