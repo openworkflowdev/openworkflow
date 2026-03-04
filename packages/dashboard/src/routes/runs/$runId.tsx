@@ -3,6 +3,7 @@ import { RunCancelAction } from "@/components/run-cancel-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { MonacoJsonEditor } from "@/components/ui/monaco-json-editor";
 import {
   getStepAttemptServerFn,
   getWorkflowRunServerFn,
@@ -268,17 +269,29 @@ function RunDetailsPage() {
 
                         {isExpanded && (
                           <div className="px-4 pt-2 pb-4 pl-10 sm:px-6 sm:pl-14">
-                            <div className="bg-muted/50 rounded-lg p-4">
-                              <p className="text-muted-foreground mb-2 text-sm font-medium">
-                                {step.error ? "Error" : "Output"}
-                              </p>
-                              <pre className="font-mono text-sm wrap-break-word whitespace-pre-wrap">
-                                {JSON.stringify(
-                                  step.error ?? step.output,
-                                  null,
-                                  2,
+                            <div className="space-y-3">
+                              {hasDebugValue(step.error) && (
+                                <DebugValueSection
+                                  title="Error"
+                                  tone="error"
+                                  value={step.error}
+                                />
+                              )}
+                              {hasDebugValue(step.output) && (
+                                <DebugValueSection
+                                  title="Output"
+                                  tone="default"
+                                  value={step.output}
+                                />
+                              )}
+                              {!hasDebugValue(step.error) &&
+                                !hasDebugValue(step.output) && (
+                                  <div className="bg-muted/50 rounded-lg p-4">
+                                    <p className="text-muted-foreground text-sm">
+                                      No payload was recorded for this step.
+                                    </p>
+                                  </div>
                                 )}
-                              </pre>
                             </div>
                           </div>
                         )}
@@ -355,4 +368,139 @@ function RunRelationRow({
       </Badge>
     </div>
   );
+}
+
+type DebugSectionTone = "default" | "error";
+
+interface DebugValueSectionProps {
+  title: string;
+  value: unknown;
+  tone: DebugSectionTone;
+}
+
+function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
+  const [copied, setCopied] = useState(false);
+  const serializedValue = stringifyDebugValue(value);
+
+  async function copyPayload() {
+    try {
+      await navigator.clipboard.writeText(serializedValue);
+      setCopied(true);
+      globalThis.setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-4",
+        tone === "error"
+          ? "border-destructive/30 bg-destructive/5"
+          : "bg-muted/50 border-border",
+      )}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p
+          className={cn(
+            "text-sm font-medium",
+            tone === "error" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {title}
+        </p>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => {
+            void copyPayload();
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+
+      <MonacoJsonEditor
+        value={serializedValue}
+        readOnly
+        minLines={6}
+        maxLines={20}
+      />
+    </div>
+  );
+}
+
+function hasDebugValue(value: unknown): boolean {
+  return value !== null && value !== undefined;
+}
+
+function normalizeDebugValue(value: unknown): unknown {
+  return normalizeValue(value, new WeakSet());
+}
+
+function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+
+  if (value === undefined) {
+    return "[undefined]";
+  }
+
+  if (typeof value === "bigint") {
+    return `${value.toString()}n`;
+  }
+
+  if (typeof value === "function") {
+    return `[function ${value.name || "anonymous"}]`;
+  }
+
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return "[circular]";
+    }
+    seen.add(value);
+    return value.map((item) => normalizeValue(item, seen));
+  }
+
+  if (typeof value === "object") {
+    const objectValue = value as Record<string, unknown>;
+    if (seen.has(objectValue)) {
+      return "[circular]";
+    }
+    seen.add(objectValue);
+
+    const normalizedEntries = Object.entries(objectValue).map(
+      ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
+    );
+    return Object.fromEntries(normalizedEntries);
+  }
+
+  return value;
+}
+
+function stringifyDebugValue(value: unknown): string {
+  try {
+    return JSON.stringify(normalizeDebugValue(value), null, 2);
+  } catch (error) {
+    if (error instanceof Error) {
+      return `${error.name}: ${error.message}`;
+    }
+    return "Unable to stringify debug payload";
+  }
 }

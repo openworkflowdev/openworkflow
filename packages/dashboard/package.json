@@ -20,6 +20,7 @@
   "dependencies": {
     "@base-ui/react": "^1.2.0",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@monaco-editor/react": "^4.7.0",
     "@openworkflow/cli": "*",
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/vite": "^4.2.1",
@@ -31,6 +32,7 @@
     "@tanstack/router-plugin": "^1.157.18",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "monaco-editor": "^0.55.1",
     "nitro": "^3.0.1-alpha.2",
     "openworkflow": "*",
     "prom-client": "^15.1.3",
