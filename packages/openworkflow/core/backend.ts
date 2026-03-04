@@ -189,7 +189,7 @@ export interface PaginatedResponse<T> {
 
 export type WorkflowRunCounts = Omit<
   Record<WorkflowRunStatus, number>,
-  "succeeded"
+  "succeeded" | "sleeping"
 >;
 
 /**
@@ -204,16 +204,22 @@ export function toWorkflowRunCounts(
   const counts: WorkflowRunCounts = {
     pending: 0,
     running: 0,
-    sleeping: 0, // deprecated, retained for backward compatibility
     completed: 0,
     failed: 0,
     canceled: 0,
   };
 
   for (const row of rows) {
-    // 'succeeded' status is deprecated, fold into 'completed'
+    // 'succeeded' and 'sleeping' are deprecated statuses.
+    // fold them into their replacement buckets for a normalized API.
     if (row.status === "succeeded") {
       counts.completed += Number(row.count);
+      continue;
+    }
+
+    if (row.status === "sleeping") {
+      counts.running += Number(row.count);
+      continue;
     }
 
     if (Object.hasOwn(counts, row.status)) {

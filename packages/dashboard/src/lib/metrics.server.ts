@@ -58,8 +58,7 @@ function registerWorkflowRunCounts(
 function toPrometheusWorkflowRunCounts(workflowRunCounts: WorkflowRunCounts) {
   return {
     pending: workflowRunCounts.pending,
-    // fold legacy `sleeping` into `running` for Prometheus export.
-    running: workflowRunCounts.running + workflowRunCounts.sleeping,
+    running: workflowRunCounts.running,
     completed: workflowRunCounts.completed,
     failed: workflowRunCounts.failed,
     canceled: workflowRunCounts.canceled,

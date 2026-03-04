@@ -710,7 +710,6 @@ export function testBackend(options: TestBackendOptions): void {
         expect(await backend.countWorkflowRuns()).toEqual({
           pending: 0,
           running: 0,
-          sleeping: 0,
           completed: 0,
           failed: 0,
           canceled: 0,
@@ -765,7 +764,6 @@ export function testBackend(options: TestBackendOptions): void {
         expect(await backend.countWorkflowRuns()).toEqual({
           pending: 1,
           running: 2,
-          sleeping: 0,
           completed: 1,
           failed: 1,
           canceled: 1,

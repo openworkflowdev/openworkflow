@@ -12,7 +12,6 @@ const mockedGetBackend = vi.mocked(getBackend);
 const ZERO_COUNTS: WorkflowRunCounts = {
   pending: 0,
   running: 0,
-  sleeping: 0,
   completed: 0,
   failed: 0,
   canceled: 0,
@@ -27,8 +26,7 @@ describe("getMetricsResponse()", () => {
     const counts: WorkflowRunCounts = {
       ...ZERO_COUNTS,
       pending: 3,
-      running: 1,
-      sleeping: 2,
+      running: 3,
       completed: 4,
       failed: 2,
     };
