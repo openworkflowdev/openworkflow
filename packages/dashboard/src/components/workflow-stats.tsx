@@ -1,9 +1,9 @@
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   ArrowsClockwiseIcon,
   CheckCircleIcon,
   ClockIcon,
-  HourglassIcon,
   ProhibitIcon,
   XCircleIcon,
 } from "@phosphor-icons/react";
@@ -14,46 +14,48 @@ export interface WorkflowStatsProps {
 }
 
 export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
-  const { pending, running, sleeping, completed, failed, canceled } =
-    workflowRunCounts;
+  const { pending, running, completed, failed, canceled } = workflowRunCounts;
 
   const stats = [
-    { label: "Pending", value: pending.toLocaleString(), icon: ClockIcon },
+    {
+      label: "Pending",
+      value: pending.toLocaleString(),
+      icon: ClockIcon,
+    },
     {
       label: "Running",
       value: running.toLocaleString(),
       icon: ArrowsClockwiseIcon,
-    },
-    {
-      label: "Sleeping",
-      value: sleeping.toLocaleString(),
-      icon: HourglassIcon,
+      class: "bg-info/10 ring-info/20",
     },
     {
       label: "Completed",
       value: completed.toLocaleString(),
       icon: CheckCircleIcon,
+      class: "bg-success/10 ring-success/20",
     },
     {
       label: "Failed",
       value: failed.toLocaleString(),
       icon: XCircleIcon,
+      class: "bg-destructive/10 ring-destructive/20",
     },
     {
       label: "Canceled",
       value: canceled.toLocaleString(),
       icon: ProhibitIcon,
+      class: "bg-neutral/10 ring-neutral/20",
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-5">
       {stats.map((stat) => {
         const Icon = stat.icon;
         return (
           <Card
             key={stat.label}
-            className="bg-card border-border hover:border-primary/50 p-3 transition-colors sm:p-5"
+            className={cn("bg-card p-3 transition-colors sm:p-5", stat.class)}
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
