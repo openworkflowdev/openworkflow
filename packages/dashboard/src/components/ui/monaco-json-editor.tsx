@@ -6,11 +6,13 @@ import { useMemo } from "react";
 const LINE_HEIGHT = 18;
 
 interface MonacoJsonEditorProps {
+  id?: string;
   value: string;
   readOnly?: boolean;
   onChange?: (value: string) => void;
   minLines?: number;
   maxLines?: number;
+  invalid?: boolean;
   className?: string;
 }
 
@@ -23,11 +25,13 @@ function lineCount(value: string): number {
 }
 
 export function MonacoJsonEditor({
+  id,
   value,
   readOnly = true,
   onChange,
   minLines = 6,
   maxLines = 22,
+  invalid = false,
   className,
 }: MonacoJsonEditorProps) {
   const { theme } = useTheme();
@@ -39,8 +43,11 @@ export function MonacoJsonEditor({
 
   return (
     <div
+      id={id}
+      aria-invalid={invalid || undefined}
       className={cn(
         "border-border bg-background overflow-hidden rounded-none border",
+        invalid && "border-destructive",
         className,
       )}
       style={{ height: editorHeight }}

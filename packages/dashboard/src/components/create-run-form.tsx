@@ -7,7 +7,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { MonacoJsonEditor } from "@/components/ui/monaco-json-editor";
 import { createWorkflowRunServerFn } from "@/lib/api";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -144,22 +144,23 @@ export function CreateRunForm({ onCancel, onSuccess }: CreateRunFormProps) {
         <FieldGroup>
           <Field data-invalid={!!inputError}>
             <FieldLabel htmlFor="create-run-input">Input (JSON)</FieldLabel>
-            <Textarea
+            <MonacoJsonEditor
               id="create-run-input"
-              name="input"
               value={input}
-              onChange={(event) => {
-                setInput(event.currentTarget.value);
+              onChange={(value) => {
+                setInput(value);
                 if (inputError) {
                   setInputError(null);
                 }
               }}
-              rows={6}
-              placeholder='{"key":"value"}'
-              disabled={isSubmitting}
+              readOnly={isSubmitting}
+              invalid={!!inputError}
+              minLines={8}
+              maxLines={18}
             />
             <FieldDescription>
-              JSON payload passed to the workflow function.
+              JSON payload passed to the workflow function, e.g.
+              <span className="font-mono"> {'{"key":"value"}'}</span>.
             </FieldDescription>
             <FieldError>{inputError}</FieldError>
           </Field>
