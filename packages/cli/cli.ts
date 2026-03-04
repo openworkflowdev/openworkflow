@@ -51,6 +51,11 @@ workerCmd
 program
   .command("dashboard")
   .description("start the dashboard to view workflow runs")
+  .option(
+    "-p, --port <number>",
+    "custom port for the dashboard server",
+    Number.parseInt,
+  )
   .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(dashboard));
 

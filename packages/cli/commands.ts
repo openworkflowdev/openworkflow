@@ -35,6 +35,10 @@ interface CommandOptions {
   config?: string;
 }
 
+interface DashboardOptions extends CommandOptions {
+  port?: number;
+}
+
 /**
  * openworkflow -V | --version
  * @returns the version string, or "-" if it cannot be determined
@@ -340,10 +344,59 @@ export async function workerStart(
 /**
  * openworkflow dashboard
  * Starts the dashboard by delegating to `@openworkflow/dashboard` via npx.
- * @param options - Command options
+ * @param port - Optional dashboard port.
+ * @returns Spawn configuration for launching the dashboard process.
  */
-export async function dashboard(options: CommandOptions = {}): Promise<void> {
+export function getDashboardSpawnOptions(port?: number): {
+  command: string;
+  args: string[];
+  spawnOptions: {
+    stdio: "inherit";
+    env?: NodeJS.ProcessEnv;
+  };
+} {
+  return {
+    command: "npx",
+    args: ["@openworkflow/dashboard"],
+    spawnOptions: {
+      stdio: "inherit",
+      env:
+        port === undefined
+          ? process.env
+          : { ...process.env, PORT: String(port) },
+    },
+  };
+}
+
+/**
+ * Validate dashboard port option.
+ * @param port - Optional dashboard port.
+ * @returns Validated dashboard port.
+ * @throws {CLIError} If the provided port is not an integer in the 1-65535 range.
+ */
+export function validateDashboardPort(port?: number): number | undefined {
+  if (port === undefined) {
+    return undefined;
+  }
+
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new CLIError(
+      "Invalid dashboard port.",
+      "Use an integer between 1 and 65535, for example `--port 3001`.",
+    );
+  }
+
+  return port;
+}
+
+/**
+ * Start the dashboard process.
+ * @param options - Dashboard command options.
+ * @returns Resolves when the dashboard process exits.
+ */
+export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   const configPath = options.config;
+  const port = validateDashboardPort(options.port);
   consola.start("Starting dashboard...");
 
   const { configFile } = await loadConfigWithEnv(configPath);
@@ -355,10 +408,12 @@ export async function dashboard(options: CommandOptions = {}): Promise<void> {
   }
   consola.info(`Using config: ${configFile}`);
 
-  // eslint-disable-next-line sonarjs/no-os-command-from-path
-  const child = spawn("npx", ["@openworkflow/dashboard"], {
-    stdio: "inherit",
-  });
+  const spawnConfig = getDashboardSpawnOptions(port);
+  const child = spawn(
+    spawnConfig.command,
+    spawnConfig.args,
+    spawnConfig.spawnOptions,
+  );
 
   await new Promise<void>((resolve, reject) => {
     /** remove signal handlers after the child exits */
