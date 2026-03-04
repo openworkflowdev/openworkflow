@@ -1,52 +1,37 @@
 import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import {
-  ArrowsClockwiseIcon,
-  CheckCircleIcon,
-  ClockIcon,
-  ProhibitIcon,
-  XCircleIcon,
-} from "@phosphor-icons/react";
+  getRunStatusConfig,
+  getStatusStatCardClass,
+  getStatusStatIconClass,
+} from "@/lib/status";
+import { cn } from "@/lib/utils";
 import type { WorkflowRunCounts } from "openworkflow/internal";
 
 export interface WorkflowStatsProps {
   workflowRunCounts: WorkflowRunCounts;
 }
 
-export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
-  const { pending, running, completed, failed, canceled } = workflowRunCounts;
+const STATS_STATUS_ORDER = [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "canceled",
+] as const satisfies readonly (keyof WorkflowRunCounts)[];
 
-  const stats = [
-    {
-      label: "Pending",
-      value: pending.toLocaleString(),
-      icon: ClockIcon,
-    },
-    {
-      label: "Running",
-      value: running.toLocaleString(),
-      icon: ArrowsClockwiseIcon,
-      class: "bg-info/10 ring-info/20",
-    },
-    {
-      label: "Completed",
-      value: completed.toLocaleString(),
-      icon: CheckCircleIcon,
-      class: "bg-success/10 ring-success/20",
-    },
-    {
-      label: "Failed",
-      value: failed.toLocaleString(),
-      icon: XCircleIcon,
-      class: "bg-destructive/10 ring-destructive/20",
-    },
-    {
-      label: "Canceled",
-      value: canceled.toLocaleString(),
-      icon: ProhibitIcon,
-      class: "bg-neutral/10 ring-neutral/20",
-    },
-  ];
+export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
+  const stats = STATS_STATUS_ORDER.map((status) => {
+    const config = getRunStatusConfig(status);
+
+    return {
+      status,
+      label: config.label,
+      value: workflowRunCounts[status].toLocaleString(),
+      icon: config.statsIcon,
+      cardClass: getStatusStatCardClass(status),
+      iconClass: getStatusStatIconClass(status),
+    };
+  });
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 xl:grid-cols-5">
@@ -55,7 +40,10 @@ export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
         return (
           <Card
             key={stat.label}
-            className={cn("bg-card p-3 transition-colors sm:p-5", stat.class)}
+            className={cn(
+              "bg-card p-3 transition-colors sm:p-5",
+              stat.cardClass,
+            )}
           >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
@@ -66,7 +54,7 @@ export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
                   {stat.value}
                 </p>
               </div>
-              <Icon className="text-muted-foreground size-4 sm:size-5" />
+              <Icon className={cn("size-4 sm:size-5", stat.iconClass)} />
             </div>
           </Card>
         );

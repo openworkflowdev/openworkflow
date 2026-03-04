@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { STATUS_CONFIG } from "@/lib/status";
+import { getRunStatusConfig } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import { computeDuration, formatRelativeTime } from "@/utils";
 import { CaretRightIcon } from "@phosphor-icons/react";
@@ -63,7 +63,7 @@ export function RunList({
       <Card className="bg-card border-border overflow-hidden py-0">
         <div className="divide-border divide-y">
           {runs.map((run) => {
-            const config = STATUS_CONFIG[run.status];
+            const config = getRunStatusConfig(run.status);
             const StatusIcon = config.icon;
             const duration = computeDuration(run.startedAt, run.finishedAt);
             const startedAt = formatRelativeTime(run.startedAt);
