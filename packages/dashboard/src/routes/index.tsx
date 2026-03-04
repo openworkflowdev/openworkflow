@@ -196,12 +196,12 @@ function HomePage() {
               showHeader={false}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-muted-foreground text-xs">
                 Showing {runs.length} run{runs.length === 1 ? "" : "s"}
               </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-2">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                <div className="flex items-center gap-2 sm:mr-1">
                   <p className="text-muted-foreground text-xs">Page size</p>
                   <Select
                     value={String(pageSize)}
@@ -222,6 +222,7 @@ function HomePage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   type="button"
                   onClick={goToPreviousPage}
                   disabled={!pagination.prev}
@@ -231,6 +232,7 @@ function HomePage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="flex-1 sm:flex-none"
                   type="button"
                   onClick={goToNextPage}
                   disabled={!pagination.next}

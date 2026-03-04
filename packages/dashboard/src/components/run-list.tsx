@@ -74,28 +74,30 @@ export function RunList({
                 key={run.id}
                 to="/runs/$runId"
                 params={{ runId: run.id }}
-                className="hover:bg-muted/50 block px-6 py-4 transition-colors"
+                className="hover:bg-muted/50 block px-4 py-4 transition-colors sm:px-6"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-1 items-center gap-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
                     <StatusIcon
                       className={cn(
-                        "size-5",
+                        "mt-0.5 size-5 shrink-0 sm:mt-0",
                         config.color,
                         run.status === "running" && "animate-spin",
                       )}
                     />
 
                     <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center gap-3">
-                        <span className="font-medium">{run.workflowName}</span>
+                      <div className="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                        <span className="font-medium wrap-break-word">
+                          {run.workflowName}
+                        </span>
                         {run.version && (
                           <Badge variant="outline">{run.version}</Badge>
                         )}
-                        <span className="text-muted-foreground font-mono text-sm">
-                          {run.id}
-                        </span>
                       </div>
+                      <p className="text-muted-foreground mb-2 font-mono text-xs break-all">
+                        {run.id}
+                      </p>
                       <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                         <Badge
                           variant="outline"
@@ -104,19 +106,35 @@ export function RunList({
                           {config.label}
                         </Badge>
                         {childRunRelation && (
-                          <Badge variant="outline">
+                          <Badge
+                            variant="outline"
+                            className="h-auto max-w-full min-w-0 py-1 break-all whitespace-normal"
+                          >
                             {childRunRelation.parentWorkflowName && (
-                              <span className="mr-2 font-medium">
+                              <span className="mr-2 font-medium wrap-break-word">
                                 [{childRunRelation.parentWorkflowName}]
                               </span>
                             )}
-                            <span>{childRunRelation.parentRunId}</span>
+                            <span className="break-all">
+                              {childRunRelation.parentRunId}
+                            </span>
                           </Badge>
                         )}
                       </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:hidden">
+                        <div>
+                          <p className="text-muted-foreground">Duration</p>
+                          <p className="font-mono">{duration}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-muted-foreground">Started</p>
+                          <p>{startedAt}</p>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-8 text-sm">
+                    <div className="hidden items-center gap-8 text-sm sm:flex">
                       <div className="text-right">
                         <p className="text-muted-foreground">Duration</p>
                         <p className="font-mono">{duration}</p>
@@ -129,7 +147,7 @@ export function RunList({
                     </div>
                   </div>
 
-                  <CaretRightIcon className="text-muted-foreground ml-4 size-5" />
+                  <CaretRightIcon className="text-muted-foreground mt-0.5 size-5 shrink-0 sm:mt-0 sm:ml-4" />
                 </div>
               </Link>
             );

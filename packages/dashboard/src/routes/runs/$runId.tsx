@@ -126,15 +126,17 @@ function RunDetailsPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-start gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
           <Link to="/">
             <Button variant="ghost" size="icon">
               <ArrowLeftIcon className="size-5" />
             </Button>
           </Link>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-semibold">{run.workflowName}</h2>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h2 className="text-2xl font-semibold wrap-break-word">
+                {run.workflowName}
+              </h2>
               {run.version && <Badge variant="outline">{run.version}</Badge>}
               <Badge
                 variant="outline"
@@ -144,7 +146,7 @@ function RunDetailsPage() {
               </Badge>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">
-              Run ID: <span className="font-mono">{run.id}</span>
+              Run ID: <span className="font-mono break-all">{run.id}</span>
             </p>
             {parentRun && (
               <RunRelationRow
@@ -155,17 +157,19 @@ function RunDetailsPage() {
               />
             )}
           </div>
-          <RunCancelAction
-            runId={run.id}
-            status={run.status}
-            onCanceled={async () => {
-              await router.invalidate();
-            }}
-          />
+          <div className="sm:shrink-0">
+            <RunCancelAction
+              runId={run.id}
+              status={run.status}
+              onCanceled={async () => {
+                await router.invalidate();
+              }}
+            />
+          </div>
         </div>
 
-        <div className="flex gap-6">
-          <div className="flex-1">
+        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+          <div className="min-w-0 flex-1">
             <Card className="bg-card border-border overflow-hidden py-0">
               {steps.length === 0 ? (
                 <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
@@ -203,11 +207,11 @@ function RunDetailsPage() {
                             toggleStep(step.id);
                           }}
                           className={cn(
-                            "group-hover:bg-muted/50 flex w-full items-center gap-4 border-0 px-6 pt-4 pb-4 text-left transition-colors",
+                            "group-hover:bg-muted/50 flex w-full items-start gap-3 border-0 px-4 pt-4 pb-4 text-left transition-colors sm:items-center sm:gap-4 sm:px-6",
                             childRunId && "pb-2",
                           )}
                         >
-                          <div className="flex flex-1 items-center gap-3">
+                          <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
                             <div className="flex flex-col items-center gap-2">
                               <StatusIcon
                                 className={cn(
@@ -221,9 +225,9 @@ function RunDetailsPage() {
                               )}
                             </div>
 
-                            <div className="flex-1">
-                              <div className="mb-1 flex items-center gap-3">
-                                <span className="font-medium">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
+                                <span className="font-medium wrap-break-word">
                                   {step.stepName}
                                 </span>
                                 <Badge
@@ -237,7 +241,7 @@ function RunDetailsPage() {
                                 </Badge>
                                 <Badge variant="outline">{stepTypeLabel}</Badge>
                               </div>
-                              <div className="text-muted-foreground flex items-center gap-4 text-sm">
+                              <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                                 <span>Started {stepStartedAt}</span>
                                 <span>Duration: {stepDuration}</span>
                               </div>
@@ -253,7 +257,7 @@ function RunDetailsPage() {
                         </button>
 
                         {childRunId && (
-                          <div className="group-hover:bg-muted/50 px-6 pb-3 pl-14 transition-colors">
+                          <div className="group-hover:bg-muted/50 px-4 pb-3 pl-10 transition-colors sm:px-6 sm:pl-14">
                             <RunRelationRow
                               label="Child Workflow Run"
                               runId={childRunId}
@@ -263,12 +267,12 @@ function RunDetailsPage() {
                         )}
 
                         {isExpanded && (
-                          <div className="px-6 pt-2 pb-4 pl-14">
+                          <div className="px-4 pt-2 pb-4 pl-10 sm:px-6 sm:pl-14">
                             <div className="bg-muted/50 rounded-lg p-4">
                               <p className="text-muted-foreground mb-2 text-sm font-medium">
                                 {step.error ? "Error" : "Output"}
                               </p>
-                              <pre className="font-mono text-sm whitespace-pre-wrap">
+                              <pre className="font-mono text-sm wrap-break-word whitespace-pre-wrap">
                                 {JSON.stringify(
                                   step.error ?? step.output,
                                   null,
@@ -286,8 +290,8 @@ function RunDetailsPage() {
             </Card>
           </div>
 
-          <div className="w-64 shrink-0">
-            <div className="grid grid-cols-1 gap-3">
+          <div className="w-full shrink-0 lg:w-64">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-1">
               <Card className="bg-card border-border gap-2 p-3">
                 <p className="text-muted-foreground text-xs">Status</p>
                 <p
@@ -335,16 +339,19 @@ function RunRelationRow({
   className,
 }: RunRelationRowProps) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-2 text-sm", className)}>
+    <div className={cn("flex flex-wrap items-start gap-2 text-sm", className)}>
       <span className="text-muted-foreground whitespace-nowrap">{label}:</span>
       <Badge
         variant="outline"
+        className="h-auto max-w-full min-w-0 py-1 break-all whitespace-normal"
         render={<Link to="/runs/$runId" params={{ runId }} />}
       >
         {workflowName && (
-          <span className="mr-2 font-medium">[{workflowName}]</span>
+          <span className="mr-2 font-medium wrap-break-word">
+            [{workflowName}]
+          </span>
         )}
-        <span>{runId}</span>
+        <span className="break-all">{runId}</span>
       </Badge>
     </div>
   );

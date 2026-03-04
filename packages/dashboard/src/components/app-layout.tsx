@@ -9,26 +9,30 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="bg-background text-foreground min-h-screen">
       <header className="border-border border-b">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div className="container mx-auto px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Link
                 to="/"
-                className="text-foreground hover:text-primary flex items-center gap-3 transition-colors"
+                className="text-foreground hover:text-primary flex min-w-0 items-center gap-3 transition-colors"
                 aria-label="OpenWorkflow home"
               >
-                <div className="size-8 bg-black" />
-                <h1 className="text-xl font-semibold">OpenWorkflow</h1>
+                <div className="size-8 shrink-0 bg-black" />
+                <h1 className="truncate text-lg font-semibold sm:text-xl">
+                  OpenWorkflow
+                </h1>
               </Link>
             </div>
-            <nav className="flex items-center gap-4 text-sm">
+            <nav className="shrink-0 text-sm">
               <ModeSwitcher />
             </nav>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">{children}</main>
+      <main className="container mx-auto px-4 py-6 sm:px-6 sm:py-8">
+        {children}
+      </main>
     </div>
   );
 }
