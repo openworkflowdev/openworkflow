@@ -344,7 +344,8 @@ export async function workerStart(
 /**
  * openworkflow dashboard
  * Starts the dashboard by delegating to `@openworkflow/dashboard` via npx.
- * @param options - Command options
+ * @param port - Optional dashboard port.
+ * @returns Spawn configuration for launching the dashboard process.
  */
 export function getDashboardSpawnOptions(port?: number): {
   command: string;
@@ -359,19 +360,21 @@ export function getDashboardSpawnOptions(port?: number): {
     args: ["@openworkflow/dashboard"],
     spawnOptions: {
       stdio: "inherit",
-      env: port === undefined ? process.env : { ...process.env, PORT: `${port}` },
+      env:
+        port === undefined
+          ? process.env
+          : { ...process.env, PORT: String(port) },
     },
   };
 }
 
 /**
  * Validate dashboard port option.
- * @param port - Optional dashboard port
- * @returns Validated port
+ * @param port - Optional dashboard port.
+ * @returns Validated dashboard port.
+ * @throws {CLIError} If the provided port is not an integer in the 1-65535 range.
  */
-export function validateDashboardPort(
-  port: number | undefined,
-): number | undefined {
+export function validateDashboardPort(port?: number): number | undefined {
   if (port === undefined) {
     return undefined;
   }
@@ -386,6 +389,11 @@ export function validateDashboardPort(
   return port;
 }
 
+/**
+ * Start the dashboard process.
+ * @param options - Dashboard command options.
+ * @returns Resolves when the dashboard process exits.
+ */
 export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   const configPath = options.config;
   const port = validateDashboardPort(options.port);
@@ -400,7 +408,6 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   }
   consola.info(`Using config: ${configFile}`);
 
-  // eslint-disable-next-line sonarjs/no-os-command-from-path
   const spawnConfig = getDashboardSpawnOptions(port);
   const child = spawn(
     spawnConfig.command,

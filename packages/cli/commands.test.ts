@@ -150,7 +150,7 @@ describe("getDashboardSpawnOptions", () => {
 
     expect(options.command).toBe("npx");
     expect(options.args).toEqual(["@openworkflow/dashboard"]);
-    expect(options.spawnOptions.env?.PORT).toBeUndefined();
+    expect(options.spawnOptions.env?.["PORT"]).toBeUndefined();
     expect(options.spawnOptions.stdio).toBe("inherit");
   });
 
@@ -159,14 +159,14 @@ describe("getDashboardSpawnOptions", () => {
 
     expect(options.command).toBe("npx");
     expect(options.args).toEqual(["@openworkflow/dashboard"]);
-    expect(options.spawnOptions.env?.PORT).toBe("4321");
+    expect(options.spawnOptions.env?.["PORT"]).toBe("4321");
     expect(options.spawnOptions.stdio).toBe("inherit");
   });
 });
 
 describe("validateDashboardPort", () => {
   test("returns undefined when no custom port is provided", () => {
-    expect(validateDashboardPort(undefined)).toBeUndefined();
+    expect(validateDashboardPort()).toBeUndefined();
   });
 
   test("returns the port when it is within range", () => {
