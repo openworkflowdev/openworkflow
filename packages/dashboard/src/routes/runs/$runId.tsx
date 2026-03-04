@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MonacoJsonEditor } from "@/components/ui/monaco-json-editor";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   getStepAttemptServerFn,
   getWorkflowRunServerFn,
   listStepAttemptsServerFn,
@@ -12,20 +17,32 @@ import {
 import {
   STEP_STATUS_CONFIG,
   TERMINAL_RUN_STATUSES,
-  getStatusColor,
+  getRunStatusConfig,
   getStatusBadgeClass,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-polling";
 import { cn } from "@/lib/utils";
-import { computeDuration, formatRelativeTime } from "@/utils";
 import {
-  ArrowLeftIcon,
-  CaretDownIcon,
-  ListDashesIcon,
-} from "@phosphor-icons/react";
+  computeDuration,
+  formatMetadataTimestamp,
+  formatRelativeTime,
+  getListboxNavigationIndex,
+} from "@/utils";
+import { ArrowLeftIcon, ListDashesIcon } from "@phosphor-icons/react";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
-import { useState } from "react";
+import type {
+  StepAttempt,
+  WorkflowRun,
+  WorkflowRunStatus,
+} from "openworkflow/internal";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 export const Route = createFileRoute("/runs/$runId")({
   loader: async ({ params }) => {
@@ -77,30 +94,36 @@ export const Route = createFileRoute("/runs/$runId")({
       parentStepAttempt,
       parentRun,
       childRunsById,
+      referenceNow: new Date(),
     };
   },
   component: RunDetailsPage,
 });
 
 function RunDetailsPage() {
-  const { run, steps, parentRun, childRunsById } = Route.useLoaderData();
+  const { run, steps, parentRun, childRunsById, referenceNow } =
+    Route.useLoaderData();
   const router = useRouter();
-  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(() =>
+    getDefaultSelectedStepId(steps),
+  );
+  const stepOptionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
+
   usePolling({
     enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
   });
 
-  function toggleStep(stepId: string) {
-    setExpandedSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(stepId)) {
-        next.delete(stepId);
-      } else {
-        next.add(stepId);
+  useEffect(() => {
+    setSelectedStepId((previousStepId) => {
+      if (previousStepId && steps.some((step) => step.id === previousStepId)) {
+        return previousStepId;
       }
-      return next;
+
+      return getDefaultSelectedStepId(steps);
     });
-  }
+  }, [steps]);
 
   if (!run) {
     return (
@@ -118,15 +141,69 @@ function RunDetailsPage() {
     );
   }
 
+  const referenceNowMs = referenceNow.getTime();
   const duration = computeDuration(run.startedAt, run.finishedAt);
-  const startedAt = formatRelativeTime(run.startedAt);
+  const startedAt = formatRelativeTime(run.startedAt, referenceNowMs);
   const completedSteps = steps.filter(
     (s: StepAttempt) => s.status === "completed" || s.status === "succeeded",
   ).length;
+  const stepsByName = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const step of steps) {
+      counts[step.stepName] = (counts[step.stepName] ?? 0) + 1;
+    }
+    return counts;
+  }, [steps]);
+  const stepAttemptIndexById = useMemo(() => {
+    const seenByName: Record<string, number> = {};
+    const attemptIndexes: Record<string, number> = {};
+    for (const step of steps) {
+      const attemptIndex = (seenByName[step.stepName] ?? 0) + 1;
+      seenByName[step.stepName] = attemptIndex;
+      attemptIndexes[step.id] = attemptIndex;
+    }
+    return attemptIndexes;
+  }, [steps]);
+  const selectedStep =
+    selectedStepId === null
+      ? null
+      : (steps.find((step) => step.id === selectedStepId) ?? null);
+  const selectedStepAttemptCount =
+    selectedStep === null ? 0 : (stepsByName[selectedStep.stepName] ?? 1);
+  const selectedStepIndex =
+    selectedStepId === null
+      ? -1
+      : steps.findIndex((step) => step.id === selectedStepId);
+  const selectedStepChildRun =
+    selectedStep?.kind === "workflow" && selectedStep.childWorkflowRunId
+      ? (childRunsById[selectedStep.childWorkflowRunId] ?? null)
+      : null;
+
+  function handleStepListboxKeyDown(
+    event: KeyboardEvent<HTMLDivElement>,
+  ): void {
+    const nextStepIndex = getListboxNavigationIndex(
+      event.key,
+      selectedStepIndex,
+      steps.length,
+    );
+    if (nextStepIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextStep = steps[nextStepIndex];
+    if (!nextStep) {
+      return;
+    }
+
+    setSelectedStepId(nextStep.id);
+    stepOptionButtonRefs.current[nextStep.id]?.focus();
+  }
 
   return (
     <AppLayout>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
           <Link to="/">
             <Button variant="ghost" size="icon">
@@ -139,16 +216,7 @@ function RunDetailsPage() {
                 {run.workflowName}
               </h2>
               {run.version && <Badge variant="outline">{run.version}</Badge>}
-              <Badge
-                variant="outline"
-                className={cn("capitalize", getStatusBadgeClass(run.status))}
-              >
-                {run.status}
-              </Badge>
             </div>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Run ID: <span className="font-mono break-all">{run.id}</span>
-            </p>
             {parentRun && (
               <RunRelationRow
                 label="Parent Workflow Run"
@@ -169,172 +237,542 @@ function RunDetailsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
-          <div className="min-w-0 flex-1">
-            <Card className="bg-card border-border overflow-hidden py-0">
-              {steps.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-                  <ListDashesIcon className="text-muted-foreground mb-4 size-16" />
-                  <h3 className="mb-2 text-lg font-semibold">No steps yet</h3>
-                  <p className="text-muted-foreground max-w-md text-sm">
-                    This workflow run hasn't executed any steps yet. Steps will
-                    appear here as they are processed.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-border divide-y">
-                  {steps.map((step: StepAttempt, index: number) => {
-                    const isExpanded = expandedSteps.has(step.id);
-                    const config = STEP_STATUS_CONFIG[step.status];
-                    const StatusIcon = config.icon;
-                    const iconColor = config.color;
-                    const stepTypeLabel =
-                      step.kind === "function" ? "run" : step.kind;
-                    const childRunId =
-                      step.kind === "workflow" ? step.childWorkflowRunId : null;
-                    const childRun = childRunId
-                      ? (childRunsById[childRunId] ?? null)
-                      : null;
-                    const stepDuration = computeDuration(
-                      step.startedAt,
-                      step.finishedAt,
-                    );
-                    const stepStartedAt = formatRelativeTime(step.startedAt);
+        <RunOverviewPanel
+          run={run}
+          startedAt={startedAt}
+          duration={duration}
+          completedSteps={completedSteps}
+          totalSteps={steps.length}
+          referenceNow={referenceNowMs}
+        />
 
-                    return (
-                      <div key={step.id} className="group">
-                        <button
-                          onClick={() => {
-                            toggleStep(step.id);
-                          }}
-                          className={cn(
-                            "group-hover:bg-muted/50 flex w-full items-start gap-3 border-0 px-4 pt-4 pb-4 text-left transition-colors sm:items-center sm:gap-4 sm:px-6",
-                            childRunId && "pb-2",
-                          )}
-                        >
-                          <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
-                            <div className="flex flex-col items-center gap-2">
-                              <StatusIcon
-                                className={cn(
-                                  "size-5",
-                                  iconColor,
-                                  step.status === "running" && "animate-spin",
-                                )}
-                              />
-                              {index < steps.length - 1 && (
-                                <div className="bg-border h-8 w-0.5" />
-                              )}
-                            </div>
+        <div className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:items-start">
+          <Card className="bg-card border-border gap-0 overflow-hidden py-0">
+            <div className="border-border bg-muted/20 border-b px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold tracking-wide uppercase">
+                  Steps
+                </h3>
+                <p className="text-muted-foreground text-sm">
+                  {steps.length === 0
+                    ? "No steps yet"
+                    : `${completedSteps.toString()}/${steps.length.toString()} completed`}
+                </p>
+              </div>
+            </div>
 
-                            <div className="min-w-0 flex-1">
-                              <div className="mb-1 flex flex-wrap items-center gap-2 sm:gap-3">
-                                <span className="font-medium wrap-break-word">
-                                  {step.stepName}
-                                </span>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "capitalize",
-                                    getStatusBadgeClass(step.status),
-                                  )}
-                                >
-                                  {step.status}
-                                </Badge>
-                                <Badge variant="outline">{stepTypeLabel}</Badge>
-                              </div>
-                              <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                                <span>Started {stepStartedAt}</span>
-                                <span>Duration: {stepDuration}</span>
-                              </div>
-                            </div>
-                          </div>
+            {steps.length === 0 ? (
+              <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+                <ListDashesIcon className="text-muted-foreground mb-4 size-16" />
+                <h3 className="mb-2 text-lg font-semibold">No steps yet</h3>
+                <p className="text-muted-foreground max-w-md text-sm">
+                  This workflow run hasn't executed any steps yet. Steps will
+                  appear here as they are processed.
+                </p>
+              </div>
+            ) : (
+              <div
+                className="divide-border divide-y"
+                role="listbox"
+                aria-label="Workflow steps"
+                aria-activedescendant={
+                  selectedStepId ? `step-option-${selectedStepId}` : undefined
+                }
+                onKeyDown={handleStepListboxKeyDown}
+              >
+                {steps.map((step: StepAttempt, index: number) => {
+                  const config = STEP_STATUS_CONFIG[step.status];
+                  const StatusIcon = config.icon;
+                  const iconColor = config.color;
+                  const stepTypeLabel =
+                    step.kind === "function" ? "function" : step.kind;
+                  const stepDuration = computeDuration(
+                    step.startedAt,
+                    step.finishedAt,
+                  );
+                  const stepStartedAt = formatRelativeTime(
+                    step.startedAt,
+                    referenceNowMs,
+                  );
+                  const childRunId =
+                    step.kind === "workflow" ? step.childWorkflowRunId : null;
+                  const childRun = childRunId
+                    ? (childRunsById[childRunId] ?? null)
+                    : null;
+                  const attemptsForName = stepsByName[step.stepName] ?? 1;
+                  const stepAttemptIndex = stepAttemptIndexById[step.id] ?? 1;
+                  const stepAttemptLabel =
+                    attemptsForName > 1
+                      ? `${stepAttemptIndex.toString()}/${attemptsForName.toString()}`
+                      : stepAttemptIndex.toString();
+                  const isSelected = selectedStepId === step.id;
 
-                          <CaretDownIcon
+                  return (
+                    <button
+                      id={`step-option-${step.id}`}
+                      key={step.id}
+                      ref={(node) => {
+                        stepOptionButtonRefs.current[step.id] = node;
+                      }}
+                      onClick={() => {
+                        setSelectedStepId(step.id);
+                      }}
+                      role="option"
+                      tabIndex={isSelected ? 0 : -1}
+                      aria-selected={isSelected}
+                      aria-posinset={index + 1}
+                      aria-setsize={steps.length}
+                      aria-controls="step-inspector-panel"
+                      className={cn(
+                        "w-full border-0 px-4 py-4 text-left transition-colors sm:px-6",
+                        isSelected ? "bg-muted/60" : "hover:bg-muted/35",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
+                          <StatusIcon
                             className={cn(
-                              "text-muted-foreground size-5 transition-transform",
-                              isExpanded && "rotate-180",
+                              "mt-0.5 size-5 shrink-0 sm:mt-0",
+                              iconColor,
+                              step.status === "running" && "animate-spin",
                             )}
                           />
-                        </button>
 
-                        {childRunId && (
-                          <div className="group-hover:bg-muted/50 px-4 pb-3 pl-10 transition-colors sm:px-6 sm:pl-14">
-                            <RunRelationRow
-                              label="Child Workflow Run"
-                              runId={childRunId}
-                              workflowName={childRun?.workflowName}
-                            />
-                          </div>
-                        )}
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+                              <span className="font-medium wrap-break-word">
+                                {step.stepName}
+                              </span>
+                            </div>
 
-                        {isExpanded && (
-                          <div className="px-4 pt-2 pb-4 pl-10 sm:px-6 sm:pl-14">
-                            <div className="space-y-3">
-                              {hasDebugValue(step.error) && (
-                                <DebugValueSection
-                                  title="Error"
-                                  tone="error"
-                                  value={step.error}
-                                />
-                              )}
-                              {hasDebugValue(step.output) && (
-                                <DebugValueSection
-                                  title="Output"
-                                  tone="default"
-                                  value={step.output}
-                                />
-                              )}
-                              {!hasDebugValue(step.error) &&
-                                !hasDebugValue(step.output) && (
-                                  <div className="bg-muted/50 rounded-lg p-4">
-                                    <p className="text-muted-foreground text-sm">
-                                      No payload was recorded for this step.
-                                    </p>
-                                  </div>
+                            <div className="text-muted-foreground mb-2 flex flex-wrap items-center gap-2 text-xs">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "capitalize",
+                                  getStatusBadgeClass(step.status),
                                 )}
+                              >
+                                {step.status}
+                              </Badge>
+                              <Badge variant="outline">{stepTypeLabel}</Badge>
+                            </div>
+
+                            {childRunId && (
+                              <RunRelationRow
+                                label="Child Workflow Run"
+                                runId={childRunId}
+                                workflowName={childRun?.workflowName}
+                                className="mb-2"
+                              />
+                            )}
+
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs sm:hidden">
+                              <div>
+                                <p className="text-muted-foreground">Started</p>
+                                <p>{stepStartedAt}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-muted-foreground">
+                                  Duration
+                                </p>
+                                <p className="font-mono">{stepDuration}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-muted-foreground">Attempt</p>
+                                <p className="font-mono">{stepAttemptLabel}</p>
+                              </div>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          </div>
 
-          <div className="w-full shrink-0 lg:w-64">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-1">
-              <Card className="bg-card border-border gap-2 p-3">
-                <p className="text-muted-foreground text-xs">Status</p>
-                <p
-                  className={cn(
-                    "text-base font-semibold capitalize",
-                    getStatusColor(run.status),
-                  )}
-                >
-                  {run.status}
-                </p>
-              </Card>
-              <Card className="bg-card border-border gap-2 p-3">
-                <p className="text-muted-foreground text-xs">Started</p>
-                <p className="text-base font-semibold">{startedAt}</p>
-              </Card>
-              <Card className="bg-card border-border gap-2 p-3">
-                <p className="text-muted-foreground text-xs">Duration</p>
-                <p className="font-mono text-base font-semibold">{duration}</p>
-              </Card>
-              <Card className="bg-card border-border gap-2 p-3">
-                <p className="text-muted-foreground text-xs">Steps</p>
-                <p className="font-mono text-base font-semibold">
-                  {completedSteps}/{steps.length}
-                </p>
-              </Card>
-            </div>
-          </div>
+                          <div className="hidden items-center gap-8 text-sm sm:flex">
+                            <div className="min-w-24 text-right">
+                              <p className="text-muted-foreground">Started</p>
+                              <p>{stepStartedAt}</p>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-muted-foreground">Duration</p>
+                              <p className="font-mono">{stepDuration}</p>
+                            </div>
+
+                            <div className="min-w-14 text-right">
+                              <p className="text-muted-foreground">Attempt</p>
+                              <p className="font-mono">{stepAttemptLabel}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          <StepInspectorPanel
+            step={selectedStep}
+            childRun={selectedStepChildRun}
+            attemptCount={selectedStepAttemptCount}
+            referenceNow={referenceNowMs}
+          />
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+interface RunOverviewPanelProps {
+  run: WorkflowRun;
+  startedAt: string;
+  duration: string;
+  completedSteps: number;
+  totalSteps: number;
+  referenceNow: number;
+}
+
+function RunOverviewPanel({
+  run,
+  startedAt,
+  duration,
+  completedSteps,
+  totalSteps,
+  referenceNow,
+}: RunOverviewPanelProps) {
+  const availableAt = formatMetadataTimestamp(run.availableAt, referenceNow);
+  const deadlineAt = formatMetadataTimestamp(run.deadlineAt, referenceNow);
+  const statusConfig = getRunStatusConfig(run.status);
+  const statusHelp = getRunStatusHelp(run.status);
+  const hasRunErrorPayload = hasDebugValue(run.error);
+  const runOutputValue = hasRunErrorPayload ? run.error : run.output;
+  const runOutputTone: DebugSectionTone = hasRunErrorPayload
+    ? "error"
+    : "default";
+  const runOutputEmptyState =
+    run.status === "failed"
+      ? "No output or error payload was recorded for this failed run."
+      : "No output was recorded for this run.";
+
+  return (
+    <Card className="bg-card border-border p-3 sm:p-5">
+      <div className="mb-3 space-y-2 sm:mb-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-muted-foreground shrink-0 text-xs">Run ID</span>
+          <IdentifierValue value={run.id} />
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="text-muted-foreground shrink-0 text-xs">Status</span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Status meaning"
+                  className="inline-flex cursor-help items-center bg-transparent p-0"
+                >
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "capitalize",
+                      getStatusBadgeClass(run.status),
+                    )}
+                  >
+                    {statusConfig.label}
+                  </Badge>
+                </button>
+              }
+            />
+            <TooltipContent>{statusHelp}</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
+        <MetadataField label="Started" value={startedAt} />
+        <MetadataField label="Duration" value={duration} mono />
+        <MetadataField
+          label="Steps"
+          value={`${completedSteps.toString()}/${totalSteps.toString()}`}
+          mono
+        />
+        <MetadataField label="Attempts" value={run.attempts.toString()} mono />
+      </div>
+
+      <div className="mt-2 hidden gap-3 sm:mt-3 sm:grid sm:grid-cols-2 lg:grid-cols-3">
+        <MetadataField
+          label="Available At"
+          value={availableAt.relative}
+          secondaryValue={availableAt.iso}
+          secondaryMono
+          secondaryValueMode="tooltip"
+        />
+        <MetadataField
+          label="Deadline At"
+          value={deadlineAt.relative}
+          secondaryValue={deadlineAt.iso}
+          secondaryMono
+          secondaryValueMode="tooltip"
+        />
+        <MetadataField
+          label="Worker ID"
+          value={run.workerId ?? "-"}
+          mono
+          className="text-muted-foreground text-xs font-normal"
+        />
+      </div>
+
+      <details className="border-border/60 mt-2 rounded-lg border p-3 sm:mt-3 sm:hidden">
+        <summary className="text-muted-foreground cursor-pointer text-xs font-semibold tracking-wide uppercase">
+          More Metadata
+        </summary>
+        <div className="mt-3 grid gap-3">
+          <MetadataField
+            label="Available At"
+            value={availableAt.relative}
+            secondaryValue={availableAt.iso}
+            secondaryMono
+            secondaryValueMode="tooltip"
+          />
+          <MetadataField
+            label="Deadline At"
+            value={deadlineAt.relative}
+            secondaryValue={deadlineAt.iso}
+            secondaryMono
+            secondaryValueMode="tooltip"
+          />
+          <MetadataField
+            label="Worker ID"
+            value={run.workerId ?? "-"}
+            mono
+            className="text-muted-foreground text-xs font-normal"
+          />
+        </div>
+      </details>
+
+      <details
+        className="border-border/60 mt-2 rounded-lg border p-3 sm:mt-3"
+        open={run.status === "failed"}
+      >
+        <summary className="text-muted-foreground cursor-pointer text-xs font-semibold tracking-wide uppercase">
+          Workflow Payloads
+        </summary>
+        <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <MetadataDebugSection
+            title="Input"
+            value={run.input}
+            tone="default"
+            emptyState="No input was recorded for this run."
+          />
+          <MetadataDebugSection
+            title="Output"
+            value={runOutputValue}
+            tone={runOutputTone}
+            emptyState={runOutputEmptyState}
+          />
+        </div>
+      </details>
+    </Card>
+  );
+}
+
+interface StepInspectorPanelProps {
+  step: StepAttempt | null;
+  childRun: WorkflowRun | null;
+  attemptCount: number;
+  referenceNow: number;
+}
+
+function StepInspectorPanel({
+  step,
+  childRun,
+  attemptCount,
+  referenceNow,
+}: StepInspectorPanelProps) {
+  if (!step) {
+    return (
+      <Card className="bg-card border-border gap-0 p-5">
+        <h3 className="text-base font-semibold">Step Inspector</h3>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Select a step to inspect its details.
+        </p>
+      </Card>
+    );
+  }
+
+  const hasErrorPayload = hasDebugValue(step.error);
+  const outputValue = hasErrorPayload ? step.error : step.output;
+  const outputTone: DebugSectionTone = hasErrorPayload ? "error" : "default";
+  const outputEmptyState =
+    step.status === "failed"
+      ? "No output or error payload was recorded for this failed step."
+      : "No output was recorded for this step.";
+
+  return (
+    <Card
+      id="step-inspector-panel"
+      className="bg-card border-border gap-0 p-4 sm:p-5"
+    >
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold">Step Inspector</h3>
+          <p className="text-muted-foreground mt-1 text-sm">{step.stepName}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-muted-foreground shrink-0 text-xs">
+                Step Attempt ID
+              </span>
+              <IdentifierValue value={step.id} />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MetadataField
+              label="Attempts for Step Name"
+              value={attemptCount.toString()}
+              mono
+            />
+            <MetadataTimestampField
+              label="Started At"
+              value={step.startedAt}
+              referenceNow={referenceNow}
+            />
+            <MetadataTimestampField
+              label="Finished At"
+              value={step.finishedAt}
+              referenceNow={referenceNow}
+            />
+          </div>
+          {step.childWorkflowRunId && (
+            <RunRelationRow
+              label="Child Workflow Run"
+              runId={step.childWorkflowRunId}
+              workflowName={childRun?.workflowName}
+            />
+          )}
+        </div>
+
+        <MetadataDebugSection
+          title="Output"
+          value={outputValue}
+          tone={outputTone}
+          emptyState={outputEmptyState}
+        />
+      </div>
+    </Card>
+  );
+}
+
+interface MetadataFieldProps {
+  label: string;
+  value: string;
+  secondaryValue?: string | null;
+  mono?: boolean;
+  secondaryMono?: boolean;
+  secondaryValueMode?: "inline" | "tooltip";
+  className?: string;
+}
+
+function MetadataField({
+  label,
+  value,
+  secondaryValue,
+  mono = false,
+  secondaryMono = false,
+  secondaryValueMode = "inline",
+  className,
+}: MetadataFieldProps) {
+  const primaryValueClassName = cn(
+    "mt-1 text-sm font-semibold break-all",
+    mono && "font-mono",
+    className,
+  );
+
+  const primaryValueNode: ReactNode =
+    secondaryValue && secondaryValueMode === "tooltip" ? (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              className={cn(
+                primaryValueClassName,
+                "cursor-help text-left decoration-dotted underline-offset-2 hover:underline focus-visible:underline",
+              )}
+              aria-label={`${label} full timestamp`}
+            >
+              {value}
+            </button>
+          }
+        />
+        <TooltipContent>
+          <p className={cn("text-xs break-all", secondaryMono && "font-mono")}>
+            {secondaryValue}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      <p className={primaryValueClassName}>{value}</p>
+    );
+
+  return (
+    <div className="bg-muted/40 border-border/60 rounded-lg border p-3">
+      <p className="text-muted-foreground text-xs">{label}</p>
+      {primaryValueNode}
+      {secondaryValue && secondaryValueMode === "inline" && (
+        <p
+          className={cn(
+            "text-muted-foreground mt-1 text-xs break-all",
+            secondaryMono && "font-mono",
+          )}
+        >
+          {secondaryValue}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function IdentifierValue({
+  value,
+  className,
+}: {
+  value: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "text-muted-foreground inline-flex max-w-full items-center font-mono text-xs break-all",
+        className,
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
+interface MetadataTimestampFieldProps {
+  label: string;
+  value: Date | null;
+  referenceNow: number;
+}
+
+function MetadataTimestampField({
+  label,
+  value,
+  referenceNow,
+}: MetadataTimestampFieldProps) {
+  const formatted = formatMetadataTimestamp(value, referenceNow);
+  return (
+    <MetadataField
+      label={label}
+      value={formatted.relative}
+      secondaryValue={formatted.iso}
+      secondaryMono
+      secondaryValueMode="tooltip"
+    />
   );
 }
 
@@ -352,20 +790,16 @@ function RunRelationRow({
   className,
 }: RunRelationRowProps) {
   return (
-    <div className={cn("flex flex-wrap items-start gap-2 text-sm", className)}>
+    <div className={cn("flex flex-wrap items-center gap-2 text-sm", className)}>
       <span className="text-muted-foreground whitespace-nowrap">{label}:</span>
-      <Badge
-        variant="outline"
-        className="h-auto max-w-full min-w-0 py-1 break-all whitespace-normal"
-        render={<Link to="/runs/$runId" params={{ runId }} />}
-      >
-        {workflowName && (
-          <span className="mr-2 font-medium wrap-break-word">
-            [{workflowName}]
-          </span>
-        )}
-        <span className="break-all">{runId}</span>
-      </Badge>
+      {workflowName && (
+        <span className="text-muted-foreground text-xs wrap-break-word">
+          [{workflowName}]
+        </span>
+      )}
+      <Link to="/runs/$runId" params={{ runId }}>
+        <IdentifierValue value={runId} />
+      </Link>
     </div>
   );
 }
@@ -378,9 +812,54 @@ interface DebugValueSectionProps {
   tone: DebugSectionTone;
 }
 
+interface MetadataDebugSectionProps {
+  title: string;
+  value: unknown;
+  tone: DebugSectionTone;
+  emptyState: string;
+}
+
+function MetadataDebugSection({
+  title,
+  value,
+  tone,
+  emptyState,
+}: MetadataDebugSectionProps) {
+  if (hasDebugValue(value)) {
+    return <DebugValueSection title={title} value={value} tone={tone} />;
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-4",
+        tone === "error"
+          ? "border-destructive/30 bg-destructive/5"
+          : "bg-muted/50 border-border",
+      )}
+    >
+      <p
+        className={cn(
+          "text-sm font-medium",
+          tone === "error" ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {title}
+      </p>
+      <p className="text-muted-foreground mt-2 text-sm">{emptyState}</p>
+    </div>
+  );
+}
+
 function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
   const [copied, setCopied] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const serializedValue = stringifyDebugValue(value);
+  const useStructuredEditor = shouldUseStructuredEditor(value, serializedValue);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   async function copyPayload() {
     try {
@@ -423,18 +902,86 @@ function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
         </Button>
       </div>
 
-      <MonacoJsonEditor
-        value={serializedValue}
-        readOnly
-        minLines={6}
-        maxLines={20}
-      />
+      {isClient && useStructuredEditor ? (
+        <MonacoJsonEditor
+          value={serializedValue}
+          readOnly
+          minLines={6}
+          maxLines={20}
+        />
+      ) : (
+        <pre className="bg-background border-border max-h-80 overflow-auto border p-3 text-xs">
+          <code>{serializedValue}</code>
+        </pre>
+      )}
     </div>
   );
 }
 
+function getDefaultSelectedStepId(
+  steps: readonly StepAttempt[],
+): string | null {
+  if (steps.length === 0) {
+    return null;
+  }
+
+  const failedStep = steps.find((step) => step.status === "failed");
+  if (failedStep) {
+    return failedStep.id;
+  }
+
+  const runningStep = steps.find((step) => step.status === "running");
+  if (runningStep) {
+    return runningStep.id;
+  }
+
+  return steps.at(-1)?.id ?? null;
+}
+
+function getRunStatusHelp(status: string): string {
+  switch (status as WorkflowRunStatus) {
+    case "pending": {
+      return "Queued and waiting for an available worker to claim it.";
+    }
+    case "running": {
+      return "Currently executing on a worker.";
+    }
+    case "completed":
+    case "succeeded": {
+      return "Finished successfully.";
+    }
+    case "failed": {
+      return "Stopped after an unrecoverable error, deadline, or exhausted retries.";
+    }
+    case "canceled": {
+      return "Manually canceled and will not continue.";
+    }
+    case "sleeping": {
+      return "Legacy state: paused until it becomes available again.";
+    }
+    default: {
+      return "Current workflow run status.";
+    }
+  }
+}
+
 function hasDebugValue(value: unknown): boolean {
   return value !== null && value !== undefined;
+}
+
+function shouldUseStructuredEditor(
+  value: unknown,
+  serializedValue: string,
+): boolean {
+  if (typeof value === "object" && value !== null) {
+    return true;
+  }
+
+  if (serializedValue.length > 320) {
+    return true;
+  }
+
+  return serializedValue.includes("\n");
 }
 
 function normalizeDebugValue(value: unknown): unknown {

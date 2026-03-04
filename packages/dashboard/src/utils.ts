@@ -39,14 +39,19 @@ export function computeDuration(
 /**
  * Format a relative time string from a Date.
  * @param date - Date object
+ * @param referenceNow - Optional Date or timestamp used as "now"
  * @returns Human-readable relative time (e.g., "2m ago", "1h ago")
  */
-export function formatRelativeTime(date: Date | null): string {
+export function formatRelativeTime(
+  date: Date | null,
+  referenceNow: Date | number = Date.now(),
+): string {
   if (!date) {
     return "-";
   }
 
-  const now = Date.now();
+  const now =
+    typeof referenceNow === "number" ? referenceNow : referenceNow.getTime();
   const diffMs = now - date.getTime();
 
   if (diffMs < 0) {
@@ -70,4 +75,68 @@ export function formatRelativeTime(date: Date | null): string {
 
   const days = Math.round(diffMs / 86_400_000);
   return `${days.toString()}d ago`;
+}
+
+/**
+ * Format a metadata timestamp into relative and absolute representations.
+ * @param date - Date object
+ * @param referenceNow - Optional Date or timestamp used as "now"
+ * @returns Relative label with optional ISO timestamp
+ */
+export function formatMetadataTimestamp(
+  date: Date | null,
+  referenceNow?: Date | number,
+): {
+  relative: string;
+  iso: string | null;
+} {
+  if (!date) {
+    return {
+      relative: "-",
+      iso: null,
+    };
+  }
+
+  return {
+    relative:
+      referenceNow === undefined
+        ? formatRelativeTime(date)
+        : formatRelativeTime(date, referenceNow),
+    iso: date.toISOString(),
+  };
+}
+
+/**
+ * Compute the next selected index for a listbox based on keyboard input.
+ * @param key - Keyboard event key
+ * @param currentIndex - Current selected index (or -1 when none selected)
+ * @param totalCount - Total number of options in the listbox
+ * @returns The next index, or null if key should not trigger navigation
+ */
+export function getListboxNavigationIndex(
+  key: string,
+  currentIndex: number,
+  totalCount: number,
+): number | null {
+  if (totalCount <= 0) {
+    return null;
+  }
+
+  switch (key) {
+    case "ArrowDown": {
+      return currentIndex >= totalCount - 1 ? 0 : currentIndex + 1;
+    }
+    case "ArrowUp": {
+      return currentIndex <= 0 ? totalCount - 1 : currentIndex - 1;
+    }
+    case "Home": {
+      return 0;
+    }
+    case "End": {
+      return totalCount - 1;
+    }
+    default: {
+      return null;
+    }
+  }
 }

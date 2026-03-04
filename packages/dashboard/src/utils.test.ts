@@ -1,5 +1,10 @@
-import { computeDuration, formatRelativeTime } from "./utils";
-import { describe, expect, it } from "vitest";
+import {
+  computeDuration,
+  formatMetadataTimestamp,
+  formatRelativeTime,
+  getListboxNavigationIndex,
+} from "./utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("computeDuration", () => {
   it("returns '-' when startedAt is null", () => {
@@ -96,5 +101,75 @@ describe("formatRelativeTime", () => {
     const date = new Date(Date.now() - 2 * 86_400_000);
     const result = formatRelativeTime(date);
     expect(result).toBe("2d ago");
+  });
+
+  it("uses a provided reference time when present", () => {
+    const result = formatRelativeTime(
+      new Date("2024-01-01T23:59:00.000Z"),
+      new Date("2024-01-02T00:00:00.000Z"),
+    );
+    expect(result).toBe("1m ago");
+  });
+});
+
+describe("formatMetadataTimestamp", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-01-02T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns placeholders when date is null", () => {
+    const result = formatMetadataTimestamp(null);
+    expect(result).toEqual({ relative: "-", iso: null });
+  });
+
+  it("returns both relative and ISO values when date is present", () => {
+    const result = formatMetadataTimestamp(
+      new Date("2024-01-01T23:59:00.000Z"),
+    );
+    expect(result).toEqual({
+      relative: "1m ago",
+      iso: "2024-01-01T23:59:00.000Z",
+    });
+  });
+
+  it("uses a provided reference time for deterministic output", () => {
+    const result = formatMetadataTimestamp(
+      new Date("2024-01-01T23:59:00.000Z"),
+      new Date("2024-01-02T00:00:00.000Z"),
+    );
+    expect(result).toEqual({
+      relative: "1m ago",
+      iso: "2024-01-01T23:59:00.000Z",
+    });
+  });
+});
+
+describe("getListboxNavigationIndex", () => {
+  it("returns null when there are no options", () => {
+    expect(getListboxNavigationIndex("ArrowDown", 0, 0)).toBeNull();
+  });
+
+  it("navigates down and wraps to the first option", () => {
+    expect(getListboxNavigationIndex("ArrowDown", 0, 3)).toBe(1);
+    expect(getListboxNavigationIndex("ArrowDown", 2, 3)).toBe(0);
+  });
+
+  it("navigates up and wraps to the last option", () => {
+    expect(getListboxNavigationIndex("ArrowUp", 2, 3)).toBe(1);
+    expect(getListboxNavigationIndex("ArrowUp", 0, 3)).toBe(2);
+  });
+
+  it("jumps to first/last option on Home/End", () => {
+    expect(getListboxNavigationIndex("Home", 1, 3)).toBe(0);
+    expect(getListboxNavigationIndex("End", 1, 3)).toBe(2);
+  });
+
+  it("returns null for unsupported keys", () => {
+    expect(getListboxNavigationIndex("Enter", 1, 3)).toBeNull();
   });
 });
