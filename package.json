@@ -35,7 +35,7 @@
     "openworkflow": "^0.7.3"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.2",
+    "@commitlint/cli": "^20.4.3",
     "@commitlint/config-conventional": "^20.4.3",
     "@commitlint/config-workspace-scopes": "^20.4.0",
     "@cspell/eslint-plugin": "^9.6.4",
