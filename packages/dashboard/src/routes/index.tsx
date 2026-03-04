@@ -9,6 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { WorkflowStats } from "@/components/workflow-stats";
 import {
   getStepAttemptServerFn,
@@ -16,6 +23,12 @@ import {
   getWorkflowRunServerFn,
   listWorkflowRunsServerFn,
 } from "@/lib/api";
+import {
+  RUNS_PAGE_SIZE_OPTIONS,
+  type RunsPaginationSearch,
+  resolveRunsPageSize,
+  validateRunsPaginationSearch,
+} from "@/lib/runs-page-pagination";
 import { usePolling } from "@/lib/use-polling";
 import { PlusIcon } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -23,10 +36,20 @@ import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
 import { useState } from "react";
 
 export const Route = createFileRoute("/")({
+  validateSearch: validateRunsPaginationSearch,
+  loaderDeps: ({ search }) => search,
   component: HomePage,
-  loader: async () => {
+  loader: async ({ deps }) => {
+    const limit = resolveRunsPageSize(deps.limit);
+
     const [runsResponse, workflowRunCounts] = await Promise.all([
-      listWorkflowRunsServerFn({ data: { limit: 100 } }),
+      listWorkflowRunsServerFn({
+        data: {
+          limit,
+          after: deps.after,
+          before: deps.before,
+        },
+      }),
       getWorkflowRunCountsServerFn(),
     ]);
     const runs = runsResponse.data;
@@ -87,8 +110,60 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { runsResponse, workflowRunCounts, childRunRelationsByRunId } =
     Route.useLoaderData();
-  const { data: runs } = runsResponse;
+  const { data, pagination } = runsResponse;
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+
   const [isCreateRunOpen, setIsCreateRunOpen] = useState(false);
+  const pageSize = resolveRunsPageSize(search.limit);
+  const runs = data;
+
+  function updateRunsSearch(next: Partial<RunsPaginationSearch>) {
+    void navigate({
+      to: "/",
+      search: (previous) => ({
+        ...previous,
+        ...next,
+      }),
+    });
+  }
+
+  function handlePageSizeChange(value: string) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+
+    const limit = resolveRunsPageSize(parsed);
+    updateRunsSearch({
+      limit,
+      after: undefined,
+      before: undefined,
+    });
+  }
+
+  function goToNextPage() {
+    if (!pagination.next) {
+      return;
+    }
+
+    updateRunsSearch({
+      after: pagination.next,
+      before: undefined,
+    });
+  }
+
+  function goToPreviousPage() {
+    if (!pagination.prev) {
+      return;
+    }
+
+    updateRunsSearch({
+      before: pagination.prev,
+      after: undefined,
+    });
+  }
+
   usePolling();
 
   return (
@@ -114,11 +189,57 @@ function HomePage() {
           </div>
 
           <WorkflowStats workflowRunCounts={workflowRunCounts} />
-          <RunList
-            runs={runs}
-            childRunRelationsByRunId={childRunRelationsByRunId}
-            showHeader={false}
-          />
+          <div className="space-y-4">
+            <RunList
+              runs={runs}
+              childRunRelationsByRunId={childRunRelationsByRunId}
+              showHeader={false}
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-muted-foreground text-xs">
+                Showing {runs.length} run{runs.length === 1 ? "" : "s"}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-muted-foreground text-xs">Page size</p>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={handlePageSizeChange}
+                  >
+                    <SelectTrigger className="h-8 w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RUNS_PAGE_SIZE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={String(option)}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={goToPreviousPage}
+                  disabled={!pagination.prev}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={goToNextPage}
+                  disabled={!pagination.next}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <DialogContent size="lg" className="gap-0 p-0">
