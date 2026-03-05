@@ -715,8 +715,11 @@ export class BackendPostgres implements Backend {
 
     // Write the signal payload into the step attempt and mark it delivered.
     // Use context.delivered as the delivery flag so null payloads work correctly.
-    // Check workflow existence in the same CTE to distinguish not-found from
-    // signal-not-waiting without a separate round-trip.
+    // A single CTE handles three cases atomically:
+    //   - delivery:     update an existing running signal step (normal path)
+    //   - pre_delivery: insert a buffered signal step for parked/pending workflows
+    //                   (signal sent before waitForSignal creates its step)
+    //   - wake:         advance available_at so the worker picks it up promptly
     const [row] = await this.pg<DeliverSignalResultRow[]>`
       WITH delivery AS (
         UPDATE ${stepAttemptsTable}
@@ -732,6 +735,35 @@ export class BackendPostgres implements Backend {
           AND NOT ("context" @> '{"delivered":true}')
         RETURNING "id"
       ),
+      pre_delivery AS (
+        INSERT INTO ${stepAttemptsTable} (
+          "namespace_id", "id", "workflow_run_id", "step_name",
+          "kind", "status", "config", "context", "output",
+          "started_at", "created_at", "updated_at"
+        )
+        SELECT
+          ${this.namespaceId}, gen_random_uuid(), ${params.workflowRunId}, ${params.signalName},
+          'signal', 'running', '{}',
+          ${this.pg.json({ kind: "signal", delivered: true, timeoutAt: null })},
+          ${this.pg.json(params.payload)},
+          NOW(), NOW(), NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM delivery)
+          AND NOT EXISTS (
+            SELECT 1 FROM ${stepAttemptsTable}
+            WHERE "namespace_id" = ${this.namespaceId}
+              AND "workflow_run_id" = ${params.workflowRunId}
+              AND "step_name" = ${params.signalName}
+              AND "kind" = 'signal'
+          )
+          AND EXISTS (
+            SELECT 1 FROM ${workflowRunsTable}
+            WHERE "namespace_id" = ${this.namespaceId}
+              AND "id" = ${params.workflowRunId}
+              AND "status" IN ('pending', 'running')
+              AND "worker_id" IS NULL
+          )
+        RETURNING "id"
+      ),
       wake AS (
         UPDATE ${workflowRunsTable}
         SET
@@ -744,12 +776,13 @@ export class BackendPostgres implements Backend {
         WHERE "namespace_id" = ${this.namespaceId}
           AND "id" = ${params.workflowRunId}
           AND "status" IN ('pending', 'running')
-          AND EXISTS (SELECT 1 FROM delivery)
+          AND (EXISTS (SELECT 1 FROM delivery) OR EXISTS (SELECT 1 FROM pre_delivery))
         RETURNING "id"
       )
       SELECT
         CASE
-          WHEN (SELECT count(*) FROM delivery) > 0 THEN 'delivered'
+          WHEN (SELECT count(*) FROM delivery) > 0
+            OR (SELECT count(*) FROM pre_delivery) > 0 THEN 'delivered'
           WHEN NOT EXISTS (
             SELECT 1 FROM ${workflowRunsTable}
             WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${params.workflowRunId}

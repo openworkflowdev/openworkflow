@@ -3471,6 +3471,63 @@ describe("executeWorkflow", () => {
       expect(result.delivered).toBe(false);
     });
 
+    test("signal sent before workflow reaches waitForSignal is buffered and received", async () => {
+      // Pre-delivery: sendSignal before the workflow has parked on waitForSignal.
+      // The signal is buffered as a pre-delivered running step; the pre-pass in
+      // executeWorkflow completes it so waitForSignal finds the payload in cache.
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-pre-deliver-${randomUUID()}` },
+        async ({ step }) => {
+          const payload = await step.waitForSignal<{ answer: number }>(
+            "pre-signal",
+          );
+          return payload.answer;
+        },
+      );
+
+      const handle = await workflow.run();
+
+      // Deliver BEFORE any worker tick — workflow is pending, no signal step yet
+      const result = await handle.sendSignal("pre-signal", { answer: 99 });
+      expect(result.delivered).toBe(true);
+
+      // Now let the worker process; it should receive the buffered signal
+      const worker = client.newWorker({ concurrency: 2 });
+      await tickUntilTerminal(backend, worker, handle.workflowRun.id, 300, 15);
+      await expect(handle.result()).resolves.toBe(99);
+    });
+
+    test("signal sent after workflow parks is received normally (pre-delivery not involved)", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-normal-${randomUUID()}` },
+        async ({ step }) => {
+          const payload = await step.waitForSignal<{ answer: number }>(
+            "normal-signal",
+          );
+          return payload.answer;
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 2 });
+      const handle = await workflow.run();
+
+      // Wait until workflow parks
+      await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
+
+      // Deliver normally (workflow already parked on the signal step)
+      const result = await handle.sendSignal("normal-signal", { answer: 77 });
+      expect(result.delivered).toBe(true);
+
+      await tickUntilTerminal(backend, worker, handle.workflowRun.id, 200, 10);
+      await expect(handle.result()).resolves.toBe(77);
+    });
+
     test("signal step stores timeoutAt in context", async () => {
       const backend = await createBackend();
       const client = new OpenWorkflow({ backend });
