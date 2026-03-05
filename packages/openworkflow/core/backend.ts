@@ -68,6 +68,11 @@ export interface Backend {
     params: Readonly<SetStepAttemptChildWorkflowRunParams>,
   ): Promise<StepAttempt>;
 
+  // Signals
+  deliverSignal(
+    params: Readonly<DeliverSignalParams>,
+  ): Promise<DeliverSignalResult>;
+
   // Lifecycle
   stop(): Promise<void>;
 }
@@ -164,6 +169,19 @@ export interface FailStepAttemptParams {
   workerId: string;
   error: SerializedError;
 }
+
+export interface DeliverSignalParams {
+  workflowRunId: string;
+  signalName: string;
+  payload: JsonValue | null;
+}
+
+export type DeliverSignalResult =
+  | { delivered: true }
+  | {
+      delivered: false;
+      reason: "workflow_not_found" | "signal_not_waiting";
+    };
 
 export interface SetStepAttemptChildWorkflowRunParams {
   workflowRunId: string;

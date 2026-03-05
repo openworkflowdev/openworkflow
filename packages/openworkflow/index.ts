@@ -4,7 +4,18 @@ export { OpenWorkflow } from "./client/client.js";
 
 // core
 export type { RetryPolicy, Workflow } from "./core/workflow-definition.js";
-export type { WorkflowRunMetadata } from "./core/workflow-function.js";
+export type {
+  WorkflowRunMetadata,
+  StepWaitForSignalOptions,
+  StepSendSignalOptions,
+} from "./core/workflow-function.js";
+export type {
+  DeliverSignalParams,
+  DeliverSignalResult,
+} from "./core/backend.js";
+export type { SignalSpec } from "./core/signal-spec.js";
+export { defineSignalSpec } from "./core/signal-spec.js";
+export { SignalTimeoutError } from "./worker/execution.js";
 export {
   defineWorkflowSpec,
   defineWorkflow,

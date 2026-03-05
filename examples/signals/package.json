@@ -1,0 +1,15 @@
+{
+  "name": "example-signals",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@openworkflow/backend-postgres": "*",
+    "openworkflow": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}
