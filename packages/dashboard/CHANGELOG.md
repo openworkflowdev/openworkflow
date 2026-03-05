@@ -1,5 +1,25 @@
 # @openworkflow/dashboard
 
+## 0.1.8
+
+### Patch Changes
+
+- fds
+- Updated dependencies [cec5f93]
+  - @openworkflow/cli@0.4.3
+
+## Unreleased
+
+- Add pagination to runs and step attempts, including conditional pagination
+  controls
+- Redesign the run details page
+- Add Monaco-based JSON viewing and input experiences
+- Improve dashboard layout and spacing, including mobile refinements
+- Make status colors consistent
+- Move sleeping-to-running status handling to the backend
+- Add color to workflow stats cards (#314)
+- Update TanStack dependencies (#352, #354, #361)
+
 ## 0.1.7
 
 - Add child workflow visibility in run list and run details (#342)
