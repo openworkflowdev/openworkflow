@@ -46,6 +46,11 @@ interface BackendPostgresOptions {
   schema?: string;
 }
 
+/** Shape of the row returned by the deliverSignal CTE query. */
+interface DeliverSignalResultRow {
+  result: "delivered" | "workflow_not_found" | "signal_not_waiting";
+}
+
 /**
  * Manages a connection to a Postgres database for workflow operations.
  */
@@ -708,54 +713,60 @@ export class BackendPostgres implements Backend {
     const workflowRunsTable = this.workflowRunsTable();
     const stepAttemptsTable = this.stepAttemptsTable();
 
-    // Check the workflow run exists and is active
-    const workflowRun = await this.getWorkflowRun({
-      workflowRunId: params.workflowRunId,
-    });
-    if (!workflowRun) {
+    // Write the signal payload into the step attempt and mark it delivered.
+    // Use context.delivered as the delivery flag so null payloads work correctly.
+    // Check workflow existence in the same CTE to distinguish not-found from
+    // signal-not-waiting without a separate round-trip.
+    const [row] = await this.pg<DeliverSignalResultRow[]>`
+      WITH delivery AS (
+        UPDATE ${stepAttemptsTable}
+        SET
+          "output" = ${this.pg.json(params.payload)},
+          "context" = "context" || '{"delivered":true}'::jsonb,
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "workflow_run_id" = ${params.workflowRunId}
+          AND "step_name" = ${params.signalName}
+          AND "kind" = 'signal'
+          AND "status" = 'running'
+          AND NOT ("context" @> '{"delivered":true}')
+        RETURNING "id"
+      ),
+      wake AS (
+        UPDATE ${workflowRunsTable}
+        SET
+          "available_at" = CASE
+            WHEN "available_at" IS NULL OR "available_at" > NOW()
+              THEN NOW()
+            ELSE "available_at"
+          END,
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "id" = ${params.workflowRunId}
+          AND "status" IN ('pending', 'running')
+          AND EXISTS (SELECT 1 FROM delivery)
+        RETURNING "id"
+      )
+      SELECT
+        CASE
+          WHEN (SELECT count(*) FROM delivery) > 0 THEN 'delivered'
+          WHEN NOT EXISTS (
+            SELECT 1 FROM ${workflowRunsTable}
+            WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${params.workflowRunId}
+          ) THEN 'workflow_not_found'
+          ELSE 'signal_not_waiting'
+        END AS result
+    `;
+
+    if (!row) {
       return { delivered: false, reason: "workflow_not_found" };
     }
 
-    // Write the signal payload into the step attempt and mark it delivered.
-    // Use context.delivered as the delivery flag so null payloads work correctly.
-    const [updated] = await this.pg<{ id: string }[]>`
-      UPDATE ${stepAttemptsTable}
-      SET
-        "output" = ${this.pg.json(params.payload)},
-        "context" = "context" || '{"delivered":true}'::jsonb,
-        "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-        AND "workflow_run_id" = ${params.workflowRunId}
-        AND "step_name" = ${params.signalName}
-        AND "kind" = 'signal'
-        AND "status" = 'running'
-        AND NOT ("context" @> '{"delivered":true}')
-      RETURNING "id"
-    `;
-
-    if (!updated) {
-      return { delivered: false, reason: "signal_not_waiting" };
+    if (row.result === "delivered") {
+      return { delivered: true };
     }
 
-    // Wake the workflow run so it picks up the signal on next execution.
-    // No worker_id guard: signal can arrive while the worker still holds the
-    // lease, and sleepWorkflowRun's reconcile step will correct available_at
-    // after the worker parks.
-    await this.pg`
-      UPDATE ${workflowRunsTable}
-      SET
-        "available_at" = CASE
-          WHEN "available_at" IS NULL OR "available_at" > NOW()
-            THEN NOW()
-          ELSE "available_at"
-        END,
-        "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-        AND "id" = ${params.workflowRunId}
-        AND "status" IN ('pending', 'running')
-    `;
-
-    return { delivered: true };
+    return { delivered: false, reason: row.result };
   }
 
   async createStepAttempt(

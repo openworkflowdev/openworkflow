@@ -355,6 +355,13 @@ function getRunningWaitAttemptResumeAt(
     return Number.isFinite(resumeAt.getTime()) ? resumeAt : null;
   }
 
+  if (attempt.kind === "signal" && attempt.context?.kind === "signal") {
+    const { timeoutAt } = attempt.context;
+    if (!timeoutAt) return null; // no timeout — waits until signal arrives
+    const signalTimeoutAt = new Date(timeoutAt);
+    return Number.isFinite(signalTimeoutAt.getTime()) ? signalTimeoutAt : null;
+  }
+
   if (attempt.kind !== "workflow") {
     return null;
   }
@@ -1145,52 +1152,66 @@ export async function executeWorkflow(
     }
 
     // Pre-pass: process running signal step attempts — complete delivered
-    // signals, fail timed-out signals, or re-park if still waiting.
+    // signals, fail timed-out signals, then re-park on the earliest still-
+    // pending signal. Two-phase approach ensures all delivered/timed-out
+    // signals are settled before we decide whether to park (important for
+    // parallel Promise.all([waitForSignal("A"), waitForSignal("B")]) patterns
+    // where B might be delivered before A).
+    let earliestPendingSignalResumeAt: Date | null = null;
     for (let i = 0; i < attempts.length; i += 1) {
       const attempt = attempts[i];
       if (!attempt) continue;
 
       if (
-        attempt.status === "running" &&
-        attempt.kind === "signal" &&
-        attempt.context?.kind === "signal"
+        attempt.status !== "running" ||
+        attempt.kind !== "signal" ||
+        attempt.context?.kind !== "signal"
       ) {
-        const { timeoutAt } = attempt.context;
-
-        // Signal has been delivered (context.delivered set by deliverSignal)
-        if (attempt.context.delivered) {
-          const completed = await backend.completeStepAttempt({
-            workflowRunId: workflowRun.id,
-            stepAttemptId: attempt.id,
-            workerId,
-            output: attempt.output,
-          });
-          // update cache w/ completed attempt
-          attempts[i] = completed;
-          continue;
-        }
-
-        // Signal timeout has elapsed without receiving the signal
-        if (timeoutAt && Date.now() >= new Date(timeoutAt).getTime()) {
-          const stepName = attempt.stepName;
-          await backend.failStepAttempt({
-            workflowRunId: workflowRun.id,
-            stepAttemptId: attempt.id,
-            workerId,
-            error: serializeError(new SignalTimeoutError(stepName)),
-          });
-          // Mark the attempt as failed so StepExecutor treats it as a failed step
-          attempts[i] = { ...attempt, status: "failed" };
-          continue;
-        }
-
-        // Signal not yet received — park workflow until timeout (or until workflow deadline)
-        throw new SleepSignal(
-          timeoutAt
-            ? new Date(timeoutAt)
-            : (workflowRun.deadlineAt ?? defaultWorkflowTimeoutAt()),
-        );
+        continue;
       }
+
+      const { timeoutAt } = attempt.context;
+
+      // Signal has been delivered (context.delivered set by deliverSignal)
+      if (attempt.context.delivered) {
+        const completed = await backend.completeStepAttempt({
+          workflowRunId: workflowRun.id,
+          stepAttemptId: attempt.id,
+          workerId,
+          output: attempt.output,
+        });
+        // update cache w/ completed attempt
+        attempts[i] = completed;
+        continue;
+      }
+
+      // Signal timeout has elapsed without receiving the signal
+      if (timeoutAt && Date.now() >= new Date(timeoutAt).getTime()) {
+        const failed = await backend.failStepAttempt({
+          workflowRunId: workflowRun.id,
+          stepAttemptId: attempt.id,
+          workerId,
+          error: serializeError(new SignalTimeoutError(attempt.stepName)),
+        });
+        attempts[i] = failed;
+        continue;
+      }
+
+      // Signal not yet received — record earliest pending wake-up time
+      const signalResumeAt = timeoutAt
+        ? new Date(timeoutAt)
+        : (workflowRun.deadlineAt ?? defaultWorkflowTimeoutAt());
+      if (
+        !earliestPendingSignalResumeAt ||
+        signalResumeAt.getTime() < earliestPendingSignalResumeAt.getTime()
+      ) {
+        earliestPendingSignalResumeAt = signalResumeAt;
+      }
+    }
+
+    // Park workflow if any signal is still waiting
+    if (earliestPendingSignalResumeAt !== null) {
+      throw new SleepSignal(earliestPendingSignalResumeAt);
     }
 
     const executor = new StepExecutor({

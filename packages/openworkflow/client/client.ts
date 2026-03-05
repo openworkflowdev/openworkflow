@@ -1,11 +1,7 @@
 import type { Backend, DeliverSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import type { JsonValue } from "../core/json.js";
-import {
-  defineSignalSpec as defineSignalSpecFn,
-  resolveSignalName,
-  type SignalSpec,
-} from "../core/signal-spec.js";
+import { resolveSignalName, type SignalSpec } from "../core/signal-spec.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -221,27 +217,6 @@ export class OpenWorkflow {
       signalName: resolveSignalName(nameOrSpec),
       payload: payload ?? null,
     });
-  }
-
-  /**
-   * Create a typed signal descriptor for use with `step.waitForSignal` and
-   * `sendSignal`. Using a spec on both sides ensures the signal name and
-   * payload type are consistent.
-   * @param name - Signal name
-   * @returns A `SignalSpec<Payload>` descriptor
-   * @example
-   * ```ts
-   * const approvalSignal = ow.defineSignalSpec<{ approved: boolean }>("approval");
-   *
-   * // In workflow:
-   * const decision = await step.waitForSignal(approvalSignal);
-   *
-   * // Sender:
-   * await handle.sendSignal(approvalSignal, { approved: true });
-   * ```
-   */
-  defineSignalSpec<Payload = unknown>(name: string): SignalSpec<Payload> {
-    return defineSignalSpecFn<Payload>(name);
   }
 }
 

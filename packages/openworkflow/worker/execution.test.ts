@@ -3890,6 +3890,95 @@ describe("executeWorkflow", () => {
       await tickUntilTerminal(backend, worker, handle.workflowRun.id, 200, 10);
       await expect(handle.result()).resolves.toBe("approved");
     });
+
+    test("parallel Promise.all signals: second signal delivered first is processed correctly", async () => {
+      // Regression: the pre-pass previously threw SleepSignal at the FIRST
+      // undelivered signal, skipping processing of later delivered signals.
+      // This test verifies the fix using a controlled mock backend so both
+      // signal step attempts are present from the start.
+      const sigAId = "sig-a-attempt";
+      const sigBId = "sig-b-attempt";
+
+      const sigAAttempt = createMockStepAttempt({
+        id: sigAId,
+        stepName: "sig-a",
+        kind: "signal",
+        status: "running",
+        context: { kind: "signal", timeoutAt: null },
+        output: null,
+        finishedAt: null,
+      });
+      // sig-b is already delivered
+      const sigBAttempt = createMockStepAttempt({
+        id: sigBId,
+        stepName: "sig-b",
+        kind: "signal",
+        status: "running",
+        context: { kind: "signal", timeoutAt: null, delivered: true },
+        output: { v: 20 },
+        finishedAt: null,
+      });
+
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: [sigAAttempt, sigBAttempt],
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              stepName: params.stepAttemptId === sigAId ? "sig-a" : "sig-b",
+              kind: "signal",
+              status: "completed",
+              output: params.output,
+            }),
+          ),
+      );
+      const sleepWorkflowRun = vi.fn(
+        (params: Parameters<Backend["sleepWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              workerId: null,
+              availableAt: params.availableAt,
+            }),
+          ),
+      );
+
+      const workflowRun = createMockWorkflowRun({
+        id: "parallel-signal-run",
+        workerId: "worker-1",
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      });
+
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          completeStepAttempt,
+          sleepWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn: vi.fn(),
+        workflowVersion: null,
+        workerId: "worker-1",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      // sig-b must be completed (its delivery was processed)
+      expect(completeStepAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({ stepAttemptId: sigBId, output: { v: 20 } }),
+      );
+
+      // sig-a must NOT be completed (still waiting)
+      expect(completeStepAttempt).not.toHaveBeenCalledWith(
+        expect.objectContaining({ stepAttemptId: sigAId }),
+      );
+
+      // Workflow must be parked (waiting for sig-a)
+      expect(sleepWorkflowRun).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
