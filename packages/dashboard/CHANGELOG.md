@@ -2,14 +2,6 @@
 
 ## 0.1.8
 
-### Patch Changes
-
-- fds
-- Updated dependencies [cec5f93]
-  - @openworkflow/cli@0.4.3
-
-## Unreleased
-
 - Add pagination to runs and step attempts, including conditional pagination
   controls
 - Redesign the run details page
