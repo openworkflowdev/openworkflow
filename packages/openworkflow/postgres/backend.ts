@@ -21,6 +21,7 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
+  CleanupTerminalWorkflowRunsParams,
 } from "../core/backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
@@ -314,6 +315,36 @@ export class BackendPostgres implements Backend {
     `;
 
     return toWorkflowRunCounts(rows);
+  }
+
+  async cleanupTerminalWorkflowRuns(
+    params: CleanupTerminalWorkflowRunsParams,
+  ): Promise<number> {
+    const workflowRunsTable = this.workflowRunsTable();
+    const limit = params.limit ?? 1000;
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error("cleanupTerminalWorkflowRuns limit must be >= 1");
+    }
+
+    const deleted = await this.pg<{ id: string }[]>`
+      WITH candidates AS (
+        SELECT "id"
+        FROM ${workflowRunsTable}
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "status" IN ('completed', 'succeeded', 'failed', 'canceled')
+          AND "finished_at" IS NOT NULL
+          AND "finished_at" < ${params.finishedBefore}
+        ORDER BY "finished_at" ASC, "id" ASC
+        LIMIT ${limit}
+      )
+      DELETE FROM ${workflowRunsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "id" IN (SELECT "id" FROM candidates)
+      RETURNING "id"
+    `;
+
+    return deleted.length;
   }
 
   async claimWorkflowRun(

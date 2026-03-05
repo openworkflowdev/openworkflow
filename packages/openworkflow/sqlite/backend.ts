@@ -21,6 +21,7 @@ import {
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
   toWorkflowRunCounts,
+  CleanupTerminalWorkflowRunsParams,
 } from "../core/backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
@@ -662,6 +663,40 @@ export class BackendSqlite implements Backend {
       count: number;
     }[];
     return toWorkflowRunCounts(rows);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async cleanupTerminalWorkflowRuns(
+    params: CleanupTerminalWorkflowRunsParams,
+  ): Promise<number> {
+    const limit = params.limit ?? 1000;
+
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error("cleanupTerminalWorkflowRuns limit must be >= 1");
+    }
+
+    const stmt = this.db.prepare(`
+      DELETE FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+        AND "id" IN (
+          SELECT "id"
+          FROM "workflow_runs"
+          WHERE "namespace_id" = ?
+            AND "status" IN ('completed', 'succeeded', 'failed', 'canceled')
+            AND "finished_at" IS NOT NULL
+            AND "finished_at" < ?
+          ORDER BY "finished_at" ASC, "id" ASC
+          LIMIT ?
+        )
+    `);
+
+    const result = stmt.run(
+      this.namespaceId,
+      this.namespaceId,
+      toISO(params.finishedBefore),
+      limit,
+    );
+    return result.changes;
   }
 
   listWorkflowRuns(

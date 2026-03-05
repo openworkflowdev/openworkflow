@@ -88,6 +88,24 @@ bunx @openworkflow/cli worker start --concurrency 10
   capacity.
 </Note>
 
+## Automatic Retention Cleanup
+
+Workers can also clean up old terminal workflow runs automatically. Configure
+this in `openworkflow.config.ts`:
+
+```ts
+export default defineConfig({
+  backend,
+  retention: {
+    enabled: true,
+    period: "30d",
+  },
+});
+```
+
+With this enabled, workers periodically delete terminal workflow runs older than
+the configured retention period.
+
 ## Heartbeats and Crash Recovery
 
 Workers maintain their claim on workflow runs through a heartbeat mechanism:

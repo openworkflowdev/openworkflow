@@ -808,6 +808,112 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
+    describe("cleanupTerminalWorkflowRuns()", () => {
+      test("deletes only terminal workflow runs finished before cutoff", async () => {
+        const backend = await setup();
+
+        const oldCompleted = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: oldCompleted.id,
+          workerId: oldCompleted.workerId ?? "",
+          output: null,
+        });
+
+        const oldFailed = await createClaimedWorkflowRun(backend);
+        await backend.failWorkflowRun({
+          workflowRunId: oldFailed.id,
+          workerId: oldFailed.workerId ?? "",
+          error: { message: "failed before retention cutoff" },
+          retryPolicy: {
+            ...DEFAULT_WORKFLOW_RETRY_POLICY,
+            maximumAttempts: 1,
+          },
+        });
+
+        const oldCanceled = await createPendingWorkflowRun(backend);
+        await backend.cancelWorkflowRun({ workflowRunId: oldCanceled.id });
+
+        await sleep(20); // ensure old terminal runs are clearly before cutoff
+        const finishedBefore = new Date();
+
+        const freshCompleted = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: freshCompleted.id,
+          workerId: freshCompleted.workerId ?? "",
+          output: null,
+        });
+
+        const pending = await createPendingWorkflowRun(backend);
+        const running = await createClaimedWorkflowRun(backend);
+
+        const deleted = await backend.cleanupTerminalWorkflowRuns({
+          finishedBefore,
+        });
+
+        expect(deleted).toBe(3);
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: oldCompleted.id }),
+        ).toBeNull();
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: oldFailed.id }),
+        ).toBeNull();
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: oldCanceled.id }),
+        ).toBeNull();
+
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: freshCompleted.id }),
+        ).not.toBeNull();
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: pending.id }),
+        ).not.toBeNull();
+        expect(
+          await backend.getWorkflowRun({ workflowRunId: running.id }),
+        ).not.toBeNull();
+
+        await teardown(backend);
+      });
+
+      test("deletes terminal workflow runs in batches when limit is set", async () => {
+        const backend = await setup();
+
+        const first = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: first.id,
+          workerId: first.workerId ?? "",
+          output: null,
+        });
+
+        const second = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: second.id,
+          workerId: second.workerId ?? "",
+          output: null,
+        });
+
+        const third = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: third.id,
+          workerId: third.workerId ?? "",
+          output: null,
+        });
+
+        await sleep(20);
+
+        const deleted = await backend.cleanupTerminalWorkflowRuns({
+          finishedBefore: new Date(Date.now() - 10),
+          limit: 2,
+        });
+
+        expect(deleted).toBe(2);
+        expect(await backend.countWorkflowRuns()).toMatchObject({
+          completed: 1,
+        });
+
+        await teardown(backend);
+      });
+    });
+
     describe("claimWorkflowRun()", () => {
       // because claims involve timing and leases, we create and teardown a new
       // namespaced backend instance for each test
