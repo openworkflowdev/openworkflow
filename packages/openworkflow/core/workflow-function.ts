@@ -1,4 +1,6 @@
+import type { DeliverSignalResult } from "./backend.js";
 import type { DurationString } from "./duration.js";
+import type { JsonValue } from "./json.js";
 import type { SignalSpec } from "./signal-spec.js";
 import type { RetryPolicy, WorkflowSpec } from "./workflow-definition.js";
 import type { WorkflowRun } from "./workflow-run.js";
@@ -53,6 +55,18 @@ export interface StepWaitForSignalOptions {
 }
 
 /**
+ * Options for an individual step defined with `step.sendSignal()`.
+ */
+export interface StepSendSignalOptions {
+  /**
+   * Optional durable step name. Defaults to `send:${signalName}`.
+   * Provide an explicit name when you need to send the same signal multiple
+   * times — the auto-generated name would collide on the second call.
+   */
+  name?: string;
+}
+
+/**
  * Represents the API for defining steps within a workflow. Used within a
  * workflow handler to define steps by calling `step.run()`, `step.sleep()`,
  * and `step.runWorkflow()`.
@@ -72,6 +86,12 @@ export interface StepApi {
     nameOrSpec: string | SignalSpec<Payload>,
     options?: Readonly<StepWaitForSignalOptions>,
   ) => Promise<Payload>;
+  sendSignal: <Payload extends JsonValue = JsonValue>(
+    targetRunId: string,
+    nameOrSpec: string | SignalSpec<Payload>,
+    payload?: Payload,
+    options?: Readonly<StepSendSignalOptions>,
+  ) => Promise<DeliverSignalResult>;
 }
 
 /**

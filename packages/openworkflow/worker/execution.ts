@@ -1,4 +1,4 @@
-import type { Backend } from "../core/backend.js";
+import type { Backend, DeliverSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import {
   deserializeError,
@@ -27,6 +27,7 @@ import {
 import type {
   StepRunWorkflowOptions,
   StepWaitForSignalOptions,
+  StepSendSignalOptions,
   StepApi,
   StepFunction,
   StepFunctionConfig,
@@ -745,6 +746,65 @@ class StepExecutor implements StepApi {
     throw new SleepSignal(
       timeoutAt ?? this.deadlineAt ?? defaultWorkflowTimeoutAt(),
     );
+  }
+
+  // ---- step.sendSignal ----------------------------------------------------
+
+  async sendSignal<Payload extends JsonValue>(
+    targetRunId: string,
+    nameOrSpec: string | SignalSpec<Payload>,
+    payload?: Payload,
+    options?: Readonly<StepSendSignalOptions>,
+  ): Promise<DeliverSignalResult> {
+    const signalName = resolveSignalName(nameOrSpec);
+    const stepName = this.resolveStepName(options?.name ?? `send:${signalName}`);
+
+    // Return cached result if this send already completed on a prior replay
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) return existingAttempt.output as DeliverSignalResult;
+
+    // Create the durable step attempt — kind "function" since the semantics
+    // are identical to step.run(): execute once, memoize result, retry on error.
+    // Config records the target for observability (dashboards, logs, introspection).
+    this.assertExecutionActive();
+    this.ensureStepLimitNotReached();
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind: "function",
+      config: { targetRunId, signalName },
+      context: null,
+    });
+    this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
+
+    try {
+      const result = await this.backend.deliverSignal({
+        workflowRunId: targetRunId,
+        signalName,
+        payload: (payload ?? null) as JsonValue,
+      });
+
+      const savedAttempt = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: attempt.id,
+        workerId: this.workerId,
+        output: result as JsonValue,
+      });
+
+      this.cache = addToStepAttemptCache(this.cache, savedAttempt);
+      this.runningByStepName.delete(stepName);
+
+      return savedAttempt.output as DeliverSignalResult;
+    } catch (error) {
+      return this.failStepWithError(
+        stepName,
+        attempt.id,
+        error,
+        resolveStepRetryPolicy(),
+      );
+    }
   }
 
   // ---- step.runWorkflow -----------------------------------------------

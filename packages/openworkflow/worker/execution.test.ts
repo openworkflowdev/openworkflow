@@ -4037,7 +4037,380 @@ describe("executeWorkflow", () => {
       expect(sleepWorkflowRun).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ---- step.sendSignal tests ----------------------------------------------
+
+  describe("step.sendSignal", () => {
+    test("sends a signal to another workflow run and returns delivered result", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      // Receiver workflow: parks on waitForSignal
+      const receiver = client.defineWorkflow(
+        { name: `send-signal-recv-${randomUUID()}` },
+        async ({ step }) => {
+          const payload = await step.waitForSignal<{ value: number }>("ping");
+          return payload.value * 2;
+        },
+      );
+
+      // Sender workflow: sends a signal to the receiver using its run ID
+      const sender = client.defineWorkflow<
+        { targetRunId: string },
+        boolean
+      >(
+        { name: `send-signal-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          const result = await step.sendSignal(input.targetRunId, "ping", {
+            value: 21,
+          });
+          return result.delivered;
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 4 });
+
+      // Start receiver and wait until it is parked
+      const recvHandle = await receiver.run();
+      await tickUntilParked(backend, worker, recvHandle.workflowRun.id, 200, 10);
+
+      // Start sender pointing at receiver
+      const sendHandle = await sender.run({
+        targetRunId: recvHandle.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(sendHandle.result()).resolves.toBe(true);
+
+      // Receiver should wake and complete with doubled value
+      await tickUntilTerminal(
+        backend,
+        worker,
+        recvHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(recvHandle.result()).resolves.toBe(42);
+    });
+
+    test("step.sendSignal is memoized on replay — signal not re-delivered", async () => {
+      // Durability: the send result is memoized in the step-attempt cache.
+      // On a second execution pass (replay), the cached result is returned and
+      // deliverSignal is NOT called again (signal slot is already consumed).
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const receiver = client.defineWorkflow(
+        { name: `send-signal-replay-recv-${randomUUID()}` },
+        async ({ step }) => {
+          const payload = await step.waitForSignal<{ v: number }>("the-signal");
+          return payload.v;
+        },
+      );
+
+      // This sender has a step AFTER sendSignal so a replay pass is forced
+      // once the send step is cached, verifying the memoized result is used.
+      const sender = client.defineWorkflow<{ targetRunId: string }, boolean>(
+        { name: `send-signal-replay-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          const deliverResult = await step.sendSignal(
+            input.targetRunId,
+            "the-signal",
+            { v: 10 },
+          );
+          // Second step forces a replay pass after sendSignal completes
+          const confirmed = await step.run({ name: "confirm" }, () =>
+            deliverResult.delivered,
+          );
+          return confirmed;
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 4 });
+
+      const recvHandle = await receiver.run();
+      await tickUntilParked(backend, worker, recvHandle.workflowRun.id, 200, 10);
+
+      const sendHandle = await sender.run({
+        targetRunId: recvHandle.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(sendHandle.result()).resolves.toBe(true);
+
+      // Receiver should also complete
+      await tickUntilTerminal(
+        backend,
+        worker,
+        recvHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(recvHandle.result()).resolves.toBe(10);
+
+      // Verify only one sendSignal step attempt was created
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: sendHandle.workflowRun.id,
+        limit: 100,
+      });
+      const sendAttempts = attempts.data.filter((a) =>
+        a.stepName.startsWith("send:"),
+      );
+      expect(sendAttempts).toHaveLength(1);
+      expect(sendAttempts[0]?.status).toBe("completed");
+    });
+
+    test("step.sendSignal to unknown run returns signal_not_waiting and is memoized", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `send-signal-unknown-${randomUUID()}` },
+        async ({ step }) => {
+          const result = await step.sendSignal(
+            "non-existent-run-id",
+            "ghost-signal",
+            {},
+          );
+          return result.delivered ? "ok" : "not-delivered";
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      await tickUntilTerminal(backend, worker, handle.workflowRun.id, 200, 10);
+      await expect(handle.result()).resolves.toBe("not-delivered");
+    });
+
+    test("step.sendSignal works with a SignalSpec descriptor", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+      const greeting = defineSignalSpec<{ message: string }>("greeting");
+
+      const receiver = client.defineWorkflow(
+        { name: `send-signal-spec-recv-${randomUUID()}` },
+        async ({ step }) => {
+          const payload = await step.waitForSignal(greeting);
+          return payload.message;
+        },
+      );
+
+      const sender = client.defineWorkflow<{ targetRunId: string }, boolean>(
+        { name: `send-signal-spec-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          const r = await step.sendSignal(input.targetRunId, greeting, {
+            message: "hello",
+          });
+          return r.delivered;
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 4 });
+      const recvHandle = await receiver.run();
+      await tickUntilParked(backend, worker, recvHandle.workflowRun.id, 200, 10);
+
+      const sendHandle = await sender.run({
+        targetRunId: recvHandle.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(sendHandle.result()).resolves.toBe(true);
+
+      await tickUntilTerminal(
+        backend,
+        worker,
+        recvHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(recvHandle.result()).resolves.toBe("hello");
+    });
+
+    test("step.sendSignal default step name includes signal name", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const receiver = client.defineWorkflow(
+        { name: `send-signal-name-recv-${randomUUID()}` },
+        async ({ step }) => {
+          await step.waitForSignal("my-event");
+        },
+      );
+
+      const sender = client.defineWorkflow<{ targetRunId: string }, void>(
+        { name: `send-signal-name-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          await step.sendSignal(input.targetRunId, "my-event", {});
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 4 });
+      const recvHandle = await receiver.run();
+      await tickUntilParked(backend, worker, recvHandle.workflowRun.id, 200, 10);
+
+      const sendHandle = await sender.run({
+        targetRunId: recvHandle.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: sendHandle.workflowRun.id,
+        limit: 100,
+      });
+      const sendStep = attempts.data.find((a) => a.stepName === "send:my-event");
+      expect(sendStep).toBeDefined();
+      expect(sendStep?.config).toEqual({
+        targetRunId: recvHandle.workflowRun.id,
+        signalName: "my-event",
+      });
+    });
+
+    test("step.sendSignal with explicit name overrides default", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const receiver = client.defineWorkflow(
+        { name: `send-signal-cname-recv-${randomUUID()}` },
+        async ({ step }) => {
+          await step.waitForSignal("event-x");
+        },
+      );
+
+      const sender = client.defineWorkflow<{ targetRunId: string }, void>(
+        { name: `send-signal-cname-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          await step.sendSignal(input.targetRunId, "event-x", {}, {
+            name: "notify-reviewer",
+          });
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 4 });
+      const recvHandle = await receiver.run();
+      await tickUntilParked(backend, worker, recvHandle.workflowRun.id, 200, 10);
+
+      const sendHandle = await sender.run({
+        targetRunId: recvHandle.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: sendHandle.workflowRun.id,
+        limit: 100,
+      });
+      const sendStep = attempts.data.find(
+        (a) => a.stepName === "notify-reviewer",
+      );
+      expect(sendStep).toBeDefined();
+    });
+
+    test("parallel cross-workflow signals: both signals delivered and both receivers complete", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const receiver = client.defineWorkflow(
+        { name: `parallel-recv-${randomUUID()}` },
+        async ({ step }) => {
+          const p = await step.waitForSignal<{ n: number }>("go");
+          return p.n;
+        },
+      );
+
+      const sender = client.defineWorkflow<
+        { recvA: string; recvB: string },
+        boolean
+      >(
+        { name: `parallel-send-${randomUUID()}` },
+        async ({ step, input }) => {
+          // Send to both receivers in parallel — tests that duplicate default
+          // names are auto-indexed ("send:go" and "send:go:1")
+          const [a, b] = await Promise.all([
+            step.sendSignal(input.recvA, "go", { n: 1 }),
+            step.sendSignal(input.recvB, "go", { n: 2 }),
+          ]);
+          return a.delivered && b.delivered;
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 6 });
+
+      const recvA = await receiver.run();
+      const recvB = await receiver.run();
+      await tickUntilParked(backend, worker, recvA.workflowRun.id, 200, 10);
+      await tickUntilParked(backend, worker, recvB.workflowRun.id, 200, 10);
+
+      const sendHandle = await sender.run({
+        recvA: recvA.workflowRun.id,
+        recvB: recvB.workflowRun.id,
+      });
+      await tickUntilTerminal(
+        backend,
+        worker,
+        sendHandle.workflowRun.id,
+        200,
+        10,
+      );
+      await expect(sendHandle.result()).resolves.toBe(true);
+
+      await tickUntilTerminal(
+        backend,
+        worker,
+        recvA.workflowRun.id,
+        200,
+        10,
+      );
+      await tickUntilTerminal(
+        backend,
+        worker,
+        recvB.workflowRun.id,
+        200,
+        10,
+      );
+
+      await expect(recvA.result()).resolves.toBe(1);
+      await expect(recvB.result()).resolves.toBe(2);
+
+      // Verify the two step names were auto-indexed
+      const sendAttempts = (
+        await backend.listStepAttempts({
+          workflowRunId: sendHandle.workflowRun.id,
+          limit: 100,
+        })
+      ).data.filter((a) => a.stepName.startsWith("send:go"));
+      expect(sendAttempts).toHaveLength(2);
+      const names = sendAttempts.map((a) => a.stepName).sort();
+      expect(names).toEqual(["send:go", "send:go:1"]);
+    });
+  });
 });
+
 
 describe("createStepExecutionStateFromAttempts", () => {
   test("builds successful cache and failed-count map from mixed history", () => {

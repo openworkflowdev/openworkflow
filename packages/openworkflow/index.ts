@@ -7,6 +7,7 @@ export type { RetryPolicy, Workflow } from "./core/workflow-definition.js";
 export type {
   WorkflowRunMetadata,
   StepWaitForSignalOptions,
+  StepSendSignalOptions,
 } from "./core/workflow-function.js";
 export type {
   DeliverSignalParams,
