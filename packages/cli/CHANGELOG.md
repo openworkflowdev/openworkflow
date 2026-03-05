@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.4.3
+
+- Add a `--port` option to run the dashboard server on a custom port (#357)
+
 ## 0.4.2
 
 - Stop the backend at the end of the default `hello-world.run` script template
