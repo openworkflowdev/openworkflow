@@ -52,3 +52,15 @@ export function resolveStepAttemptsPageSize(
 ): StepAttemptsPageSize {
   return resolveRunsPageSize(limit);
 }
+
+export interface CursorPaginationState {
+  prev?: string | null;
+  next?: string | null;
+}
+
+export function shouldShowPaginationControls(
+  pagination: CursorPaginationState,
+): boolean {
+  const cursor = pagination.prev ?? pagination.next;
+  return cursor !== null && cursor !== undefined;
+}

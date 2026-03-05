@@ -25,6 +25,7 @@ import {
   STEP_ATTEMPTS_PAGE_SIZE_OPTIONS,
   type RunsPaginationSearch,
   resolveStepAttemptsPageSize,
+  shouldShowPaginationControls,
   validateStepAttemptsPaginationSearch,
 } from "@/lib/runs-page-pagination";
 import {
@@ -139,6 +140,7 @@ function RunDetailsPage() {
     {},
   );
   const stepPageSize = resolveStepAttemptsPageSize(search.limit);
+  const showStepPagination = shouldShowPaginationControls(pagination);
 
   function updateStepSearch(next: Partial<RunsPaginationSearch>) {
     void navigate({
@@ -475,8 +477,11 @@ function RunDetailsPage() {
               </div>
             )}
 
-            {steps.length > 0 && (
+            {showStepPagination && (
               <div className="border-border bg-muted/20 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-6">
+                <p className="text-muted-foreground text-xs">
+                  Showing {steps.length} step{steps.length === 1 ? "" : "s"}
+                </p>
                 <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                   <div className="flex items-center gap-2 sm:mr-1">
                     <p className="text-muted-foreground text-xs">Page size</p>

@@ -27,6 +27,7 @@ import {
   RUNS_PAGE_SIZE_OPTIONS,
   type RunsPaginationSearch,
   resolveRunsPageSize,
+  shouldShowPaginationControls,
   validateRunsPaginationSearch,
 } from "@/lib/runs-page-pagination";
 import { usePolling } from "@/lib/use-polling";
@@ -117,6 +118,7 @@ function HomePage() {
   const [isCreateRunOpen, setIsCreateRunOpen] = useState(false);
   const pageSize = resolveRunsPageSize(search.limit);
   const runs = data;
+  const showRunsPagination = shouldShowPaginationControls(pagination);
 
   function updateRunsSearch(next: Partial<RunsPaginationSearch>) {
     void navigate({
@@ -196,51 +198,53 @@ function HomePage() {
               showHeader={false}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-xs">
-                Showing {runs.length} run{runs.length === 1 ? "" : "s"}
-              </p>
-              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                <div className="flex items-center gap-2 sm:mr-1">
-                  <p className="text-muted-foreground text-xs">Page size</p>
-                  <Select
-                    value={String(pageSize)}
-                    onValueChange={handlePageSizeChange}
+            {showRunsPagination && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-muted-foreground text-xs">
+                  Showing {runs.length} run{runs.length === 1 ? "" : "s"}
+                </p>
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  <div className="flex items-center gap-2 sm:mr-1">
+                    <p className="text-muted-foreground text-xs">Page size</p>
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={handlePageSizeChange}
+                    >
+                      <SelectTrigger className="h-8 w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {RUNS_PAGE_SIZE_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={String(option)}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    type="button"
+                    onClick={goToPreviousPage}
+                    disabled={!pagination.prev}
                   >
-                    <SelectTrigger className="h-8 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {RUNS_PAGE_SIZE_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={String(option)}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    type="button"
+                    onClick={goToNextPage}
+                    disabled={!pagination.next}
+                  >
+                    Next
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  type="button"
-                  onClick={goToPreviousPage}
-                  disabled={!pagination.prev}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  type="button"
-                  onClick={goToNextPage}
-                  disabled={!pagination.next}
-                >
-                  Next
-                </Button>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
