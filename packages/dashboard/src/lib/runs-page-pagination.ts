@@ -36,3 +36,19 @@ export function resolveRunsPageSize(limit?: number): RunsPageSize {
 
   return DEFAULT_RUNS_PAGE_SIZE;
 }
+
+export const STEP_ATTEMPTS_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+export type StepAttemptsPageSize =
+  (typeof STEP_ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
+
+export function validateStepAttemptsPaginationSearch(
+  search: Record<string, unknown>,
+): RunsPaginationSearch {
+  return validateRunsPaginationSearch(search);
+}
+
+export function resolveStepAttemptsPageSize(
+  limit?: number,
+): StepAttemptsPageSize {
+  return resolveRunsPageSize(limit);
+}

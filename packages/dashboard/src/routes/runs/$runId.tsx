@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MonacoJsonEditor } from "@/components/ui/monaco-json-editor";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -14,6 +21,12 @@ import {
   getWorkflowRunServerFn,
   listStepAttemptsServerFn,
 } from "@/lib/api";
+import {
+  STEP_ATTEMPTS_PAGE_SIZE_OPTIONS,
+  type RunsPaginationSearch,
+  resolveStepAttemptsPageSize,
+  validateStepAttemptsPaginationSearch,
+} from "@/lib/runs-page-pagination";
 import {
   STEP_STATUS_CONFIG,
   TERMINAL_RUN_STATUSES,
@@ -45,12 +58,23 @@ import {
 } from "react";
 
 export const Route = createFileRoute("/runs/$runId")({
-  loader: async ({ params }) => {
-    const [run, stepsResult] = await Promise.all([
+  validateSearch: validateStepAttemptsPaginationSearch,
+  loaderDeps: ({ search }) => search,
+  loader: async ({ params, deps }) => {
+    const limit = resolveStepAttemptsPageSize(deps.limit);
+
+    const [run, stepsResponse] = await Promise.all([
       getWorkflowRunServerFn({ data: { workflowRunId: params.runId } }),
-      listStepAttemptsServerFn({ data: { workflowRunId: params.runId } }),
+      listStepAttemptsServerFn({
+        data: {
+          workflowRunId: params.runId,
+          limit,
+          after: deps.after,
+          before: deps.before,
+        },
+      }),
     ]);
-    const steps = stepsResult.data;
+    const steps = stepsResponse.data;
 
     let parentStepAttempt: StepAttempt | null = null;
     let parentRun: WorkflowRun | null = null;
@@ -90,7 +114,7 @@ export const Route = createFileRoute("/runs/$runId")({
 
     return {
       run,
-      steps,
+      stepsResponse,
       parentStepAttempt,
       parentRun,
       childRunsById,
@@ -101,8 +125,12 @@ export const Route = createFileRoute("/runs/$runId")({
 });
 
 function RunDetailsPage() {
-  const { run, steps, parentRun, childRunsById, referenceNow } =
+  const { run, stepsResponse, parentRun, childRunsById, referenceNow } =
     Route.useLoaderData();
+  const { data: steps, pagination } = stepsResponse;
+  const search = Route.useSearch();
+  const params = Route.useParams();
+  const navigate = Route.useNavigate();
   const router = useRouter();
   const [selectedStepId, setSelectedStepId] = useState<string | null>(() =>
     getDefaultSelectedStepId(steps),
@@ -110,6 +138,56 @@ function RunDetailsPage() {
   const stepOptionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
+  const stepPageSize = resolveStepAttemptsPageSize(search.limit);
+
+  function updateStepSearch(next: Partial<RunsPaginationSearch>) {
+    void navigate({
+      to: "/runs/$runId",
+      params: {
+        runId: params.runId,
+      },
+      search: (previous) => ({
+        ...previous,
+        ...next,
+      }),
+    });
+  }
+
+  function handleStepPageSizeChange(value: string) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+
+    const limit = resolveStepAttemptsPageSize(parsed);
+    updateStepSearch({
+      limit,
+      after: undefined,
+      before: undefined,
+    });
+  }
+
+  function goToNextStepPage() {
+    if (!pagination.next) {
+      return;
+    }
+
+    updateStepSearch({
+      after: pagination.next,
+      before: undefined,
+    });
+  }
+
+  function goToPreviousStepPage() {
+    if (!pagination.prev) {
+      return;
+    }
+
+    updateStepSearch({
+      before: pagination.prev,
+      after: undefined,
+    });
+  }
 
   usePolling({
     enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
@@ -144,9 +222,6 @@ function RunDetailsPage() {
   const referenceNowMs = referenceNow.getTime();
   const duration = computeDuration(run.startedAt, run.finishedAt);
   const startedAt = formatRelativeTime(run.startedAt, referenceNowMs);
-  const completedSteps = steps.filter(
-    (s: StepAttempt) => s.status === "completed" || s.status === "succeeded",
-  ).length;
   const stepsByName = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const step of steps) {
@@ -241,24 +316,15 @@ function RunDetailsPage() {
           run={run}
           startedAt={startedAt}
           duration={duration}
-          completedSteps={completedSteps}
-          totalSteps={steps.length}
           referenceNow={referenceNowMs}
         />
 
         <div className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] xl:items-start">
           <Card className="bg-card border-border gap-0 overflow-hidden py-0">
             <div className="border-border bg-muted/20 border-b px-4 py-3 sm:px-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold tracking-wide uppercase">
-                  Steps
-                </h3>
-                <p className="text-muted-foreground text-sm">
-                  {steps.length === 0
-                    ? "No steps yet"
-                    : `${completedSteps.toString()}/${steps.length.toString()} completed`}
-                </p>
-              </div>
+              <h3 className="text-sm font-semibold tracking-wide uppercase">
+                Steps
+              </h3>
             </div>
 
             {steps.length === 0 ? (
@@ -408,6 +474,51 @@ function RunDetailsPage() {
                 })}
               </div>
             )}
+
+            {steps.length > 0 && (
+              <div className="border-border bg-muted/20 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-6">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  <div className="flex items-center gap-2 sm:mr-1">
+                    <p className="text-muted-foreground text-xs">Page size</p>
+                    <Select
+                      value={String(stepPageSize)}
+                      onValueChange={handleStepPageSizeChange}
+                    >
+                      <SelectTrigger className="h-8 w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STEP_ATTEMPTS_PAGE_SIZE_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={String(option)}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    type="button"
+                    onClick={goToPreviousStepPage}
+                    disabled={!pagination.prev}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    type="button"
+                    onClick={goToNextStepPage}
+                    disabled={!pagination.next}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
 
           <StepInspectorPanel
@@ -426,8 +537,6 @@ interface RunOverviewPanelProps {
   run: WorkflowRun;
   startedAt: string;
   duration: string;
-  completedSteps: number;
-  totalSteps: number;
   referenceNow: number;
 }
 
@@ -435,8 +544,6 @@ function RunOverviewPanel({
   run,
   startedAt,
   duration,
-  completedSteps,
-  totalSteps,
   referenceNow,
 }: RunOverviewPanelProps) {
   const availableAt = formatMetadataTimestamp(run.availableAt, referenceNow);
@@ -487,14 +594,9 @@ function RunOverviewPanel({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">
         <MetadataField label="Started" value={startedAt} />
         <MetadataField label="Duration" value={duration} mono />
-        <MetadataField
-          label="Steps"
-          value={`${completedSteps.toString()}/${totalSteps.toString()}`}
-          mono
-        />
         <MetadataField label="Attempts" value={run.attempts.toString()} mono />
       </div>
 
