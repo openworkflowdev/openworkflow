@@ -19,7 +19,14 @@ const MAX_POSTGRES_IDENTIFIER_BYTES = 63;
  * @returns A Postgres client
  */
 export function newPostgres(url: string, options?: PostgresOptions) {
-  return postgres(url, { ...options, transform: postgres.toCamel });
+  return postgres(url, {
+    ...options,
+    transform: {
+      column: {
+        from: postgres.toCamel,
+      },
+    },
+  });
 }
 
 /**
