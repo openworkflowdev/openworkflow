@@ -1427,6 +1427,102 @@ describe("Worker", () => {
     }
   });
 
+  test("runs retention cleanup on start and at fixed intervals", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-01T00:00:00.000Z"));
+
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+    const cleanupTerminalWorkflowRuns = vi.fn().mockResolvedValue(0);
+
+    const worker = new Worker({
+      backend: {
+        claimWorkflowRun,
+        cleanupTerminalWorkflowRuns,
+      } as unknown as Backend,
+      workflows: [],
+      retention: {
+        enabled: true,
+        period: "30d",
+      },
+    });
+
+    try {
+      await worker.start();
+
+      expect(cleanupTerminalWorkflowRuns).toHaveBeenCalledTimes(1);
+      expect(cleanupTerminalWorkflowRuns).toHaveBeenCalledWith({
+        finishedBefore: new Date("2026-01-02T00:00:00.000Z"),
+        limit: 1000,
+      });
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1);
+      expect(cleanupTerminalWorkflowRuns).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(cleanupTerminalWorkflowRuns.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      const stopPromise = worker.stop();
+      await vi.runOnlyPendingTimersAsync();
+      await stopPromise;
+      vi.useRealTimers();
+    }
+  });
+
+  test("does not run retention cleanup when disabled", async () => {
+    vi.useFakeTimers();
+
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+    const cleanupTerminalWorkflowRuns = vi.fn().mockResolvedValue(0);
+
+    const worker = new Worker({
+      backend: {
+        claimWorkflowRun,
+        cleanupTerminalWorkflowRuns,
+      } as unknown as Backend,
+      workflows: [],
+      retention: {
+        enabled: false,
+        period: "30d",
+      },
+    });
+
+    try {
+      await worker.start();
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(cleanupTerminalWorkflowRuns).not.toHaveBeenCalled();
+    } finally {
+      const stopPromise = worker.stop();
+      await vi.runOnlyPendingTimersAsync();
+      await stopPromise;
+      vi.useRealTimers();
+    }
+  });
+
+  test("throws when retention is enabled without a valid period", () => {
+    expect(
+      () =>
+        new Worker({
+          backend: {} as Backend,
+          workflows: [],
+          retention: {
+            enabled: true,
+          },
+        }),
+    ).toThrow("Worker retention period is required");
+
+    expect(
+      () =>
+        new Worker({
+          backend: {} as Backend,
+          workflows: [],
+          retention: {
+            enabled: true,
+            period: "0d",
+          },
+        }),
+    ).toThrow("Invalid worker retention period");
+  });
+
   test("respects custom retry policy from spec", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });

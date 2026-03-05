@@ -15,7 +15,7 @@ import type {
   WorkflowRun,
 } from "../core/workflow-run.js";
 import { validateInput } from "../core/workflow-run.js";
-import { Worker } from "../worker/worker.js";
+import { Worker, type WorkerOptions } from "../worker/worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -48,13 +48,17 @@ export class OpenWorkflow {
    * Create a new Worker with this client's backend and workflows.
    * @param options - Worker options
    * @param options.concurrency - Max concurrent workflow runs
+   * @param options.retention - Optional terminal workflow run cleanup policy
    * @returns Worker instance
    */
-  newWorker(options?: { concurrency?: number | undefined }): Worker {
+  newWorker(
+    options?: Pick<WorkerOptions, "concurrency" | "retention">,
+  ): Worker {
     return new Worker({
       backend: this.backend,
       workflows: this.registry.getAll(),
       concurrency: options?.concurrency,
+      ...(options?.retention ? { retention: options.retention } : {}),
     });
   }
 

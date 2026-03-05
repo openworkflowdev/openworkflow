@@ -1,5 +1,6 @@
 import type { Backend } from "../core/backend.js";
 import { type BackoffPolicy, computeBackoffDelayMs } from "../core/backoff.js";
+import type { DurationString } from "../core/duration.js";
 import { parseDuration } from "../core/duration.js";
 import type { RetryPolicy, Workflow } from "../core/workflow-definition.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
@@ -18,6 +19,8 @@ const DEFAULT_POLL_BACKOFF_POLICY: BackoffPolicy = {
 const DEFAULT_POLL_JITTER_FACTOR_MIN = 0.5;
 const DEFAULT_POLL_JITTER_FACTOR_MAX = 1;
 const DEFAULT_CONCURRENCY = 1;
+const DEFAULT_RETENTION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5m
+const DEFAULT_RETENTION_CLEANUP_BATCH_SIZE = 1000;
 
 const MISSING_DEFINITION_RETRY_POLICY: RetryPolicy = {
   initialInterval: "5s",
@@ -34,6 +37,19 @@ export interface WorkerOptions {
   backend: Backend;
   workflows: Workflow<unknown, unknown, unknown>[];
   concurrency?: number | undefined;
+  retention?: WorkerRetentionOptions;
+}
+
+/**
+ * Configures automatic cleanup of terminal workflow runs.
+ */
+export interface WorkerRetentionOptions {
+  enabled?: boolean;
+  period?: DurationString;
+}
+
+interface ResolvedWorkerRetentionOptions {
+  periodMs: number;
 }
 
 /**
@@ -45,9 +61,11 @@ export class Worker {
   private readonly workerIds: string[];
   private readonly registry = new WorkflowRegistry();
   private readonly activeExecutions = new Set<WorkflowExecution>();
+  private readonly retention: ResolvedWorkerRetentionOptions | null;
   private running = false;
   private loopPromise: Promise<void> | null = null;
   private backoffAttempts = 0;
+  private nextRetentionCleanupAt = 0;
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
@@ -60,6 +78,7 @@ export class Worker {
       DEFAULT_CONCURRENCY,
       options.concurrency ?? DEFAULT_CONCURRENCY,
     );
+    this.retention = resolveWorkerRetentionOptions(options.retention);
 
     // generate worker IDs for every concurrency slot
     this.workerIds = Array.from({ length: concurrency }, () => randomUUID());
@@ -132,6 +151,7 @@ export class Worker {
   private async runLoop(): Promise<void> {
     while (this.running) {
       try {
+        await this.cleanupTerminalWorkflowRunsIfDue();
         const claimedCount = await this.tick();
 
         if (claimedCount > 0) {
@@ -146,6 +166,22 @@ export class Worker {
         await sleep(getPollBackoffDelayMs(this.backoffAttempts));
       }
     }
+  }
+
+  private async cleanupTerminalWorkflowRunsIfDue(): Promise<void> {
+    if (!this.retention) return;
+
+    const now = Date.now();
+    if (now < this.nextRetentionCleanupAt) return;
+
+    // schedule next cleanup before running the current one to avoid hot-loop
+    // retries when cleanup repeatedly fails.
+    this.nextRetentionCleanupAt = now + DEFAULT_RETENTION_CLEANUP_INTERVAL_MS;
+
+    await this.backend.cleanupTerminalWorkflowRuns({
+      finishedBefore: new Date(now - this.retention.periodMs),
+      limit: DEFAULT_RETENTION_CLEANUP_BATCH_SIZE,
+    });
   }
 
   /*
@@ -367,4 +403,35 @@ function resolveDuration(
 ): RetryPolicy["initialInterval"] {
   const parsed = parseDuration(value);
   return parsed.ok && parsed.value > 0 ? value : fallback;
+}
+
+/**
+ * Resolve and validate worker retention options.
+ * @param options - Raw retention configuration
+ * @returns Normalized retention options, or null when disabled
+ * @throws {Error} When retention is enabled with an invalid period
+ */
+function resolveWorkerRetentionOptions(
+  options: WorkerRetentionOptions | undefined,
+): ResolvedWorkerRetentionOptions | null {
+  if (!options || options.enabled === false) {
+    return null;
+  }
+
+  if (!options.period) {
+    throw new Error(
+      "Worker retention period is required when retention is enabled.",
+    );
+  }
+
+  const parsedPeriod = parseDuration(options.period);
+  if (!parsedPeriod.ok || parsedPeriod.value <= 0) {
+    throw new Error(
+      `Invalid worker retention period "${options.period}". Use a positive duration like "30d".`,
+    );
+  }
+
+  return {
+    periodMs: parsedPeriod.value,
+  };
 }

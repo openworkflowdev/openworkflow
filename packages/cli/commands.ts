@@ -1,4 +1,9 @@
-import { WorkerConfig, loadConfig, loadConfigFromPath } from "./config.js";
+import {
+  WorkerConfig,
+  RetentionConfig,
+  loadConfig,
+  loadConfigFromPath,
+} from "./config.js";
 import { CLIError } from "./errors.js";
 import {
   CONFIG,
@@ -322,13 +327,17 @@ export async function workerStart(
     if (workerOptions.concurrency !== undefined) {
       assertPositiveInteger("concurrency", workerOptions.concurrency);
     }
+    assertRetentionConfig(config.retention);
 
     // register discovered workflows
     for (const workflow of workflows) {
       ow.implementWorkflow(workflow.spec, workflow.fn);
     }
 
-    worker = ow.newWorker(workerOptions);
+    worker = ow.newWorker({
+      ...workerOptions,
+      ...(config.retention ? { retention: config.retention } : {}),
+    });
 
     process.on("SIGINT", () => void gracefulShutdown());
     process.on("SIGTERM", () => void gracefulShutdown());
@@ -1296,6 +1305,22 @@ function assertPositiveInteger(name: string, value: number): void {
     throw new CLIError(
       `Invalid ${name}: ${String(value)}`,
       `${name} must be a positive integer.`,
+    );
+  }
+}
+
+/**
+ * Validate retention configuration.
+ * @param retention - Retention config from openworkflow.config.ts
+ * @throws {CLIError} When retention is enabled but missing a period
+ */
+function assertRetentionConfig(retention: RetentionConfig | undefined): void {
+  if (!retention || retention.enabled === false) return;
+
+  if (!retention.period || typeof retention.period !== "string") {
+    throw new CLIError(
+      "Invalid retention configuration.",
+      'Set `retention.period` to a positive duration string like `"30d"`.',
     );
   }
 }

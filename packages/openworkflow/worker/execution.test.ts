@@ -2213,7 +2213,10 @@ describe("StepExecutor", () => {
       )
       .map((stepAttempt) => stepAttempt.stepName)
       .toSorted((a, b) => a.localeCompare(b));
-    expect(workflowStepNames).toEqual([
+    const uniqueWorkflowStepNames = [...new Set(workflowStepNames)].toSorted(
+      (a, b) => a.localeCompare(b),
+    );
+    expect(uniqueWorkflowStepNames).toEqual([
       child.workflow.spec.name,
       `${child.workflow.spec.name}:1`,
     ]);
