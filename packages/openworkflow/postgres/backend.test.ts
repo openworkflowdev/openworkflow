@@ -172,6 +172,98 @@ describe("BackendPostgres schema option", () => {
   });
 });
 
+describe("BackendPostgres JSON key preservation", () => {
+  test("preserves uppercase snake case keys in workflow run input", async () => {
+    const namespaceId = randomUUID();
+    const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
+      namespaceId,
+    });
+
+    // https://github.com/openworkflowdev/openworkflow/issues/367
+    const input = {
+      env: {
+        OPENAI_MODEL: "gpt-5.3-codex",
+        OPENAI_BASE_URL: "http://127.0.0.1:8090/...",
+        OPENAI_REASONING_EFFORT: "medium",
+      },
+    };
+    const transformedModelKey = "OPENAI_MODEL".replaceAll("_", "");
+    const transformedBaseUrlKey = "OPENAI_BASE_URL".replaceAll("_", "");
+    const transformedReasoningEffortKey = "OPENAI_REASONING_EFFORT".replaceAll(
+      "_",
+      "",
+    );
+
+    try {
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "json-key-preservation",
+        version: null,
+        idempotencyKey: null,
+        input,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      if (
+        !workflowRun.input ||
+        typeof workflowRun.input !== "object" ||
+        Array.isArray(workflowRun.input)
+      ) {
+        throw new Error("Expected workflow run input object");
+      }
+
+      const createEnv = (workflowRun.input as { env?: Record<string, string> })
+        .env;
+      if (!createEnv) throw new Error("Expected workflow run input env");
+      expect(createEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
+      expect(createEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
+      expect(createEnv["OPENAI_REASONING_EFFORT"]).toBe(
+        input.env.OPENAI_REASONING_EFFORT,
+      );
+      expect(createEnv[transformedModelKey]).toBeUndefined();
+      expect(createEnv[transformedBaseUrlKey]).toBeUndefined();
+      expect(createEnv[transformedReasoningEffortKey]).toBeUndefined();
+
+      const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
+        const [record] = await pg<
+          {
+            input: {
+              env?: Record<string, string>;
+            };
+          }[]
+        >`
+          SELECT "input"
+          FROM ${workflowRunsTable}
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${workflowRun.id}
+          LIMIT 1
+        `;
+
+        const persistedEnv = record?.input.env;
+        if (!persistedEnv) throw new Error("Expected persisted workflow input");
+        expect(persistedEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
+        expect(persistedEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
+        expect(persistedEnv["OPENAI_REASONING_EFFORT"]).toBe(
+          input.env.OPENAI_REASONING_EFFORT,
+        );
+        expect(persistedEnv[transformedModelKey]).toBeUndefined();
+        expect(persistedEnv[transformedBaseUrlKey]).toBeUndefined();
+        expect(persistedEnv[transformedReasoningEffortKey]).toBeUndefined();
+      } finally {
+        await pg.end();
+      }
+    } finally {
+      await backend.stop();
+    }
+  });
+});
+
 describe("BackendPostgres cancel fallback", () => {
   test("throws generic cancel error for non-standard workflow status", async () => {
     const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
