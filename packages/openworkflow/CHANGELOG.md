@@ -1,5 +1,10 @@
 # openworkflow
 
+## 0.8.1
+
+- Fix Postgres key transformation to only camel-case column names, preserving
+  JSON value object keys in workflow inputs (#368)
+
 ## 0.8.0
 
 - Add child workflow support with `step.runWorkflow` (#342, #349)
