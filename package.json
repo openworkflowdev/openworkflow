@@ -59,7 +59,7 @@
     "jscpd": "^4.0.8",
     "knip": "^5.85.0",
     "prettier": "^3.8.1",
-    "prettier-plugin-packagejson": "^3.0.1",
+    "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tsx": "^4.21.0",
     "turbo": "^2.8.13",
