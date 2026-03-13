@@ -2228,6 +2228,262 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
     });
+
+    describe("deliverSignal()", () => {
+      test("returns workflow_not_found when workflow run does not exist", async () => {
+        const backend = await setup();
+        try {
+          const result = await backend.deliverSignal({
+            workflowRunId: randomUUID(),
+            signalName: "test-signal",
+            payload: { value: 42 },
+          });
+          expect(result.delivered).toBe(false);
+          if (!result.delivered) {
+            expect(result.reason).toBe("workflow_not_found");
+          }
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("buffers signal to pending workflow before any signal step is created", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+          const result = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "test-signal",
+            payload: { value: 42 },
+          });
+          expect(result.delivered).toBe(true);
+
+          // Verify a pre-delivered running step was created
+          const steps = await backend.listStepAttempts({
+            workflowRunId: run.id,
+            limit: 10,
+          });
+          const signalStep = steps.data.find(
+            (s) => s.stepName === "test-signal" && s.kind === "signal",
+          );
+          expect(signalStep).toBeDefined();
+          expect(signalStep?.status).toBe("running");
+          expect(signalStep?.output).toEqual({ value: 42 });
+          expect(
+            (signalStep?.context as { delivered?: boolean } | null)?.delivered,
+          ).toBe(true);
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("returns signal_not_waiting when workflow is currently executing (worker_id set)", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+          const workerId = randomUUID();
+          // Claim the run (simulates an active worker executing the workflow)
+          const claimed = await backend.claimWorkflowRun({
+            workerId,
+            leaseDurationMs: 60_000,
+          });
+          expect(claimed).not.toBeNull();
+
+          // Worker is actively executing — no signal step created yet
+          const result = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "test-signal",
+            payload: { value: 42 },
+          });
+          expect(result.delivered).toBe(false);
+          if (!result.delivered) {
+            expect(result.reason).toBe("signal_not_waiting");
+          }
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("returns signal_not_waiting when signal was already buffered (idempotency guard)", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+
+          // First delivery — buffers the signal
+          const first = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "my-signal",
+            payload: { value: 1 },
+          });
+          expect(first.delivered).toBe(true);
+
+          // Second delivery — slot is already taken
+          const second = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "my-signal",
+            payload: { value: 2 },
+          });
+          expect(second.delivered).toBe(false);
+          if (!second.delivered) {
+            expect(second.reason).toBe("signal_not_waiting");
+          }
+
+          // Payload should still be from the first delivery
+          const steps = await backend.listStepAttempts({
+            workflowRunId: run.id,
+            limit: 10,
+          });
+          const signalStep = steps.data.find(
+            (s) => s.stepName === "my-signal" && s.kind === "signal",
+          );
+          expect(signalStep?.output).toEqual({ value: 1 });
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("delivers signal and wakes the workflow run", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+          const workerId = randomUUID();
+          const claimed = await backend.claimWorkflowRun({
+            workerId,
+            leaseDurationMs: 60_000,
+          });
+          if (!claimed) throw new Error("Expected to claim a workflow run");
+
+          // Create a signal step attempt (simulates what executeWorkflow does)
+          const attempt = await backend.createStepAttempt({
+            workflowRunId: run.id,
+            workerId,
+            stepName: "my-signal",
+            kind: "signal",
+            config: {},
+            context: { kind: "signal", timeoutAt: null },
+          });
+          expect(attempt.status).toBe("running");
+
+          // Park the workflow (simulates sleepWorkflowRun after waitForSignal)
+          const futureDate = new Date(Date.now() + 60 * 60 * 1000);
+          await backend.sleepWorkflowRun({
+            workflowRunId: run.id,
+            workerId,
+            availableAt: futureDate,
+          });
+
+          // Deliver the signal
+          const result = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "my-signal",
+            payload: { answer: 42 },
+          });
+          expect(result.delivered).toBe(true);
+
+          // The signal step should now have the payload and be marked delivered
+          const updatedAttempt = await backend.getStepAttempt({
+            stepAttemptId: attempt.id,
+          });
+          expect(updatedAttempt?.output).toEqual({ answer: 42 });
+
+          // The workflow run should be woken up (available_at moved to NOW)
+          const updatedRun = await backend.getWorkflowRun({
+            workflowRunId: run.id,
+          });
+          expect(updatedRun?.availableAt).not.toBeNull();
+          if (updatedRun?.availableAt) {
+            // Should be woken up (available_at significantly earlier than futureDate)
+            expect(updatedRun.availableAt.getTime()).toBeLessThan(
+              futureDate.getTime() - 60 * 60 * 500,
+            );
+          }
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("does not deliver signal to a completed step attempt", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+          const workerId = randomUUID();
+          await backend.claimWorkflowRun({
+            workerId,
+            leaseDurationMs: 60_000,
+          });
+
+          // Create and complete a signal attempt
+          const attempt = await backend.createStepAttempt({
+            workflowRunId: run.id,
+            workerId,
+            stepName: "done-signal",
+            kind: "signal",
+            config: {},
+            context: { kind: "signal", timeoutAt: null },
+          });
+          await backend.completeStepAttempt({
+            workflowRunId: run.id,
+            stepAttemptId: attempt.id,
+            workerId,
+            output: { original: true },
+          });
+
+          // Try to deliver a second time — should fail
+          const result = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "done-signal",
+            payload: { overwrite: true },
+          });
+          expect(result.delivered).toBe(false);
+          if (!result.delivered) {
+            expect(result.reason).toBe("signal_not_waiting");
+          }
+        } finally {
+          await teardown(backend);
+        }
+      });
+
+      test("null payload is treated as a valid delivery", async () => {
+        const backend = await setup();
+        try {
+          const run = await createPendingWorkflowRun(backend);
+          const workerId = randomUUID();
+          await backend.claimWorkflowRun({
+            workerId,
+            leaseDurationMs: 60_000,
+          });
+
+          const attempt = await backend.createStepAttempt({
+            workflowRunId: run.id,
+            workerId,
+            stepName: "ping",
+            kind: "signal",
+            config: {},
+            context: { kind: "signal", timeoutAt: null },
+          });
+
+          await backend.sleepWorkflowRun({
+            workflowRunId: run.id,
+            workerId,
+            availableAt: new Date(Date.now() + 3_600_000),
+          });
+
+          const result = await backend.deliverSignal({
+            workflowRunId: run.id,
+            signalName: "ping",
+            payload: null,
+          });
+          expect(result.delivered).toBe(true);
+
+          const updatedAttempt = await backend.getStepAttempt({
+            stepAttemptId: attempt.id,
+          });
+          expect(updatedAttempt?.output).toBeNull();
+        } finally {
+          await teardown(backend);
+        }
+      });
+    });
   });
 }
 

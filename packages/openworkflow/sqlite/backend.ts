@@ -20,6 +20,8 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
+  DeliverSignalParams,
+  DeliverSignalResult,
   toWorkflowRunCounts,
 } from "../core/backend.js";
 import { wrapError } from "../core/error.js";
@@ -367,17 +369,28 @@ export class BackendSqlite implements Backend {
       SET
         "status" = 'running',
         "available_at" = CASE
-          WHEN EXISTS (
-            SELECT 1
-            FROM "step_attempts" sa
-            JOIN "workflow_runs" child
-              ON child."namespace_id" = sa."child_workflow_run_namespace_id"
-              AND child."id" = sa."child_workflow_run_id"
-            WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
-            AND sa."workflow_run_id" = "workflow_runs"."id"
-            AND sa."kind" = 'workflow'
-            AND sa."status" = 'running'
-            AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+          WHEN (
+            EXISTS (
+              SELECT 1
+              FROM "step_attempts" sa
+              JOIN "workflow_runs" child
+                ON child."namespace_id" = sa."child_workflow_run_namespace_id"
+                AND child."id" = sa."child_workflow_run_id"
+              WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+              AND sa."workflow_run_id" = "workflow_runs"."id"
+              AND sa."kind" = 'workflow'
+              AND sa."status" = 'running'
+              AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM "step_attempts" sa
+              WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+              AND sa."workflow_run_id" = "workflow_runs"."id"
+              AND sa."kind" = 'signal'
+              AND sa."status" = 'running'
+              AND json_extract(sa."context", '$.delivered') IS TRUE
+            )
           ) AND ? > ? THEN ?
           ELSE ?
         END,
@@ -599,6 +612,164 @@ export class BackendSqlite implements Backend {
     this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async deliverSignal(
+    params: DeliverSignalParams,
+  ): Promise<DeliverSignalResult> {
+    const currentTime = now();
+
+    // --- Path 1: Normal delivery — update an existing running signal step ---
+    // Use context.delivered as the delivery flag so null payloads work correctly.
+    const updateResult = this.db
+      .prepare(
+        `
+      UPDATE "step_attempts"
+      SET
+        "output" = ?,
+        "context" = json_patch("context", '{"delivered":true}'),
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+        AND "workflow_run_id" = ?
+        AND "step_name" = ?
+        AND "kind" = 'signal'
+        AND "status" = 'running'
+        AND json_extract("context", '$.delivered') IS NOT TRUE
+    `,
+      )
+      .run(
+        toJSON(params.payload),
+        currentTime,
+        this.namespaceId,
+        params.workflowRunId,
+        params.signalName,
+      );
+
+    if (updateResult.changes > 0) {
+      // Wake the workflow run so it picks up the signal on next execution.
+      // No worker_id guard: signal can arrive while the worker still holds the
+      // lease, and sleepWorkflowRun's reconcile step will correct available_at
+      // after the worker parks.
+      this.db
+        .prepare(
+          `
+        UPDATE "workflow_runs"
+        SET
+          "available_at" = CASE
+            WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+            ELSE "available_at"
+          END,
+          "updated_at" = ?
+        WHERE "namespace_id" = ?
+          AND "id" = ?
+          AND "status" IN ('pending', 'running')
+      `,
+        )
+        .run(
+          currentTime,
+          currentTime,
+          currentTime,
+          this.namespaceId,
+          params.workflowRunId,
+        );
+      return { delivered: true };
+    }
+
+    // --- Path 2: Pre-delivery to a parked / pending workflow ---
+    // If the workflow is active but the worker is not currently executing it
+    // (worker_id IS NULL), and no signal step for this name exists yet, buffer
+    // the signal by inserting a running step with delivered=true. The pre-pass
+    // in executeWorkflow will complete it on the next execution and the payload
+    // will be available in the cache when waitForSignal is replayed.
+    const insertResult = this.db
+      .prepare(
+        `
+      INSERT INTO "step_attempts" (
+        "namespace_id", "id", "workflow_run_id", "step_name",
+        "kind", "status", "config", "context", "output",
+        "started_at", "created_at", "updated_at"
+      )
+      SELECT ?, ?, ?, ?, 'signal', 'running', '{}',
+        ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "step_attempts"
+        WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+          AND "step_name" = ?
+          AND "kind" = 'signal'
+      )
+      AND EXISTS (
+        SELECT 1 FROM "workflow_runs"
+        WHERE "namespace_id" = ?
+          AND "id" = ?
+          AND "status" IN ('pending', 'running')
+          AND "worker_id" IS NULL
+      )
+    `,
+      )
+      .run(
+        this.namespaceId,
+        generateUUID(),
+        params.workflowRunId,
+        params.signalName,
+        toJSON({ kind: "signal", delivered: true, timeoutAt: null }),
+        toJSON(params.payload),
+        currentTime,
+        currentTime,
+        currentTime,
+        // NOT EXISTS params
+        this.namespaceId,
+        params.workflowRunId,
+        params.signalName,
+        // EXISTS params
+        this.namespaceId,
+        params.workflowRunId,
+      );
+
+    if (insertResult.changes > 0) {
+      this.db
+        .prepare(
+          `
+        UPDATE "workflow_runs"
+        SET
+          "available_at" = CASE
+            WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+            ELSE "available_at"
+          END,
+          "updated_at" = ?
+        WHERE "namespace_id" = ?
+          AND "id" = ?
+          AND "status" IN ('pending', 'running')
+      `,
+        )
+        .run(
+          currentTime,
+          currentTime,
+          currentTime,
+          this.namespaceId,
+          params.workflowRunId,
+        );
+      return { delivered: true };
+    }
+
+    // --- Path 3: Delivery not possible — determine why ---
+    const workflowRow = this.db
+      .prepare(
+        `
+      SELECT "id" FROM "workflow_runs"
+      WHERE "namespace_id" = ? AND "id" = ?
+      LIMIT 1
+    `,
+      )
+      .get(this.namespaceId, params.workflowRunId) as
+      | { id: string }
+      | undefined;
+
+    if (!workflowRow) {
+      return { delivered: false, reason: "workflow_not_found" };
+    }
+    return { delivered: false, reason: "signal_not_waiting" };
   }
 
   private wakeParentWorkflowRun(childWorkflowRun: Readonly<WorkflowRun>): void {

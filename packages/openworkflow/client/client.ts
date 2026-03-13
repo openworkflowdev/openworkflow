@@ -1,5 +1,7 @@
-import type { Backend } from "../core/backend.js";
+import type { Backend, DeliverSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
+import type { JsonValue } from "../core/json.js";
+import { resolveSignalName, type SignalSpec } from "../core/signal-spec.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -173,6 +175,49 @@ export class OpenWorkflow {
   async cancelWorkflowRun(workflowRunId: string): Promise<void> {
     await this.backend.cancelWorkflowRun({ workflowRunId });
   }
+
+  /**
+   * Send a typed signal to a waiting workflow run using a {@link SignalSpec}
+   * descriptor. The payload type is enforced by the spec.
+   * @param workflowRunId - The ID of the workflow run to signal
+   * @param spec - A `SignalSpec` created with {@link defineSignalSpec}
+   * @param payload - Signal payload (typed to the spec's `Payload` generic)
+   * @returns Result indicating whether the signal was delivered
+   */
+  async sendSignal<Payload extends JsonValue>(
+    workflowRunId: string,
+    spec: SignalSpec<Payload>,
+    payload?: Payload,
+  ): Promise<DeliverSignalResult>;
+
+  /**
+   * Send a signal to a waiting workflow run by name.
+   * @param workflowRunId - The ID of the workflow run to signal
+   * @param signalName - The signal name (must match the name used in `step.waitForSignal`)
+   * @param payload - Optional data to pass to the waiting workflow step
+   * @returns Result indicating whether the signal was delivered
+   * @example
+   * ```ts
+   * await ow.sendSignal("run-id", "approval-received", { approved: true });
+   * ```
+   */
+  async sendSignal(
+    workflowRunId: string,
+    signalName: string,
+    payload?: JsonValue,
+  ): Promise<DeliverSignalResult>;
+
+  async sendSignal(
+    workflowRunId: string,
+    nameOrSpec: string | SignalSpec<JsonValue>,
+    payload?: JsonValue,
+  ): Promise<DeliverSignalResult> {
+    return this.backend.deliverSignal({
+      workflowRunId,
+      signalName: resolveSignalName(nameOrSpec),
+      payload: payload ?? null,
+    });
+  }
 }
 
 /**
@@ -344,6 +389,40 @@ class WorkflowRunHandle<Output> {
   async cancel(): Promise<void> {
     await this.backend.cancelWorkflowRun({
       workflowRunId: this.workflowRun.id,
+    });
+  }
+
+  /**
+   * Send a typed signal to this workflow run using a {@link SignalSpec}
+   * descriptor. The payload type is enforced by the spec.
+   * @param spec - A `SignalSpec` created with {@link defineSignalSpec}
+   * @param payload - Signal payload (typed to the spec's `Payload` generic)
+   * @returns Result indicating whether the signal was delivered
+   */
+  async sendSignal<Payload extends JsonValue>(
+    spec: SignalSpec<Payload>,
+    payload?: Payload,
+  ): Promise<DeliverSignalResult>;
+
+  /**
+   * Send a signal to this workflow run by name.
+   * @param signalName - The signal name (must match the name used in `step.waitForSignal`)
+   * @param payload - Optional data to pass to the waiting workflow step
+   * @returns Result indicating whether the signal was delivered
+   */
+  async sendSignal(
+    signalName: string,
+    payload?: JsonValue,
+  ): Promise<DeliverSignalResult>;
+
+  async sendSignal(
+    nameOrSpec: string | SignalSpec<JsonValue>,
+    payload?: JsonValue,
+  ): Promise<DeliverSignalResult> {
+    return this.backend.deliverSignal({
+      workflowRunId: this.workflowRun.id,
+      signalName: resolveSignalName(nameOrSpec),
+      payload: payload ?? null,
     });
   }
 }

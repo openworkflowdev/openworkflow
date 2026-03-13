@@ -21,6 +21,8 @@ import {
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
   SleepWorkflowRunParams,
+  DeliverSignalParams,
+  DeliverSignalResult,
 } from "../core/backend.js";
 import { wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
@@ -42,6 +44,11 @@ interface BackendPostgresOptions {
   namespaceId?: string;
   runMigrations?: boolean;
   schema?: string;
+}
+
+/** Shape of the row returned by the deliverSignal CTE query. */
+interface DeliverSignalResultRow {
+  result: "delivered" | "workflow_not_found" | "signal_not_waiting";
 }
 
 /**
@@ -423,11 +430,11 @@ export class BackendPostgres implements Backend {
   }
 
   /**
-   * Reconcile a just-parked parent run that is waiting on workflow replay. If the
-   * child already reached a terminal state before the parent cleared workerId,
-   * the normal child-completion wake-up can be missed. This forces an immediate
-   * wake-up for that case.
-   * @param workflowRunId - Parent workflow run id
+   * Reconcile a just-parked run that may have missed a wake-up while the
+   * worker still held its lease. Covers two cases:
+   * 1. A child workflow finished before the parent cleared workerId.
+   * 2. A signal was delivered before the parent cleared workerId.
+   * @param workflowRunId - Workflow run id to reconcile
    * @returns Updated run when reconciliation changed availability, otherwise null
    */
   private async reconcileWorkflowSleepWakeUp(
@@ -449,17 +456,28 @@ export class BackendPostgres implements Backend {
       AND wr."id" = ${workflowRunId}
       AND wr."status" = 'running'
       AND wr."worker_id" IS NULL
-      AND EXISTS (
-        SELECT 1
-        FROM ${stepAttemptsTable} sa
-        JOIN ${workflowRunsTable} child
-          ON child."namespace_id" = sa."child_workflow_run_namespace_id"
-          AND child."id" = sa."child_workflow_run_id"
-        WHERE sa."namespace_id" = wr."namespace_id"
-        AND sa."workflow_run_id" = wr."id"
-        AND sa."kind" = 'workflow'
-        AND sa."status" = 'running'
-        AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM ${stepAttemptsTable} sa
+          JOIN ${workflowRunsTable} child
+            ON child."namespace_id" = sa."child_workflow_run_namespace_id"
+            AND child."id" = sa."child_workflow_run_id"
+          WHERE sa."namespace_id" = wr."namespace_id"
+          AND sa."workflow_run_id" = wr."id"
+          AND sa."kind" = 'workflow'
+          AND sa."status" = 'running'
+          AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM ${stepAttemptsTable} sa
+          WHERE sa."namespace_id" = wr."namespace_id"
+          AND sa."workflow_run_id" = wr."id"
+          AND sa."kind" = 'signal'
+          AND sa."status" = 'running'
+          AND sa."context" @> '{"delivered":true}'
+        )
       )
       RETURNING wr.*
     `;
@@ -687,6 +705,101 @@ export class BackendPostgres implements Backend {
         OR (wr."status" = 'running' AND wr."worker_id" IS NULL)
       )
     `;
+  }
+
+  async deliverSignal(
+    params: DeliverSignalParams,
+  ): Promise<DeliverSignalResult> {
+    const workflowRunsTable = this.workflowRunsTable();
+    const stepAttemptsTable = this.stepAttemptsTable();
+
+    // Write the signal payload into the step attempt and mark it delivered.
+    // Use context.delivered as the delivery flag so null payloads work correctly.
+    // A single CTE handles three cases atomically:
+    //   - delivery:     update an existing running signal step (normal path)
+    //   - pre_delivery: insert a buffered signal step for parked/pending workflows
+    //                   (signal sent before waitForSignal creates its step)
+    //   - wake:         advance available_at so the worker picks it up promptly
+    const [row] = await this.pg<DeliverSignalResultRow[]>`
+      WITH delivery AS (
+        UPDATE ${stepAttemptsTable}
+        SET
+          "output" = ${this.pg.json(params.payload)},
+          "context" = "context" || '{"delivered":true}'::jsonb,
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "workflow_run_id" = ${params.workflowRunId}
+          AND "step_name" = ${params.signalName}
+          AND "kind" = 'signal'
+          AND "status" = 'running'
+          AND NOT ("context" @> '{"delivered":true}')
+        RETURNING "id"
+      ),
+      pre_delivery AS (
+        INSERT INTO ${stepAttemptsTable} (
+          "namespace_id", "id", "workflow_run_id", "step_name",
+          "kind", "status", "config", "context", "output",
+          "started_at", "created_at", "updated_at"
+        )
+        SELECT
+          ${this.namespaceId}, gen_random_uuid(), ${params.workflowRunId}, ${params.signalName},
+          'signal', 'running', '{}',
+          ${this.pg.json({ kind: "signal", delivered: true, timeoutAt: null })},
+          ${this.pg.json(params.payload)},
+          NOW(), NOW(), NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM delivery)
+          AND NOT EXISTS (
+            SELECT 1 FROM ${stepAttemptsTable}
+            WHERE "namespace_id" = ${this.namespaceId}
+              AND "workflow_run_id" = ${params.workflowRunId}
+              AND "step_name" = ${params.signalName}
+              AND "kind" = 'signal'
+          )
+          AND EXISTS (
+            SELECT 1 FROM ${workflowRunsTable}
+            WHERE "namespace_id" = ${this.namespaceId}
+              AND "id" = ${params.workflowRunId}
+              AND "status" IN ('pending', 'running')
+              AND "worker_id" IS NULL
+          )
+        RETURNING "id"
+      ),
+      wake AS (
+        UPDATE ${workflowRunsTable}
+        SET
+          "available_at" = CASE
+            WHEN "available_at" IS NULL OR "available_at" > NOW()
+              THEN NOW()
+            ELSE "available_at"
+          END,
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "id" = ${params.workflowRunId}
+          AND "status" IN ('pending', 'running')
+          AND (EXISTS (SELECT 1 FROM delivery) OR EXISTS (SELECT 1 FROM pre_delivery))
+        RETURNING "id"
+      )
+      SELECT
+        CASE
+          WHEN (SELECT count(*) FROM delivery) > 0
+            OR (SELECT count(*) FROM pre_delivery) > 0 THEN 'delivered'
+          WHEN NOT EXISTS (
+            SELECT 1 FROM ${workflowRunsTable}
+            WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${params.workflowRunId}
+          ) THEN 'workflow_not_found'
+          ELSE 'signal_not_waiting'
+        END AS result
+    `;
+
+    if (!row) {
+      return { delivered: false, reason: "workflow_not_found" };
+    }
+
+    if (row.result === "delivered") {
+      return { delivered: true };
+    }
+
+    return { delivered: false, reason: row.result };
   }
 
   async createStepAttempt(

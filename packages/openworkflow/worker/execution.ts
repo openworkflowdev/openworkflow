@@ -1,4 +1,4 @@
-import type { Backend } from "../core/backend.js";
+import type { Backend, DeliverSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import {
   deserializeError,
@@ -6,6 +6,8 @@ import {
   type SerializedError,
 } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
+import type { SignalSpec } from "../core/signal-spec.js";
+import { resolveSignalName } from "../core/signal-spec.js";
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
 import {
   getCachedStepAttempt,
@@ -14,6 +16,7 @@ import {
   calculateDateFromDuration,
   createSleepContext,
   createWorkflowContext,
+  createSignalContext,
 } from "../core/step-attempt.js";
 import {
   computeFailedWorkflowRunUpdate,
@@ -23,6 +26,8 @@ import {
 } from "../core/workflow-definition.js";
 import type {
   StepRunWorkflowOptions,
+  StepWaitForSignalOptions,
+  StepSendSignalOptions,
   StepApi,
   StepFunction,
   StepFunctionConfig,
@@ -46,6 +51,20 @@ class SleepSignal extends Error {
     super("SleepSignal");
     this.name = "SleepSignal";
     this.resumeAt = resumeAt;
+  }
+}
+
+/**
+ * Error thrown when a signal step times out before receiving a signal.
+ */
+export class SignalTimeoutError extends Error {
+  readonly code = "SIGNAL_TIMEOUT";
+  readonly signalName: string;
+
+  constructor(signalName: string) {
+    super(`Timed out waiting for signal "${signalName}"`);
+    this.name = "SignalTimeoutError";
+    this.signalName = signalName;
   }
 }
 
@@ -337,6 +356,13 @@ function getRunningWaitAttemptResumeAt(
     return Number.isFinite(resumeAt.getTime()) ? resumeAt : null;
   }
 
+  if (attempt.kind === "signal" && attempt.context?.kind === "signal") {
+    const { timeoutAt } = attempt.context;
+    if (!timeoutAt) return null; // no timeout — waits until signal arrives
+    const signalTimeoutAt = new Date(timeoutAt);
+    return Number.isFinite(signalTimeoutAt.getTime()) ? signalTimeoutAt : null;
+  }
+
   if (attempt.kind !== "workflow") {
     return null;
   }
@@ -470,6 +496,7 @@ export interface StepExecutorOptions {
   backend: Backend;
   workflowRunId: string;
   workerId: string;
+  deadlineAt: Date | null;
   attempts: StepAttempt[];
   stepLimit?: number;
   executionFence: ExecutionFenceController;
@@ -493,6 +520,7 @@ class StepExecutor implements StepApi {
   private readonly backend: Backend;
   private readonly workflowRunId: string;
   private readonly workerId: string;
+  private readonly deadlineAt: Date | null;
   private readonly stepLimit: number;
   private stepCount: number;
   private cache: StepAttemptCache;
@@ -507,6 +535,7 @@ class StepExecutor implements StepApi {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
     this.workerId = options.workerId;
+    this.deadlineAt = options.deadlineAt;
     this.stepLimit = Math.max(1, options.stepLimit ?? WORKFLOW_STEP_LIMIT);
     this.stepCount = options.attempts.length;
 
@@ -672,6 +701,110 @@ class StepExecutor implements StepApi {
     // we do not mark the step as completed here; it will be updated
     // when the workflow resumes
     throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(resumeAt));
+  }
+
+  // ---- step.waitForSignal -------------------------------------------------
+
+  async waitForSignal<Payload>(
+    nameOrSpec: string | SignalSpec<Payload>,
+    options?: Readonly<StepWaitForSignalOptions>,
+  ): Promise<Payload> {
+    const stepName = this.resolveStepName(resolveSignalName(nameOrSpec));
+
+    // return cached result if signal already completed on a prior replay
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) return existingAttempt.output as Payload;
+
+    // if signal previously timed out (failed), surface the error so the
+    // workflow function can catch it with a try/catch around waitForSignal()
+    const failedCount = this.failedCountsByStepName.get(stepName);
+    if (failedCount !== undefined && failedCount > 0) {
+      throw new SignalTimeoutError(stepName);
+    }
+
+    // create new step attempt for the signal
+    const timeoutAt =
+      options?.timeout === undefined
+        ? null
+        : resolveWorkflowTimeoutAt(options.timeout);
+    const context = createSignalContext(timeoutAt);
+
+    this.assertExecutionActive();
+    this.ensureStepLimitNotReached();
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind: "signal",
+      config: {},
+      context,
+    });
+    this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
+
+    // park workflow waiting for signal (or until timeout)
+    throw new SleepSignal(
+      timeoutAt ?? this.deadlineAt ?? defaultWorkflowTimeoutAt(),
+    );
+  }
+
+  // ---- step.sendSignal ----------------------------------------------------
+
+  async sendSignal<Payload extends JsonValue>(
+    targetRunId: string,
+    nameOrSpec: string | SignalSpec<Payload>,
+    payload?: Payload,
+    options?: Readonly<StepSendSignalOptions>,
+  ): Promise<DeliverSignalResult> {
+    const signalName = resolveSignalName(nameOrSpec);
+    const stepName = this.resolveStepName(options?.name ?? `send:${signalName}`);
+
+    // Return cached result if this send already completed on a prior replay
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) return existingAttempt.output as DeliverSignalResult;
+
+    // Create the durable step attempt — kind "function" since the semantics
+    // are identical to step.run(): execute once, memoize result, retry on error.
+    // Config records the target for observability (dashboards, logs, introspection).
+    this.assertExecutionActive();
+    this.ensureStepLimitNotReached();
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind: "function",
+      config: { targetRunId, signalName },
+      context: null,
+    });
+    this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
+
+    try {
+      const result = await this.backend.deliverSignal({
+        workflowRunId: targetRunId,
+        signalName,
+        payload: (payload ?? null) as JsonValue,
+      });
+
+      const savedAttempt = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: attempt.id,
+        workerId: this.workerId,
+        output: result as JsonValue,
+      });
+
+      this.cache = addToStepAttemptCache(this.cache, savedAttempt);
+      this.runningByStepName.delete(stepName);
+
+      return savedAttempt.output as DeliverSignalResult;
+    } catch (error) {
+      return this.failStepWithError(
+        stepName,
+        attempt.id,
+        error,
+        resolveStepRetryPolicy(),
+      );
+    }
   }
 
   // ---- step.runWorkflow -----------------------------------------------
@@ -1078,10 +1211,74 @@ export async function executeWorkflow(
       }
     }
 
+    // Pre-pass: process running signal step attempts — complete delivered
+    // signals, fail timed-out signals, then re-park on the earliest still-
+    // pending signal. Two-phase approach ensures all delivered/timed-out
+    // signals are settled before we decide whether to park (important for
+    // parallel Promise.all([waitForSignal("A"), waitForSignal("B")]) patterns
+    // where B might be delivered before A).
+    let earliestPendingSignalResumeAt: Date | null = null;
+    for (let i = 0; i < attempts.length; i += 1) {
+      const attempt = attempts[i];
+      if (!attempt) continue;
+
+      if (
+        attempt.status !== "running" ||
+        attempt.kind !== "signal" ||
+        attempt.context?.kind !== "signal"
+      ) {
+        continue;
+      }
+
+      const { timeoutAt } = attempt.context;
+
+      // Signal has been delivered (context.delivered set by deliverSignal)
+      if (attempt.context.delivered) {
+        const completed = await backend.completeStepAttempt({
+          workflowRunId: workflowRun.id,
+          stepAttemptId: attempt.id,
+          workerId,
+          output: attempt.output,
+        });
+        // update cache w/ completed attempt
+        attempts[i] = completed;
+        continue;
+      }
+
+      // Signal timeout has elapsed without receiving the signal
+      if (timeoutAt && Date.now() >= new Date(timeoutAt).getTime()) {
+        const failed = await backend.failStepAttempt({
+          workflowRunId: workflowRun.id,
+          stepAttemptId: attempt.id,
+          workerId,
+          error: serializeError(new SignalTimeoutError(attempt.stepName)),
+        });
+        attempts[i] = failed;
+        continue;
+      }
+
+      // Signal not yet received — record earliest pending wake-up time
+      const signalResumeAt = timeoutAt
+        ? new Date(timeoutAt)
+        : (workflowRun.deadlineAt ?? defaultWorkflowTimeoutAt());
+      if (
+        !earliestPendingSignalResumeAt ||
+        signalResumeAt.getTime() < earliestPendingSignalResumeAt.getTime()
+      ) {
+        earliestPendingSignalResumeAt = signalResumeAt;
+      }
+    }
+
+    // Park workflow if any signal is still waiting
+    if (earliestPendingSignalResumeAt !== null) {
+      throw new SleepSignal(earliestPendingSignalResumeAt);
+    }
+
     const executor = new StepExecutor({
       backend,
       workflowRunId: workflowRun.id,
       workerId,
+      deadlineAt: workflowRun.deadlineAt,
       attempts,
       executionFence,
     });

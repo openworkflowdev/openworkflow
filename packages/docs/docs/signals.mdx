@@ -1,0 +1,308 @@
+---
+title: Signals
+description: Pause workflows and resume them with external data
+---
+
+Sometimes a workflow needs to stop and wait for something that happens outside
+the process — a human approving a request, a webhook arriving, or another
+service completing work. `step.waitForSignal()` pauses a workflow durably until
+an external caller delivers a named signal.
+
+While the workflow is waiting, no worker slot is held. The run sits in `running`
+state with `workerId = null` until a signal arrives, at which point it's woken
+up and resumed with the signal's payload as the return value.
+
+## Basic Usage
+
+```ts
+import { OpenWorkflow, SignalTimeoutError } from "openworkflow";
+
+const ow = new OpenWorkflow({ backend });
+
+interface ApprovalSignal {
+  approved: boolean;
+  comment?: string;
+}
+
+const approvalWorkflow = ow.defineWorkflow(
+  { name: "approval-workflow" },
+  async ({ input, step }) => {
+    await step.run({ name: "notify-reviewer" }, async () => {
+      await email.send({ to: input.reviewerEmail, subject: "Approval needed" });
+    });
+
+    // Pause until someone sends the "approval-decision" signal
+    const decision =
+      await step.waitForSignal<ApprovalSignal>("approval-decision");
+
+    return decision.approved ? "approved" : "rejected";
+  },
+);
+```
+
+## Sending a Signal
+
+Send a signal using the workflow run handle or the top-level client:
+
+```ts
+// From the run handle
+const handle = await approvalWorkflow.run({ reviewerEmail: "bob@example.com" });
+await handle.sendSignal("approval-decision", { approved: true });
+
+// From the top-level client, using the run ID
+await ow.sendSignal(handle.workflowRun.id, "approval-decision", {
+  approved: true,
+});
+```
+
+`sendSignal` returns a result indicating whether the signal was delivered:
+
+```ts
+const result = await handle.sendSignal("approval-decision", { approved: true });
+
+if (result.delivered) {
+  console.log("Signal delivered");
+} else {
+  console.log("Not delivered:", result.reason);
+  // reason: "workflow_not_found" | "signal_not_waiting"
+}
+```
+
+## How Signals Work
+
+When a workflow encounters `step.waitForSignal()`:
+
+1. A signal step attempt is created with `status = running`
+2. The workflow is durably parked with `workerId = null`
+3. The worker slot is freed for other work
+
+When `sendSignal()` is called:
+
+1. The signal payload is written to the step attempt
+2. The workflow run is woken up (`availableAt` set to now)
+3. A worker claims the run and replays the workflow
+4. `waitForSignal()` returns the payload and execution continues
+
+## Timeout
+
+By default, a workflow waits indefinitely for a signal (bounded by the
+workflow's own deadline). Pass `timeout` to fail the step if no signal
+arrives in time:
+
+```ts
+const decision = await step.waitForSignal<ApprovalSignal>("approval-decision", {
+  timeout: "7d",
+});
+```
+
+When the timeout elapses, `waitForSignal()` throws a `SignalTimeoutError` that
+you can catch inside the workflow:
+
+```ts
+import { SignalTimeoutError } from "openworkflow";
+
+const approvalWorkflow = ow.defineWorkflow(
+  { name: "approval-workflow" },
+  async ({ input, step }) => {
+    try {
+      const decision = await step.waitForSignal<ApprovalSignal>(
+        "approval-decision",
+        { timeout: "7d" },
+      );
+      return decision.approved ? "approved" : "rejected";
+    } catch (error) {
+      if (error instanceof SignalTimeoutError) {
+        return "timed-out";
+      }
+      throw error;
+    }
+  },
+);
+```
+
+`timeout` accepts a [duration string](/docs/sleeping#duration-formats), a
+number of milliseconds, or a `Date`:
+
+```ts
+// Duration string
+await step.waitForSignal("sig", { timeout: "24h" });
+
+// Milliseconds
+await step.waitForSignal("sig", { timeout: 60_000 });
+
+// Absolute deadline
+await step.waitForSignal("sig", { timeout: new Date("2026-12-31") });
+```
+
+## Signal Names
+
+Each signal name must match exactly between `waitForSignal()` and
+`sendSignal()`. Names follow the same rules as step names — they're deduplicated
+automatically if you use the same name more than once in a workflow:
+
+```ts
+// First call uses "approval"
+const first = await step.waitForSignal("approval");
+
+// Second call becomes "approval:1"
+const second = await step.waitForSignal("approval");
+```
+
+<Note>
+  Signal names are case-sensitive. `"Approval"` and `"approval"` are different
+  signals.
+</Note>
+
+## Payload
+
+Signals carry a typed JSON payload. Use a type parameter on `waitForSignal` to
+type the resolved value:
+
+```ts
+interface PaymentConfirmed {
+  transactionId: string;
+  amount: number;
+}
+
+const payment = await step.waitForSignal<PaymentConfirmed>("payment-confirmed");
+console.log(payment.transactionId);
+```
+
+Signals with no payload send `null` and are still treated as delivered:
+
+```ts
+// Sender
+await handle.sendSignal("proceed");
+
+// Workflow
+const payload = await step.waitForSignal("proceed"); // null
+```
+
+## Common Patterns
+
+### Human-in-the-Loop Approval
+
+```ts
+const reviewWorkflow = ow.defineWorkflow(
+  { name: "content-review" },
+  async ({ input, step }) => {
+    await step.run({ name: "submit-for-review" }, async () => {
+      await db.reviews.create({
+        contentId: input.contentId,
+        status: "pending",
+      });
+      await email.send({ to: "editor@example.com", subject: "Review needed" });
+    });
+
+    try {
+      const decision = await step.waitForSignal<{ approved: boolean }>(
+        "review-decision",
+        { timeout: "3d" },
+      );
+
+      await step.run({ name: "apply-decision" }, async () => {
+        await db.content.update(input.contentId, {
+          status: decision.approved ? "published" : "rejected",
+        });
+      });
+
+      return decision.approved ? "published" : "rejected";
+    } catch (error) {
+      if (error instanceof SignalTimeoutError) {
+        await step.run({ name: "escalate" }, async () => {
+          await email.send({
+            to: "manager@example.com",
+            subject: "Review overdue",
+          });
+        });
+        return "escalated";
+      }
+      throw error;
+    }
+  },
+);
+```
+
+### Webhook Confirmation
+
+```ts
+const orderWorkflow = ow.defineWorkflow(
+  { name: "order-workflow" },
+  async ({ input, step }) => {
+    const charge = await step.run({ name: "create-charge" }, async () => {
+      return await payments.createCharge({ amount: input.amount });
+    });
+
+    // Wait for the payment provider's webhook to confirm the charge
+    const confirmation = await step.waitForSignal<{ status: string }>(
+      "payment-webhook",
+      { timeout: "10m" },
+    );
+
+    if (confirmation.status !== "succeeded") {
+      throw new Error(`Payment failed: ${confirmation.status}`);
+    }
+
+    await step.run({ name: "fulfill-order" }, async () => {
+      await orders.fulfill(input.orderId);
+    });
+  },
+);
+
+// In your webhook handler:
+app.post("/webhooks/payment", async (req, res) => {
+  const { workflowRunId, status } = req.body;
+  await ow.sendSignal(workflowRunId, "payment-webhook", { status });
+  res.sendStatus(200);
+});
+```
+
+### Gate on External Completion
+
+```ts
+const deployWorkflow = ow.defineWorkflow(
+  { name: "deploy-workflow" },
+  async ({ input, step }) => {
+    await step.run({ name: "trigger-ci" }, async () => {
+      await ci.triggerPipeline({
+        repo: input.repo,
+        sha: input.sha,
+        callbackRunId: input.workflowRunId,
+      });
+    });
+
+    // Wait for CI to report back (up to 1 hour)
+    const result = await step.waitForSignal<{ passed: boolean }>("ci-result", {
+      timeout: "1h",
+    });
+
+    if (!result.passed) {
+      throw new Error("CI pipeline failed");
+    }
+
+    await step.run({ name: "deploy" }, async () => {
+      await deploy.release(input.repo, input.sha);
+    });
+  },
+);
+```
+
+## Memoization
+
+Once a signal is received, the step is memoized. If the workflow replays after
+the signal has been delivered, `waitForSignal()` returns the stored payload
+immediately without parking again:
+
+```ts
+// On first execution: parks and waits for "approval-decision"
+// On replay after delivery: returns immediately with the stored payload
+const decision = await step.waitForSignal("approval-decision");
+```
+
+<Warning>
+  Sending a signal to a workflow that is not currently waiting for it (e.g.
+  it's still running steps before `waitForSignal`) returns
+  `{ delivered: false, reason: "signal_not_waiting" }`. You can either retry
+  delivery or store the signal externally and deliver it once the workflow
+  parks.
+</Warning>
