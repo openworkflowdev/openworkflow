@@ -131,6 +131,21 @@ worker: {
 },
 ```
 
+### `retention`
+
+Automatic cleanup policy for workflow runs in terminal states (`completed`,
+`failed`, `canceled`):
+
+```ts
+retention: {
+  enabled: true,
+  period: "30d", // delete terminal runs older than 30 days
+},
+```
+
+When enabled, running workers periodically remove terminal runs older than
+`period`.
+
 ## Full Example
 
 ```ts
@@ -155,6 +170,12 @@ export default defineConfig({
   // Worker configuration
   worker: {
     concurrency: 8,
+  },
+
+  // Optional retention cleanup
+  retention: {
+    enabled: true,
+    period: "30d",
   },
 });
 ```

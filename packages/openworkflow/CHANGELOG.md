@@ -4,6 +4,8 @@
 
 - Fix Postgres key transformation to only camel-case column names, preserving
   JSON value object keys in workflow inputs (#368)
+- Add worker retention cleanup for terminal workflow runs via
+  `worker.retention` and backend cleanup APIs
 
 ## 0.8.0
 

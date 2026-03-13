@@ -23,9 +23,14 @@ export interface OpenWorkflowConfig {
    * @example ["**\\/*.test.*", "**\\/__fixtures__/**"]
    */
   ignorePatterns?: string[];
+  /**
+   * Automatic cleanup policy for terminal workflow runs.
+   */
+  retention?: RetentionConfig;
 }
 
 export type WorkerConfig = Pick<WorkerOptions, "concurrency">;
+export type RetentionConfig = WorkerOptions["retention"];
 
 /**
  * Create a typed OpenWorkflow configuration.
