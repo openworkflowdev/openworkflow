@@ -1,0 +1,157 @@
+---
+title: Signals
+description: Pause a workflow until your app or another workflow sends a named signal
+---
+
+Use signals when a workflow needs to wait for an event that does not happen at
+a fixed time, like a human approval, a webhook callback, or a result from
+another workflow.
+
+A signal is addressed to one specific workflow run by run ID. OpenWorkflow
+buffers signals durably, so they can arrive before or after the workflow reaches
+`step.waitForSignal()`.
+
+## Basic Usage
+
+Wait for a signal inside a workflow:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const reviewOrder = defineWorkflow(
+  { name: "review-order" },
+  async ({ input, step }) => {
+    await step.run({ name: "save-order" }, async () => {
+      await db.orders.insert(input);
+    });
+
+    const approval = await step.waitForSignal<{
+      approved: boolean;
+      reviewerId: string;
+    }>("approval", {
+      timeout: "7d",
+    });
+
+    if (!approval?.approved) {
+      throw new Error("Order was not approved");
+    }
+
+    await step.run({ name: "submit-order" }, async () => {
+      await orders.submit(input.orderId, approval.reviewerId);
+    });
+  },
+);
+```
+
+Send the signal from your application code:
+
+```ts
+const handle = await reviewOrder.run({ orderId: "order_123" });
+
+await ow.sendSignal(handle.workflowRun.id, "approval", {
+  data: {
+    approved: true,
+    reviewerId: "manager_42",
+  },
+});
+```
+
+## Send from Your App
+
+Use `ow.sendSignal()` when the event comes from outside workflow code, such as
+an HTTP route, webhook handler, or admin action:
+
+```ts
+await ow.sendSignal(runId, "approval", {
+  data: {
+    approved: true,
+    reviewerId: "manager_42",
+  },
+  idempotencyKey: `approval:${event.id}`,
+});
+```
+
+Use `idempotencyKey` when the sender might retry. If the same
+`workflowRunId` + `idempotencyKey` is sent again, OpenWorkflow stores it only
+once.
+
+## Send from Another Workflow
+
+Use `step.sendSignal()` when one workflow should unblock another and you want
+the send itself to be durable:
+
+```ts
+await step.sendSignal(targetRunId, "approval", {
+  data: { approved: true, reviewerId: "manager_42" },
+});
+```
+
+This is useful when workflows coordinate as peers rather than as
+parent-and-child runs.
+
+## Timeout and Validation
+
+`step.waitForSignal()` returns the payload when a matching signal arrives, or
+`null` if the timeout is reached first:
+
+```ts
+const approval = await step.waitForSignal("approval", {
+  timeout: "3d",
+  schema: z.object({
+    approved: z.boolean(),
+    reviewerId: z.string(),
+  }),
+});
+
+if (approval === null) {
+  await step.run({ name: "mark-expired" }, async () => {
+    await db.requests.update(requestId, { status: "expired" });
+  });
+}
+```
+
+If the signal payload fails schema validation, the wait step fails immediately.
+
+## Step Names
+
+By default, the signal string is also the durable step name:
+
+```ts
+await step.waitForSignal("approval");
+await step.sendSignal(targetRunId, "approval");
+```
+
+Step names share one namespace across all step types. If the same name appears
+again during one execution, OpenWorkflow applies its normal `:1`, `:2`, and so
+on disambiguation.
+
+If you want a more explicit durable step name, use the object form:
+
+```ts
+await step.waitForSignal({
+  name: "manager-approval",
+  signal: "approval",
+  timeout: "7d",
+});
+```
+
+## Important Behavior
+
+- Signals are buffered per `workflowRunId` and signal name until consumed.
+- If multiple buffered signals match, the oldest pending one is consumed first.
+- A run can have only one active waiter for a given signal name at a time.
+- Signals target a specific run ID, not every run of a workflow.
+
+## When to Use Signals
+
+Signals are a good fit for:
+
+- Human approvals and manual review steps
+- Webhook or callback-style resumptions
+- Cross-workflow coordination when you do not want a child workflow
+
+<Note>
+  If you need to wait for another workflow's final result, prefer
+  [`step.runWorkflow()`](/docs/child-workflows). If you need to wait until a
+  specific time, prefer [`step.sleep()`](/docs/sleeping).
+</Note>

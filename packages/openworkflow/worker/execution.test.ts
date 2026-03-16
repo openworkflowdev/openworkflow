@@ -2480,6 +2480,900 @@ describe("StepExecutor", () => {
     );
     expect(childStatus).toBe("completed");
   });
+
+  describe("signals", () => {
+    test("consumes buffered signals sent before the wait step runs", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-buffered-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal<{ approved: boolean }>("approval");
+        },
+      );
+
+      const handle = await workflow.run();
+      await client.sendSignal(handle.workflowRun.id, "approval", {
+        data: { approved: true },
+      });
+
+      const worker = client.newWorker();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
+
+      expect(status).toBe("completed");
+      await expect(handle.result()).resolves.toEqual({ approved: true });
+
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: handle.workflowRun.id,
+        limit: 10,
+      });
+      expect(
+        attempts.data.find((attempt) => attempt.stepName === "approval")?.kind,
+      ).toBe("signal-wait");
+    });
+
+    test("parks while waiting and resumes when the client sends a signal", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-resume-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal<{ approved: boolean }>("approval");
+        },
+      );
+
+      const handle = await workflow.run();
+      const worker = client.newWorker();
+
+      await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
+
+      await client.sendSignal(handle.workflowRun.id, "approval", {
+        data: { approved: true },
+      });
+
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
+
+      expect(status).toBe("completed");
+      await expect(handle.result()).resolves.toEqual({ approved: true });
+    });
+
+    test("returns null when a signal wait times out", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-timeout-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal("approval", { timeout: "10ms" });
+        },
+      );
+
+      const handle = await workflow.run();
+      const worker = client.newWorker();
+
+      await worker.tick();
+      await sleep(50);
+      await worker.tick();
+
+      await expect(handle.result()).resolves.toBeNull();
+    });
+
+    test("fails when a consumed signal does not match the schema", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-schema-failure-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal("approval", {
+            schema: z.object({ approved: z.boolean() }),
+          });
+        },
+      );
+
+      const handle = await workflow.run();
+      await client.sendSignal(handle.workflowRun.id, "approval", {
+        data: { approved: "yes" },
+      });
+
+      const worker = client.newWorker();
+      await worker.tick();
+      await sleep(50);
+
+      const failedRun = await backend.getWorkflowRun({
+        workflowRunId: handle.workflowRun.id,
+      });
+      expect(failedRun?.status).toBe("failed");
+      expect(failedRun?.availableAt).toBeNull();
+      expect((failedRun?.error as { message?: string } | null)?.message).toBe(
+        "Invalid input: expected boolean, received string",
+      );
+    });
+
+    test("rejects concurrent waits for the same signal in one run", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-concurrent-${randomUUID()}` },
+        async ({ step }) => {
+          await Promise.all([
+            step.waitForSignal("approval"),
+            step.waitForSignal({
+              name: "wait-approval-b",
+              signal: "approval",
+            }),
+          ]);
+          return null;
+        },
+      );
+
+      const handle = await workflow.run(undefined, {
+        deadlineAt: new Date(Date.now() + 50),
+      });
+      const worker = client.newWorker();
+      await worker.tick();
+      await sleep(100);
+
+      const failedRun = await backend.getWorkflowRun({
+        workflowRunId: handle.workflowRun.id,
+      });
+      expect(failedRun?.status).toBe("failed");
+      expect((failedRun?.error as { message?: string } | null)?.message).toBe(
+        'Signal "approval" is already being awaited by step "approval"',
+      );
+
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: handle.workflowRun.id,
+        limit: 10,
+      });
+      expect(
+        attempts.data.filter((attempt) => attempt.kind === "signal-wait"),
+      ).toHaveLength(1);
+    });
+
+    test("step.sendSignal delivers to another waiting run", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const waiter = client.defineWorkflow(
+        { name: `signal-waiter-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal<{ approved: boolean }>("approval");
+        },
+      );
+      const sender = client.defineWorkflow<{ targetRunId: string }, string>(
+        { name: `signal-sender-${randomUUID()}` },
+        async ({ input, step }) => {
+          await step.sendSignal(input.targetRunId, "approval", {
+            data: { approved: true },
+          });
+          return "sent";
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 2 });
+      const waiterHandle = await waiter.run();
+      await tickUntilParked(
+        backend,
+        worker,
+        waiterHandle.workflowRun.id,
+        200,
+        10,
+      );
+
+      const senderHandle = await sender.run({
+        targetRunId: waiterHandle.workflowRun.id,
+      });
+
+      const waiterStatus = await tickUntilTerminal(
+        backend,
+        worker,
+        waiterHandle.workflowRun.id,
+        200,
+        10,
+      );
+      const senderStatus = await tickUntilTerminal(
+        backend,
+        worker,
+        senderHandle.workflowRun.id,
+        200,
+        10,
+      );
+
+      expect(waiterStatus).toBe("completed");
+      expect(senderStatus).toBe("completed");
+      await expect(waiterHandle.result()).resolves.toEqual({ approved: true });
+      await expect(senderHandle.result()).resolves.toBe("sent");
+    });
+
+    test("reuses completed signal-send attempts on replay", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-send-replay-completed",
+        workerId: "worker-signal-send-replay-completed",
+      });
+      const sendWorkflowSignal = vi.fn(() => Promise.resolve());
+      const createStepAttempt = vi.fn();
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              workerId: params.workerId,
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [
+              createMockStepAttempt({
+                id: "signal-send-completed-attempt",
+                workflowRunId: workflowRun.id,
+                stepName: "approval",
+                kind: "signal-send",
+                status: "completed",
+                output: null,
+              }),
+            ],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        sendWorkflowSignal,
+        createStepAttempt,
+        completeWorkflowRun,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          await step.sendSignal("target-workflow-run", "approval", {
+            data: { approved: true },
+          });
+          return "done";
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-send-replay-completed",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(sendWorkflowSignal).not.toHaveBeenCalled();
+      expect(createStepAttempt).not.toHaveBeenCalled();
+      expect(completeWorkflowRun).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+        workerId: "worker-signal-send-replay-completed",
+        output: "done",
+      });
+    });
+
+    test("creates new signal-send attempts with null payload when options are omitted", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-send-new-null-payload",
+        workerId: "worker-signal-send-new-null-payload",
+      });
+      const createStepAttempt = vi.fn(
+        (params: Parameters<Backend["createStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: "signal-send-created-attempt",
+              workflowRunId: params.workflowRunId,
+              stepName: params.stepName,
+              kind: params.kind,
+              status: "running",
+              context: params.context,
+              finishedAt: null,
+            }),
+          ),
+      );
+      const sendWorkflowSignal = vi.fn(() => Promise.resolve());
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              workflowRunId: params.workflowRunId,
+              stepName: "approval",
+              kind: "signal-send",
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        createStepAttempt,
+        sendWorkflowSignal,
+        completeStepAttempt,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          await step.sendSignal("target-workflow-run", "approval");
+          return "done";
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-send-new-null-payload",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(sendWorkflowSignal).toHaveBeenCalledWith({
+        workflowRunId: "target-workflow-run",
+        signal: "approval",
+        data: null,
+        idempotencyKey: "__signal:signal-send-new-null-payload:approval",
+      });
+    });
+
+    test("reuses running signal-send attempts on replay", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-send-replay-running",
+        workerId: "worker-signal-send-replay-running",
+      });
+      const runningAttempt = createMockStepAttempt({
+        id: "signal-send-running-attempt",
+        workflowRunId: workflowRun.id,
+        stepName: "approval",
+        kind: "signal-send",
+        status: "running",
+        finishedAt: null,
+      });
+      const sendWorkflowSignal = vi.fn(() => Promise.resolve());
+      const createStepAttempt = vi.fn();
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              workflowRunId: params.workflowRunId,
+              stepName: "approval",
+              kind: "signal-send",
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [runningAttempt],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        sendWorkflowSignal,
+        createStepAttempt,
+        completeStepAttempt,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          await step.sendSignal("target-workflow-run", "approval");
+          return "done";
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-send-replay-running",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(createStepAttempt).not.toHaveBeenCalled();
+      expect(sendWorkflowSignal).toHaveBeenCalledWith({
+        workflowRunId: "target-workflow-run",
+        signal: "approval",
+        data: null,
+        idempotencyKey: "__signal:signal-send-replay-running:approval",
+      });
+      expect(completeStepAttempt).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+        stepAttemptId: runningAttempt.id,
+        workerId: "worker-signal-send-replay-running",
+        output: null,
+      });
+    });
+
+    test("reschedules when replayed signal sends fail", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-send-replay-failure",
+        workerId: "worker-signal-send-replay-failure",
+      });
+      const runningAttempt = createMockStepAttempt({
+        id: "signal-send-failing-attempt",
+        workflowRunId: workflowRun.id,
+        stepName: "approval",
+        kind: "signal-send",
+        status: "running",
+        finishedAt: null,
+      });
+      const sendWorkflowSignal = vi.fn(() =>
+        Promise.reject(new Error("signal emit failed")),
+      );
+      const failStepAttempt = vi.fn(
+        (params: Parameters<Backend["failStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              workflowRunId: params.workflowRunId,
+              stepName: "approval",
+              kind: "signal-send",
+              status: "failed",
+              error: params.error,
+            }),
+          ),
+      );
+      const rescheduleWorkflowRunAfterFailedStepAttempt = vi.fn(
+        (
+          params: Parameters<
+            Backend["rescheduleWorkflowRunAfterFailedStepAttempt"]
+          >[0],
+        ) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "pending",
+              workerId: null,
+              availableAt: params.availableAt,
+            }),
+          ),
+      );
+      const completeWorkflowRun = vi.fn();
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [runningAttempt],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        sendWorkflowSignal,
+        failStepAttempt,
+        rescheduleWorkflowRunAfterFailedStepAttempt,
+        completeWorkflowRun,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          await step.sendSignal("target-workflow-run", "approval");
+          return "done";
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-send-replay-failure",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      const failStepCall = failStepAttempt.mock.calls[0]?.[0];
+      if (!failStepCall) {
+        throw new Error("Expected failStepAttempt to be called");
+      }
+      expect(failStepCall.workflowRunId).toBe(workflowRun.id);
+      expect(failStepCall.stepAttemptId).toBe(runningAttempt.id);
+      expect(failStepCall.workerId).toBe("worker-signal-send-replay-failure");
+      expect(failStepCall.error).toMatchObject({
+        message: "signal emit failed",
+      });
+      expect(rescheduleWorkflowRunAfterFailedStepAttempt).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(completeWorkflowRun).not.toHaveBeenCalled();
+    });
+
+    test("returns cached signal waits on replay", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-wait-replay-completed",
+        workerId: "worker-signal-wait-replay-completed",
+      });
+      const consumeWorkflowSignal = vi.fn(() => Promise.resolve(void 0));
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              workerId: params.workerId,
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [
+              createMockStepAttempt({
+                id: "signal-wait-completed-attempt",
+                workflowRunId: workflowRun.id,
+                stepName: "approval",
+                kind: "signal-wait",
+                status: "completed",
+                output: { approved: true },
+              }),
+            ],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        consumeWorkflowSignal,
+        completeWorkflowRun,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          return await step.waitForSignal<{ approved: boolean }>("approval");
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-wait-replay-completed",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(consumeWorkflowSignal).not.toHaveBeenCalled();
+      expect(completeWorkflowRun).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+        workerId: "worker-signal-wait-replay-completed",
+        output: { approved: true },
+      });
+    });
+
+    test("releases signal wait reservations after createStepAttempt errors", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-wait-create-step-error",
+        workerId: "worker-signal-wait-create-step-error",
+      });
+      const createStepAttempt = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("create signal wait failed"))
+        .mockResolvedValueOnce(
+          createMockStepAttempt({
+            id: "signal-wait-created-after-retry",
+            workflowRunId: workflowRun.id,
+            stepName: "approval-retry",
+            kind: "signal-wait",
+            status: "running",
+            context: {
+              kind: "signal-wait",
+              signal: "approval",
+              timeoutAt: new Date("2027-01-01T00:00:00.000Z").toISOString(),
+            },
+            finishedAt: null,
+          }),
+        );
+      const consumeWorkflowSignal = vi.fn(() =>
+        Promise.resolve({ approved: true }),
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              workflowRunId: params.workflowRunId,
+              stepName: "approval-retry",
+              kind: "signal-wait",
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        createStepAttempt,
+        consumeWorkflowSignal,
+        completeStepAttempt,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          try {
+            await step.waitForSignal("approval");
+          } catch (error) {
+            expect((error as Error).message).toBe("create signal wait failed");
+          }
+
+          return await step.waitForSignal<{ approved: boolean }>({
+            name: "approval-retry",
+            signal: "approval",
+          });
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-wait-create-step-error",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(createStepAttempt).toHaveBeenCalledTimes(2);
+      expect(consumeWorkflowSignal).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+        signal: "approval",
+        stepAttemptId: "signal-wait-created-after-retry",
+        workerId: "worker-signal-wait-create-step-error",
+      });
+    });
+
+    test("parks replayed signal waits with a default timeout when context is missing", async () => {
+      const createdAt = new Date("2026-02-03T04:05:06.000Z");
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-wait-missing-context",
+        workerId: "worker-signal-wait-missing-context",
+      });
+      const sleepWorkflowRun = vi.fn(
+        (params: Parameters<Backend["sleepWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "running",
+              workerId: null,
+              availableAt: params.availableAt,
+            }),
+          ),
+      );
+      const createStepAttempt = vi.fn();
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [
+              createMockStepAttempt({
+                id: "signal-send-running-side-step",
+                workflowRunId: workflowRun.id,
+                stepName: "notify",
+                kind: "signal-send",
+                status: "running",
+                finishedAt: null,
+              }),
+              createMockStepAttempt({
+                id: "signal-wait-running-missing-context",
+                workflowRunId: workflowRun.id,
+                stepName: "approval",
+                kind: "signal-wait",
+                status: "running",
+                context: null,
+                createdAt,
+                finishedAt: null,
+              }),
+            ],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        createStepAttempt,
+        consumeWorkflowSignal: vi.fn(() => Promise.resolve(void 0)),
+        sleepWorkflowRun,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          return await step.waitForSignal("approval");
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-wait-missing-context",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(createStepAttempt).not.toHaveBeenCalled();
+      const sleepCall = sleepWorkflowRun.mock.calls[0]?.[0];
+      if (!sleepCall) {
+        throw new Error("Expected sleepWorkflowRun to be called");
+      }
+      expect(sleepCall.availableAt.toISOString()).toBe(
+        "2027-02-03T04:05:06.000Z",
+      );
+    });
+
+    test("parks replayed signal waits with a default timeout when stored timeout is invalid", async () => {
+      const createdAt = new Date("2026-05-06T07:08:09.000Z");
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-wait-invalid-timeout",
+        workerId: "worker-signal-wait-invalid-timeout",
+      });
+      const sleepWorkflowRun = vi.fn(
+        (params: Parameters<Backend["sleepWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "running",
+              workerId: null,
+              availableAt: params.availableAt,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [
+              createMockStepAttempt({
+                id: "signal-wait-running-invalid-timeout",
+                workflowRunId: workflowRun.id,
+                stepName: "approval",
+                kind: "signal-wait",
+                status: "running",
+                context: {
+                  kind: "signal-wait",
+                  signal: "approval",
+                  timeoutAt: "not-a-date",
+                },
+                createdAt,
+                finishedAt: null,
+              }),
+            ],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        consumeWorkflowSignal: vi.fn(() => Promise.resolve(void 0)),
+        sleepWorkflowRun,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          return await step.waitForSignal("approval");
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-wait-invalid-timeout",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      const sleepCall = sleepWorkflowRun.mock.calls[0]?.[0];
+      if (!sleepCall) {
+        throw new Error("Expected sleepWorkflowRun to be called");
+      }
+      expect(sleepCall.availableAt.toISOString()).toBe(
+        "2027-05-06T07:08:09.000Z",
+      );
+    });
+
+    test("consumes replayed signal waits even when legacy context is missing", async () => {
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-wait-missing-context-consume",
+        workerId: "worker-signal-wait-missing-context-consume",
+      });
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              workflowRunId: params.workflowRunId,
+              stepName: "approval",
+              kind: "signal-wait",
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const backend = createExecutionBackendMock({
+        listStepAttempts: vi.fn(() =>
+          Promise.resolve({
+            data: [
+              createMockStepAttempt({
+                id: "signal-wait-running-missing-context-consume",
+                workflowRunId: workflowRun.id,
+                stepName: "approval",
+                kind: "signal-wait",
+                status: "running",
+                context: null,
+                finishedAt: null,
+              }),
+            ],
+            pagination: { next: null, prev: null },
+          }),
+        ),
+        consumeWorkflowSignal: vi.fn(() => Promise.resolve({ approved: true })),
+        completeStepAttempt,
+      });
+
+      await executeWorkflow({
+        backend,
+        workflowRun,
+        workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+          return await step.waitForSignal<{ approved: boolean }>("approval");
+        },
+        workflowVersion: null,
+        workerId: "worker-signal-wait-missing-context-consume",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(completeStepAttempt).toHaveBeenCalledWith({
+        workflowRunId: workflowRun.id,
+        stepAttemptId: "signal-wait-running-missing-context-consume",
+        workerId: "worker-signal-wait-missing-context-consume",
+        output: { approved: true },
+      });
+    });
+  });
+
+  test("parks replayed workflow waits with a default timeout when stored timeout is invalid", async () => {
+    const createdAt = new Date("2026-06-07T08:09:10.000Z");
+    const workflowRun = createMockWorkflowRun({
+      id: "workflow-wait-invalid-timeout",
+      workerId: "worker-workflow-wait-invalid-timeout",
+    });
+    const sleepWorkflowRun = vi.fn(
+      (params: Parameters<Backend["sleepWorkflowRun"]>[0]) =>
+        Promise.resolve(
+          createMockWorkflowRun({
+            id: params.workflowRunId,
+            status: "running",
+            workerId: null,
+            availableAt: params.availableAt,
+          }),
+        ),
+    );
+    const backend = createExecutionBackendMock({
+      listStepAttempts: vi.fn(() =>
+        Promise.resolve({
+          data: [
+            createMockStepAttempt({
+              id: "workflow-running-invalid-timeout",
+              workflowRunId: workflowRun.id,
+              stepName: "child-workflow",
+              kind: "workflow",
+              status: "running",
+              context: {
+                kind: "workflow",
+                timeoutAt: "not-a-date",
+              },
+              childWorkflowRunNamespaceId: "default",
+              childWorkflowRunId: "child-workflow-run-id",
+              createdAt,
+              finishedAt: null,
+            }),
+          ],
+          pagination: { next: null, prev: null },
+        }),
+      ),
+      getWorkflowRun: vi.fn(() =>
+        Promise.resolve(
+          createMockWorkflowRun({
+            id: "child-workflow-run-id",
+            status: "running",
+            workerId: "child-worker",
+          }),
+        ),
+      ),
+      sleepWorkflowRun,
+    });
+
+    await executeWorkflow({
+      backend,
+      workflowRun,
+      workflowFn: async ({ step }: WorkflowFunctionParams<unknown>) => {
+        return await step.runWorkflow(
+          {
+            name: "child-workflow",
+            version: "1.0.0",
+          },
+          null,
+        );
+      },
+      workflowVersion: null,
+      workerId: "worker-workflow-wait-invalid-timeout",
+      retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+    });
+
+    const sleepCall = sleepWorkflowRun.mock.calls[0]?.[0];
+    if (!sleepCall) {
+      throw new Error("Expected sleepWorkflowRun to be called");
+    }
+    expect(sleepCall.availableAt.toISOString()).toBe(
+      "2027-06-07T08:09:10.000Z",
+    );
+  });
 });
 
 describe("executeWorkflow", () => {
@@ -3288,6 +4182,17 @@ describe("createStepExecutionStateFromAttempts", () => {
       stepName: "step-c",
       status: "running",
     });
+    const runningSignalWait = createMockStepAttempt({
+      id: "running-signal",
+      stepName: "wait-for-approval",
+      kind: "signal-wait",
+      status: "running",
+      context: {
+        kind: "signal-wait",
+        signal: "approval",
+        timeoutAt: new Date("2025-01-01T00:01:00Z").toISOString(),
+      },
+    });
 
     const state = createStepExecutionStateFromAttempts([
       completed,
@@ -3295,6 +4200,7 @@ describe("createStepExecutionStateFromAttempts", () => {
       failedA2,
       failedB,
       running,
+      runningSignalWait,
     ]);
 
     expect(state.cache.size).toBe(1);
@@ -3309,6 +4215,9 @@ describe("createStepExecutionStateFromAttempts", () => {
     expect(state.failedByStepName.get("step-b")).toBe(failedB);
     expect(state.failedByStepName.has("step-c")).toBe(false);
     expect(state.runningByStepName.get("step-c")).toBe(running);
+    expect(state.runningSignalWaitBySignal.get("approval")).toBe(
+      runningSignalWait,
+    );
     expect(state.runningByStepName.has("step-b")).toBe(false);
   });
 
@@ -3319,6 +4228,7 @@ describe("createStepExecutionStateFromAttempts", () => {
     expect(state.failedCountsByStepName.size).toBe(0);
     expect(state.failedByStepName.size).toBe(0);
     expect(state.runningByStepName.size).toBe(0);
+    expect(state.runningSignalWaitBySignal.size).toBe(0);
   });
 });
 
@@ -3479,4 +4389,104 @@ function createMockWorkflowRun(
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   };
+}
+
+function createExecutionBackendMock(overrides: Partial<Backend> = {}): Backend {
+  const backend: Partial<Backend> = {
+    listStepAttempts: () =>
+      Promise.resolve({
+        data: [],
+        pagination: { next: null, prev: null },
+      }),
+    createStepAttempt: (params: Parameters<Backend["createStepAttempt"]>[0]) =>
+      Promise.resolve(
+        createMockStepAttempt({
+          id: `created-${params.stepName}`,
+          workflowRunId: params.workflowRunId,
+          stepName: params.stepName,
+          kind: params.kind,
+          status: "running",
+          context: params.context,
+          output: null,
+          error: null,
+          finishedAt: null,
+        }),
+      ),
+    completeStepAttempt: (
+      params: Parameters<Backend["completeStepAttempt"]>[0],
+    ) =>
+      Promise.resolve(
+        createMockStepAttempt({
+          id: params.stepAttemptId,
+          workflowRunId: params.workflowRunId,
+          stepName: "step",
+          status: "completed",
+          output: params.output ?? null,
+        }),
+      ),
+    failStepAttempt: (params: Parameters<Backend["failStepAttempt"]>[0]) =>
+      Promise.resolve(
+        createMockStepAttempt({
+          id: params.stepAttemptId,
+          workflowRunId: params.workflowRunId,
+          stepName: "step",
+          status: "failed",
+          error: params.error,
+        }),
+      ),
+    completeWorkflowRun: (
+      params: Parameters<Backend["completeWorkflowRun"]>[0],
+    ) =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: params.workflowRunId,
+          status: "completed",
+          workerId: params.workerId,
+          output: params.output ?? null,
+        }),
+      ),
+    failWorkflowRun: (params: Parameters<Backend["failWorkflowRun"]>[0]) =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: params.workflowRunId,
+          status: "failed",
+          workerId: null,
+          error: params.error,
+        }),
+      ),
+    rescheduleWorkflowRunAfterFailedStepAttempt: (
+      params: Parameters<
+        Backend["rescheduleWorkflowRunAfterFailedStepAttempt"]
+      >[0],
+    ) =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: params.workflowRunId,
+          status: "pending",
+          workerId: null,
+          availableAt: params.availableAt,
+          error: params.error,
+        }),
+      ),
+    sleepWorkflowRun: (params: Parameters<Backend["sleepWorkflowRun"]>[0]) =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: params.workflowRunId,
+          status: "running",
+          workerId: null,
+          availableAt: params.availableAt,
+        }),
+      ),
+    sendWorkflowSignal: () => {
+      // no-op
+      return Promise.resolve();
+    },
+    consumeWorkflowSignal: () => Promise.resolve(void 0),
+    getWorkflowRun: () => Promise.resolve(null),
+  };
+
+  return {
+    ...backend,
+    ...overrides,
+  } as Backend;
 }

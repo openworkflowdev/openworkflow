@@ -193,6 +193,50 @@ export function migrations(): string[] {
     VALUES (4);
 
     COMMIT;`,
+
+    // 5 - workflow signals
+    `BEGIN;
+
+    CREATE TABLE IF NOT EXISTS "workflow_signals" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      --
+      "workflow_run_id" TEXT NOT NULL,
+      "signal" TEXT NOT NULL,
+      "data" TEXT,
+      "idempotency_key" TEXT,
+      "consumed_step_attempt_namespace_id" TEXT,
+      "consumed_step_attempt_id" TEXT,
+      "consumed_at" TEXT,
+      "created_at" TEXT NOT NULL,
+      "updated_at" TEXT NOT NULL,
+      PRIMARY KEY ("namespace_id", "id"),
+      FOREIGN KEY ("namespace_id", "workflow_run_id")
+        REFERENCES "workflow_runs" ("namespace_id", "id")
+        ON DELETE CASCADE,
+      FOREIGN KEY ("consumed_step_attempt_namespace_id", "consumed_step_attempt_id")
+        REFERENCES "step_attempts" ("namespace_id", "id")
+        ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_pending_lookup_idx"
+    ON "workflow_signals" (
+      "namespace_id",
+      "workflow_run_id",
+      "signal",
+      "consumed_at",
+      "created_at",
+      "id"
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS "workflow_signals_workflow_run_idempotency_key_idx"
+    ON "workflow_signals" ("namespace_id", "workflow_run_id", "idempotency_key")
+    WHERE "idempotency_key" IS NOT NULL;
+
+    INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
+    VALUES (5);
+
+    COMMIT;`,
   ];
 }
 

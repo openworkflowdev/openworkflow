@@ -8,7 +8,7 @@ import {
 } from "./postgres.js";
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
   assert.ok(true);
@@ -632,3 +632,356 @@ describe("BackendPostgres workflow wake-up reconciliation", () => {
     }
   });
 });
+
+describe("BackendPostgres.sendWorkflowSignal fallback branches", () => {
+  type BackendPostgresCtor = new (
+    pg: unknown,
+    namespaceId: string,
+    schema: string,
+  ) => BackendPostgres;
+
+  test("re-reads an existing signal after an idempotent insert conflict", async () => {
+    let selectCount = 0;
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith('SELECT "id"')) {
+        selectCount += 1;
+        return selectCount === 2 ? [{ id: "existing-signal" }] : [];
+      }
+
+      if (sql.startsWith("INSERT INTO")) {
+        return [];
+      }
+
+      return [];
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const wakeWorkflowRunForSignal = vi.fn(() => Promise.resolve());
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      workflowRunsTable: () => string;
+      wakeWorkflowRunForSignal: (workflowRunId: string) => Promise<void>;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+
+    await backend.sendWorkflowSignal({
+      workflowRunId: "workflow-run-id",
+      signal: "approval",
+      data: { approved: true },
+      idempotencyKey: "signal-key",
+    });
+
+    expect(selectCount).toBe(2);
+    expect(wakeWorkflowRunForSignal).toHaveBeenCalledWith("workflow-run-id");
+  });
+
+  test("throws the generic error when no signal row is inserted for an active run", async () => {
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith("INSERT INTO")) {
+        return [];
+      }
+
+      return [];
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const wakeWorkflowRunForSignal = vi.fn(() => Promise.resolve());
+    const getWorkflowRun = vi.fn(() =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: "workflow-run-id",
+          status: "running",
+        }),
+      ),
+    );
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      workflowRunsTable: () => string;
+      wakeWorkflowRunForSignal: (workflowRunId: string) => Promise<void>;
+      getWorkflowRun: typeof backend.getWorkflowRun;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+    internalBackend.getWorkflowRun =
+      getWorkflowRun as unknown as typeof backend.getWorkflowRun;
+
+    await expect(
+      backend.sendWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        data: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow("Failed to send workflow signal");
+
+    expect(getWorkflowRun).toHaveBeenCalledWith({
+      workflowRunId: "workflow-run-id",
+    });
+    expect(wakeWorkflowRunForSignal).not.toHaveBeenCalled();
+  });
+
+  test("throws the generic error when the idempotent fallback re-read still finds nothing", async () => {
+    let selectCount = 0;
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith('SELECT "id"')) {
+        selectCount += 1;
+        return [];
+      }
+
+      if (sql.startsWith("INSERT INTO")) {
+        return [];
+      }
+
+      return [];
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const wakeWorkflowRunForSignal = vi.fn(() => Promise.resolve());
+    const getWorkflowRun = vi.fn(() =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: "workflow-run-id",
+          status: "running",
+        }),
+      ),
+    );
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      workflowRunsTable: () => string;
+      wakeWorkflowRunForSignal: (workflowRunId: string) => Promise<void>;
+      getWorkflowRun: typeof backend.getWorkflowRun;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+    internalBackend.getWorkflowRun =
+      getWorkflowRun as unknown as typeof backend.getWorkflowRun;
+
+    await expect(
+      backend.sendWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        data: null,
+        idempotencyKey: "signal-key",
+      }),
+    ).rejects.toThrow("Failed to send workflow signal");
+
+    expect(selectCount).toBe(2);
+    expect(getWorkflowRun).toHaveBeenCalledWith({
+      workflowRunId: "workflow-run-id",
+    });
+    expect(wakeWorkflowRunForSignal).not.toHaveBeenCalled();
+  });
+});
+
+describe("BackendPostgres.consumeWorkflowSignal edge cases", () => {
+  type BackendPostgresCtor = new (
+    pg: unknown,
+    namespaceId: string,
+    schema: string,
+  ) => BackendPostgres;
+
+  test("returns null for previously consumed signals with null data", async () => {
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith('SELECT "data"')) {
+        return [{ data: null }];
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      stepAttemptsTable: () => string;
+      workflowRunsTable: () => string;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.stepAttemptsTable = () => '"step_attempts"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+
+    await expect(
+      backend.consumeWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        stepAttemptId: "step-attempt-id",
+        workerId: "worker-id",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  test("returns undefined when no signal can be consumed", async () => {
+    let selectCount = 0;
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith('SELECT "data"')) {
+        selectCount += 1;
+        return [];
+      }
+
+      if (sql.startsWith("WITH candidate AS")) {
+        return [];
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      stepAttemptsTable: () => string;
+      workflowRunsTable: () => string;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.stepAttemptsTable = () => '"step_attempts"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+
+    await expect(
+      backend.consumeWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        stepAttemptId: "step-attempt-id",
+        workerId: "worker-id",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(selectCount).toBe(1);
+  });
+
+  test("returns null when a freshly consumed signal has null data", async () => {
+    const fakePg = createFakePostgresQueryHandler((sql) => {
+      if (sql.startsWith('SELECT "data"')) {
+        return [];
+      }
+
+      if (sql.startsWith("WITH candidate AS")) {
+        return [{ data: null }];
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendPostgres as unknown as BackendPostgresCtor)(
+      fakePg,
+      randomUUID(),
+      DEFAULT_SCHEMA,
+    );
+    const internalBackend = backend as unknown as {
+      workflowSignalsTable: () => string;
+      stepAttemptsTable: () => string;
+      workflowRunsTable: () => string;
+    };
+    internalBackend.workflowSignalsTable = () => '"workflow_signals"';
+    internalBackend.stepAttemptsTable = () => '"step_attempts"';
+    internalBackend.workflowRunsTable = () => '"workflow_runs"';
+
+    await expect(
+      backend.consumeWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        stepAttemptId: "step-attempt-id",
+        workerId: "worker-id",
+      }),
+    ).resolves.toBeNull();
+  });
+});
+
+function createFakePostgresQueryHandler(
+  handler: (sql: string) => readonly unknown[],
+): unknown {
+  const fakePg = ((input: TemplateStringsArray | string) => {
+    if (
+      Array.isArray(input) &&
+      Object.prototype.hasOwnProperty.call(input, "raw")
+    ) {
+      const sql = input.join(" ").replaceAll(/\s+/g, " ").trim();
+      return handler(sql);
+    }
+
+    return [];
+  }) as {
+    (input: TemplateStringsArray | string, ...values: unknown[]): unknown;
+    json: (value: unknown) => unknown;
+    end: () => Promise<void>;
+  };
+  fakePg.json = (value) => value;
+  fakePg.end = async () => {
+    // no-op for tests
+  };
+
+  return fakePg;
+}
+
+function createMockWorkflowRun(
+  overrides: Partial<{
+    namespaceId: string;
+    id: string;
+    workflowName: string;
+    version: string | null;
+    status:
+      | "pending"
+      | "running"
+      | "sleeping"
+      | "completed"
+      | "succeeded"
+      | "failed"
+      | "canceled";
+    idempotencyKey: string | null;
+    config: Record<string, unknown>;
+    context: Record<string, unknown> | null;
+    input: Record<string, unknown> | null;
+    output: Record<string, unknown> | null;
+    error: Record<string, unknown> | null;
+    attempts: number;
+    parentStepAttemptNamespaceId: string | null;
+    parentStepAttemptId: string | null;
+    workerId: string | null;
+    availableAt: Date | null;
+    deadlineAt: Date | null;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = {},
+) {
+  return {
+    namespaceId: "default",
+    id: "workflow-run-id",
+    workflowName: "workflow-name",
+    version: null,
+    status: "running",
+    idempotencyKey: null,
+    config: {},
+    context: null,
+    input: null,
+    output: null,
+    error: null,
+    attempts: 1,
+    parentStepAttemptNamespaceId: null,
+    parentStepAttemptId: null,
+    workerId: "worker-id",
+    availableAt: null,
+    deadlineAt: null,
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    finishedAt: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}

@@ -15,7 +15,7 @@ import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   number as yupNumber,
   object as yupObject,
@@ -504,6 +504,27 @@ describe("OpenWorkflow", () => {
     });
     expect(workflowRun?.status).toBe("canceled");
     expect(workflowRun?.finishedAt).not.toBeNull();
+  });
+
+  test("sends workflow signals via the backend", async () => {
+    const sendWorkflowSignal = vi.fn(() => Promise.resolve());
+    const client = new OpenWorkflow({
+      backend: {
+        sendWorkflowSignal,
+      } as unknown as Backend,
+    });
+
+    await client.sendSignal("run-123", "approval", {
+      data: { approved: true },
+      idempotencyKey: "signal-1",
+    });
+
+    expect(sendWorkflowSignal).toHaveBeenCalledWith({
+      workflowRunId: "run-123",
+      signal: "approval",
+      data: { approved: true },
+      idempotencyKey: "signal-1",
+    });
   });
 
   test("throws when canceling a non-existent workflow run", async () => {

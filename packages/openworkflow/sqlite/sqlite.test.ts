@@ -98,6 +98,14 @@ describe("sqlite", () => {
         'CREATE TABLE IF NOT EXISTS "step_attempts"',
       );
     });
+
+    test("migrations create workflow_signals table", () => {
+      const migs = migrations();
+      const latestMigration = migs.at(-1);
+      expect(latestMigration).toContain(
+        'CREATE TABLE IF NOT EXISTS "workflow_signals"',
+      );
+    });
   });
 
   describe("migrate()", () => {
@@ -206,6 +214,17 @@ describe("sqlite", () => {
         )
         .get() as { count: number };
       expect(stepAttemptsCheck.count).toBe(1);
+
+      const workflowSignalsCheck = db
+        .prepare(
+          `
+        SELECT COUNT(*) as count
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'workflow_signals'
+      `,
+        )
+        .get() as { count: number };
+      expect(workflowSignalsCheck.count).toBe(1);
     });
   });
 

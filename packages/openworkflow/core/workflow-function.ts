@@ -1,6 +1,10 @@
 import type { DurationString } from "./duration.js";
+import type { JsonValue } from "./json.js";
+import type { StandardSchemaV1 } from "./standard-schema.js";
 import type { RetryPolicy, WorkflowSpec } from "./workflow-definition.js";
 import type { WorkflowRun } from "./workflow-run.js";
+
+export type StepWaitTimeout = number | string | Date;
 
 /**
  * Config for an individual step defined with `step.run()`.
@@ -37,13 +41,13 @@ export interface StepRunWorkflowOptions {
   /**
    * Maximum time to wait for the child workflow to complete.
    */
-  timeout?: number | string | Date;
+  timeout?: StepWaitTimeout;
 }
 
 /**
  * Represents the API for defining steps within a workflow. Used within a
  * workflow handler to define steps by calling `step.run()`, `step.sleep()`,
- * and `step.runWorkflow()`.
+ * `step.runWorkflow()`, `step.sendSignal()`, and `step.waitForSignal()`.
  */
 export interface StepApi {
   run: <Output>(
@@ -56,6 +60,30 @@ export interface StepApi {
     options?: Readonly<StepRunWorkflowOptions>,
   ) => Promise<Output>;
   sleep: (name: string, duration: DurationString) => Promise<void>;
+  sendSignal: (
+    workflowRunId: string,
+    signal: string,
+    options?: Readonly<{
+      data?: JsonValue;
+    }>,
+  ) => Promise<void>;
+  waitForSignal: {
+    <Output>(
+      signal: string,
+      options?: Readonly<{
+        timeout?: StepWaitTimeout;
+        schema?: StandardSchemaV1<unknown, Output>;
+      }>,
+    ): Promise<Output | null>;
+    <Output>(
+      options: Readonly<{
+        name?: string;
+        signal: string;
+        timeout?: StepWaitTimeout;
+        schema?: StandardSchemaV1<unknown, Output>;
+      }>,
+    ): Promise<Output | null>;
+  };
 }
 
 /**

@@ -27,7 +27,8 @@ input)`), creating a `pending` run in the database
 3. The worker replays workflow code from the beginning
 4. Completed steps return cached outputs; new steps execute and persist results
 5. The run transitions to `completed`, `failed`, or `canceled` (or stays
-   `running` while durably parked for sleep)
+   `running` while durably parked for sleep, child-workflow waiting, or
+   signal waiting)
 
 Because replay is deterministic, crash recovery is reliable. A replacement
 worker can continue from the last durable checkpoint without redoing completed
@@ -37,6 +38,8 @@ work.
 
 - **Memoized steps** prevent duplicate side effects on retries
 - **Durable sleep** (`step.sleep`) pauses runs without holding worker capacity
+- **Durable signals** (`step.waitForSignal`) buffer signals until a waiting step
+  consumes them
 - **Heartbeats + leases** (`availableAt`) allow automatic crash recovery
 - **Database as source of truth** avoids a separate orchestration service
 

@@ -46,6 +46,11 @@ describe("postgres", () => {
     test("throws for schema names longer than 63 bytes", () => {
       expect(() => migrations("a".repeat(64))).toThrow(/at most 63 bytes/i);
     });
+
+    test("includes workflow_signals in the latest migration", () => {
+      const latestMigration = migrations(DEFAULT_SCHEMA).at(-1);
+      expect(latestMigration).toContain('"workflow_signals"');
+    });
   });
 
   describe("migrate()", () => {

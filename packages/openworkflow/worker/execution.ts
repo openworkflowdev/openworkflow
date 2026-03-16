@@ -6,6 +6,7 @@ import {
   type SerializedError,
 } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
+import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
 import {
   getCachedStepAttempt,
@@ -13,6 +14,7 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
+  createSignalWaitContext,
   createWorkflowContext,
 } from "../core/step-attempt.js";
 import {
@@ -26,6 +28,7 @@ import type {
   StepApi,
   StepFunction,
   StepFunctionConfig,
+  StepWaitTimeout,
   WorkflowFunction,
   WorkflowRunMetadata,
 } from "../core/workflow-function.js";
@@ -123,11 +126,7 @@ const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
   maximumAttempts: 10,
 };
 
-/**
- * Retry policy for workflow step failures (no retries - the child workflow
- * is responsible for retries).
- */
-const WORKFLOW_STEP_FAILURE_RETRY_POLICY: RetryPolicy = {
+const TERMINAL_STEP_RETRY_POLICY: RetryPolicy = {
   ...DEFAULT_STEP_RETRY_POLICY,
   maximumAttempts: 1,
 };
@@ -197,6 +196,7 @@ export interface StepExecutionState {
   failedCountsByStepName: ReadonlyMap<string, number>;
   failedByStepName: ReadonlyMap<string, StepAttempt>;
   runningByStepName: ReadonlyMap<string, StepAttempt>;
+  runningSignalWaitBySignal: ReadonlyMap<string, StepAttempt>;
 }
 
 /**
@@ -211,6 +211,7 @@ export function createStepExecutionStateFromAttempts(
   const failedCountsByStepName = new Map<string, number>();
   const failedByStepName = new Map<string, StepAttempt>();
   const runningByStepName = new Map<string, StepAttempt>();
+  const runningSignalWaitBySignal = new Map<string, StepAttempt>();
 
   for (const attempt of attempts) {
     if (attempt.status === "completed" || attempt.status === "succeeded") {
@@ -226,6 +227,9 @@ export function createStepExecutionStateFromAttempts(
     }
 
     runningByStepName.set(attempt.stepName, attempt);
+    if (attempt.context?.kind === "signal-wait") {
+      runningSignalWaitBySignal.set(attempt.context.signal, attempt);
+    }
   }
 
   return {
@@ -233,6 +237,7 @@ export function createStepExecutionStateFromAttempts(
     failedCountsByStepName,
     failedByStepName,
     runningByStepName,
+    runningSignalWaitBySignal,
   };
 }
 
@@ -242,11 +247,9 @@ export function createStepExecutionStateFromAttempts(
  * @returns Absolute timeout deadline
  * @throws {Error} When timeout is invalid
  */
-function resolveWorkflowTimeoutAt(
-  timeout: number | string | Date | undefined,
-): Date {
+function resolveWaitTimeoutAt(timeout?: StepWaitTimeout): Date {
   if (timeout === undefined) {
-    return defaultWorkflowTimeoutAt();
+    return defaultWaitTimeoutAt();
   }
 
   if (timeout instanceof Date) {
@@ -272,7 +275,7 @@ function resolveWorkflowTimeoutAt(
  * @param base - Base timestamp (defaults to now)
  * @returns Timeout deadline
  */
-function defaultWorkflowTimeoutAt(base: Readonly<Date> = new Date()): Date {
+function defaultWaitTimeoutAt(base: Readonly<Date> = new Date()): Date {
   const timeoutAt = new Date(base);
   timeoutAt.setFullYear(timeoutAt.getFullYear() + 1);
   return timeoutAt;
@@ -290,7 +293,20 @@ function getWorkflowTimeoutAt(attempt: Readonly<StepAttempt>): Date | null {
 
   if (attempt.context.timeoutAt === null) {
     // Backward compatibility for previously persisted workflow contexts.
-    return defaultWorkflowTimeoutAt(attempt.createdAt);
+    return defaultWaitTimeoutAt(attempt.createdAt);
+  }
+
+  return new Date(attempt.context.timeoutAt);
+}
+
+/**
+ * Extract the signal wait timeout from a persisted step attempt's context.
+ * @param attempt - Running signal-wait step attempt
+ * @returns Timeout deadline, or null when context is not signal-wait
+ */
+function getSignalWaitTimeoutAt(attempt: Readonly<StepAttempt>): Date | null {
+  if (attempt.context?.kind !== "signal-wait") {
+    return null;
   }
 
   return new Date(attempt.context.timeoutAt);
@@ -338,18 +354,28 @@ function getRunningWaitAttemptResumeAt(
   }
 
   if (attempt.kind !== "workflow") {
-    return null;
+    if (attempt.kind !== "signal-wait") {
+      return null;
+    }
+
+    const timeoutAt =
+      getSignalWaitTimeoutAt(attempt) ??
+      defaultWaitTimeoutAt(attempt.createdAt);
+    if (Number.isFinite(timeoutAt.getTime())) {
+      return timeoutAt;
+    }
+
+    return defaultWaitTimeoutAt(attempt.createdAt);
   }
 
   const timeoutAt =
-    getWorkflowTimeoutAt(attempt) ??
-    defaultWorkflowTimeoutAt(attempt.createdAt);
+    getWorkflowTimeoutAt(attempt) ?? defaultWaitTimeoutAt(attempt.createdAt);
   if (Number.isFinite(timeoutAt.getTime())) {
     return timeoutAt;
   }
 
   // Backward compatibility for malformed historical workflow timeout values.
-  return defaultWorkflowTimeoutAt(attempt.createdAt);
+  return defaultWaitTimeoutAt(attempt.createdAt);
 }
 
 /**
@@ -464,6 +490,19 @@ function buildWorkflowIdempotencyKey(attempt: Readonly<StepAttempt>): string {
 }
 
 /**
+ * Build deterministic idempotency key for step.sendSignal.
+ * @param workflowRunId - Current workflow run id
+ * @param stepName - Durable step name
+ * @returns Stable idempotency key
+ */
+function buildSignalIdempotencyKey(
+  workflowRunId: string,
+  stepName: string,
+): string {
+  return `__signal:${workflowRunId}:${stepName}`;
+}
+
+/**
  * Configures the options for a StepExecutor.
  */
 export interface StepExecutorOptions {
@@ -482,8 +521,30 @@ interface RunWorkflowStepRequest<
 > {
   workflowSpec: WorkflowSpec<Input, Output, RunInput>;
   input: RunInput | undefined;
-  timeout: number | string | Date | undefined;
+  timeout: StepWaitTimeout | undefined;
 }
+
+interface WaitForSignalStepRequest<Output = unknown> {
+  signal: string;
+  timeout: StepWaitTimeout | undefined;
+  schema: StandardSchemaV1<unknown, Output> | undefined;
+}
+
+type WaitForSignalOptions<Output> = Readonly<{
+  timeout?: StepWaitTimeout;
+  schema?: StandardSchemaV1<unknown, Output>;
+}>;
+
+type NamedWaitForSignalOptions<Output> = Readonly<{
+  name?: string;
+  signal: string;
+  timeout?: StepWaitTimeout;
+  schema?: StandardSchemaV1<unknown, Output>;
+}>;
+
+type WaitForSignalRequestInput<Output> =
+  | string
+  | NamedWaitForSignalOptions<Output>;
 
 /**
  * Replays prior step attempts and persists new ones while memoizing
@@ -499,6 +560,7 @@ class StepExecutor implements StepApi {
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
+  private readonly activeSignalWaitStepNameBySignal: Map<string, string>;
   private readonly expectedNextStepIndexByName: Map<string, number>;
   private readonly resolvedStepNames: Set<string>;
   private readonly executionFence: ExecutionFenceController;
@@ -515,6 +577,14 @@ class StepExecutor implements StepApi {
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
     this.failedByStepName = new Map(state.failedByStepName);
     this.runningByStepName = new Map(state.runningByStepName);
+    this.activeSignalWaitStepNameBySignal = new Map(
+      [...state.runningSignalWaitBySignal.entries()].map(
+        ([signal, attempt]): readonly [string, string] => [
+          signal,
+          attempt.stepName,
+        ],
+      ),
+    );
     this.expectedNextStepIndexByName = new Map();
     this.resolvedStepNames = new Set();
     this.executionFence = options.executionFence;
@@ -674,6 +744,230 @@ class StepExecutor implements StepApi {
     throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(resumeAt));
   }
 
+  // ---- step.sendSignal ---------------------------------------------------
+
+  async sendSignal(
+    workflowRunId: string,
+    signal: string,
+    options?: Readonly<{
+      data?: JsonValue;
+    }>,
+  ): Promise<void> {
+    const stepName = this.resolveStepName(signal);
+
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) return;
+
+    const runningAttempt = this.runningByStepName.get(stepName);
+    if (runningAttempt?.kind === "signal-send") {
+      await this.resolveRunningSignalSend(
+        stepName,
+        runningAttempt,
+        workflowRunId,
+        signal,
+        options?.data ?? null,
+      );
+      return;
+    }
+
+    this.assertExecutionActive();
+    this.ensureStepLimitNotReached();
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind: "signal-send",
+      config: {},
+      context: null,
+    });
+    this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
+
+    await this.resolveRunningSignalSend(
+      stepName,
+      attempt,
+      workflowRunId,
+      signal,
+      options?.data ?? null,
+    );
+  }
+
+  private async resolveRunningSignalSend(
+    stepName: string,
+    attempt: Readonly<StepAttempt>,
+    workflowRunId: string,
+    signal: string,
+    data: JsonValue | null,
+  ): Promise<void> {
+    try {
+      await this.backend.sendWorkflowSignal({
+        workflowRunId,
+        signal,
+        data,
+        idempotencyKey: buildSignalIdempotencyKey(this.workflowRunId, stepName),
+      });
+
+      const savedAttempt = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: attempt.id,
+        workerId: this.workerId,
+        output: null,
+      });
+      this.cache = addToStepAttemptCache(this.cache, savedAttempt);
+      this.runningByStepName.delete(stepName);
+    } catch (error) {
+      return await this.failStepWithError(
+        stepName,
+        attempt.id,
+        error,
+        DEFAULT_STEP_RETRY_POLICY,
+      );
+    }
+  }
+
+  // ---- step.waitForSignal -----------------------------------------------
+
+  async waitForSignal<Output>(
+    signal: string,
+    options?: WaitForSignalOptions<Output>,
+  ): Promise<Output | null>;
+  async waitForSignal<Output>(
+    options: NamedWaitForSignalOptions<Output>,
+  ): Promise<Output | null>;
+  async waitForSignal<Output>(
+    signalOrOptions: WaitForSignalRequestInput<Output>,
+    options?: WaitForSignalOptions<Output>,
+  ): Promise<Output | null> {
+    const request =
+      typeof signalOrOptions === "string"
+        ? {
+            name: undefined,
+            signal: signalOrOptions,
+            timeout: options?.timeout,
+            schema: options?.schema,
+          }
+        : signalOrOptions;
+    const stepName = this.resolveStepName(request.name ?? request.signal);
+
+    const existingAttempt = getCachedStepAttempt(this.cache, stepName);
+    if (existingAttempt) {
+      return existingAttempt.output as Output | null;
+    }
+
+    const runningAttempt = this.runningByStepName.get(stepName);
+    if (runningAttempt?.kind === "signal-wait") {
+      return await this.resolveRunningSignalWait(stepName, runningAttempt, {
+        signal:
+          runningAttempt.context?.kind === "signal-wait"
+            ? runningAttempt.context.signal
+            : request.signal,
+        timeout: request.timeout,
+        schema: request.schema,
+      });
+    }
+
+    const activeSignalWaitStepName = this.activeSignalWaitStepNameBySignal.get(
+      request.signal,
+    );
+    if (activeSignalWaitStepName && activeSignalWaitStepName !== stepName) {
+      throw new Error(
+        `Signal "${request.signal}" is already being awaited by step "${activeSignalWaitStepName}"`,
+      );
+    }
+
+    const timeoutAt = resolveWaitTimeoutAt(request.timeout);
+    this.assertExecutionActive();
+    this.ensureStepLimitNotReached();
+    this.activeSignalWaitStepNameBySignal.set(request.signal, stepName);
+
+    let attempt: StepAttempt;
+    try {
+      attempt = await this.backend.createStepAttempt({
+        workflowRunId: this.workflowRunId,
+        workerId: this.workerId,
+        stepName,
+        kind: "signal-wait",
+        config: {},
+        context: createSignalWaitContext(request.signal, timeoutAt),
+      });
+    } catch (error) {
+      this.releaseActiveSignalWait(request.signal, stepName);
+      throw error;
+    }
+
+    this.stepCount += 1;
+    this.runningByStepName.set(stepName, attempt);
+
+    return await this.resolveRunningSignalWait(stepName, attempt, {
+      signal: request.signal,
+      timeout: request.timeout,
+      schema: request.schema,
+    });
+  }
+
+  private releaseActiveSignalWait(signal: string, stepName: string): void {
+    if (this.activeSignalWaitStepNameBySignal.get(signal) === stepName) {
+      this.activeSignalWaitStepNameBySignal.delete(signal);
+    }
+  }
+
+  private async resolveRunningSignalWait<Output>(
+    stepName: string,
+    attempt: Readonly<StepAttempt>,
+    request: Readonly<WaitForSignalStepRequest<Output>>,
+  ): Promise<Output | null> {
+    const signalData = await this.backend.consumeWorkflowSignal({
+      workflowRunId: this.workflowRunId,
+      signal: request.signal,
+      stepAttemptId: attempt.id,
+      workerId: this.workerId,
+    });
+
+    if (signalData !== undefined) {
+      const validationResult = await validateInput(request.schema, signalData);
+      if (!validationResult.success) {
+        this.releaseActiveSignalWait(request.signal, stepName);
+        return await this.failStepWithError(
+          stepName,
+          attempt.id,
+          new Error(validationResult.error),
+          TERMINAL_STEP_RETRY_POLICY,
+        );
+      }
+
+      const completed = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: attempt.id,
+        workerId: this.workerId,
+        output: normalizeStepOutput(validationResult.value),
+      });
+      this.releaseActiveSignalWait(request.signal, stepName);
+      this.runningByStepName.delete(stepName);
+      this.cache = addToStepAttemptCache(this.cache, completed);
+      return completed.output as Output | null;
+    }
+
+    const persistedTimeoutAt = getSignalWaitTimeoutAt(attempt);
+    const timeoutAt =
+      persistedTimeoutAt && Number.isFinite(persistedTimeoutAt.getTime())
+        ? persistedTimeoutAt
+        : defaultWaitTimeoutAt(attempt.createdAt);
+    if (Date.now() >= timeoutAt.getTime()) {
+      const completed = await this.backend.completeStepAttempt({
+        workflowRunId: this.workflowRunId,
+        stepAttemptId: attempt.id,
+        workerId: this.workerId,
+        output: null,
+      });
+      this.releaseActiveSignalWait(request.signal, stepName);
+      this.runningByStepName.delete(stepName);
+      this.cache = addToStepAttemptCache(this.cache, completed);
+      return null;
+    }
+
+    throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(timeoutAt));
+  }
+
   // ---- step.runWorkflow -----------------------------------------------
 
   async runWorkflow<Input, Output, RunInput = Input>(
@@ -713,7 +1007,7 @@ class StepExecutor implements StepApi {
       throw new StepError({
         stepName,
         stepFailedAttempts: this.failedCountsByStepName.get(stepName) ?? 1,
-        retryPolicy: WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        retryPolicy: TERMINAL_STEP_RETRY_POLICY,
         error: failedError,
       });
     }
@@ -729,7 +1023,7 @@ class StepExecutor implements StepApi {
     }
 
     // First encounter — create the workflow step and child workflow run
-    const timeoutAt = resolveWorkflowTimeoutAt(request.timeout);
+    const timeoutAt = resolveWaitTimeoutAt(request.timeout);
     this.assertExecutionActive();
     this.ensureStepLimitNotReached();
     const attempt = await this.backend.createStepAttempt({
@@ -784,7 +1078,7 @@ class StepExecutor implements StepApi {
         new Error(
           `Workflow step "${stepName}" could not find linked child workflow run`,
         ),
-        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        TERMINAL_STEP_RETRY_POLICY,
       );
     }
 
@@ -798,7 +1092,7 @@ class StepExecutor implements StepApi {
         new Error(
           `Workflow step "${stepName}" could not find linked child workflow run "${childId}"`,
         ),
-        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        TERMINAL_STEP_RETRY_POLICY,
       );
     }
 
@@ -808,7 +1102,7 @@ class StepExecutor implements StepApi {
         stepName,
         workflowAttempt.id,
         new Error("Timed out waiting for child workflow to complete"),
-        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        TERMINAL_STEP_RETRY_POLICY,
       );
     }
 
@@ -835,7 +1129,7 @@ class StepExecutor implements StepApi {
         stepName,
         workflowAttempt.id,
         childError,
-        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        TERMINAL_STEP_RETRY_POLICY,
       );
     }
 
@@ -847,7 +1141,7 @@ class StepExecutor implements StepApi {
         new Error(
           `Workflow step "${stepName}" failed because child workflow run "${childRun.id}" was canceled`,
         ),
-        WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+        TERMINAL_STEP_RETRY_POLICY,
       );
     }
 
@@ -856,7 +1150,7 @@ class StepExecutor implements StepApi {
     const resumeAt =
       timeoutAt && Number.isFinite(timeoutAt.getTime())
         ? timeoutAt
-        : defaultWorkflowTimeoutAt(workflowAttempt.createdAt);
+        : defaultWaitTimeoutAt(workflowAttempt.createdAt);
     throw new SleepSignal(this.resolveEarliestRunningWaitResumeAt(resumeAt));
   }
 
@@ -973,7 +1267,7 @@ class StepExecutor implements StepApi {
       stepName,
       stepAttemptId,
       error,
-      WORKFLOW_STEP_FAILURE_RETRY_POLICY,
+      TERMINAL_STEP_RETRY_POLICY,
     );
   }
 

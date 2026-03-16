@@ -352,8 +352,7 @@ function RunDetailsPage() {
                   const config = STEP_STATUS_CONFIG[step.status];
                   const StatusIcon = config.icon;
                   const iconColor = config.color;
-                  const stepTypeLabel =
-                    step.kind === "function" ? "function" : step.kind;
+                  const stepTypeLabel = formatStepKindLabel(step.kind);
                   const stepDuration = computeDuration(
                     step.startedAt,
                     step.finishedAt,
@@ -740,6 +739,10 @@ function StepInspectorPanel({
               value={attemptCount.toString()}
               mono
             />
+            <MetadataField
+              label="Step Kind"
+              value={formatStepKindLabel(step.kind)}
+            />
             <MetadataTimestampField
               label="Started At"
               value={step.startedAt}
@@ -1093,6 +1096,20 @@ function shouldUseStructuredEditor(
 
 function normalizeDebugValue(value: unknown): unknown {
   return normalizeValue(value, new WeakSet());
+}
+
+function formatStepKindLabel(kind: StepAttempt["kind"]): string {
+  switch (kind) {
+    case "signal-send": {
+      return "signal send";
+    }
+    case "signal-wait": {
+      return "signal wait";
+    }
+    default: {
+      return kind;
+    }
+  }
 }
 
 function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {

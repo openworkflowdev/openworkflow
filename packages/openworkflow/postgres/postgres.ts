@@ -206,6 +206,51 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 5 - workflow signals
+    `BEGIN;
+
+    CREATE TABLE IF NOT EXISTS ${quotedSchema}."workflow_signals" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      --
+      "workflow_run_id" TEXT NOT NULL,
+      "signal" TEXT NOT NULL,
+      "data" JSONB,
+      "idempotency_key" TEXT,
+      "consumed_step_attempt_namespace_id" TEXT,
+      "consumed_step_attempt_id" TEXT,
+      "consumed_at" TIMESTAMPTZ,
+      "created_at" TIMESTAMPTZ NOT NULL,
+      "updated_at" TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY ("namespace_id", "id"),
+      FOREIGN KEY ("namespace_id", "workflow_run_id")
+        REFERENCES ${quotedSchema}."workflow_runs" ("namespace_id", "id")
+        ON DELETE CASCADE,
+      FOREIGN KEY ("consumed_step_attempt_namespace_id", "consumed_step_attempt_id")
+        REFERENCES ${quotedSchema}."step_attempts" ("namespace_id", "id")
+        ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_pending_lookup_idx"
+    ON ${quotedSchema}."workflow_signals" (
+      "namespace_id",
+      "workflow_run_id",
+      "signal",
+      "consumed_at",
+      "created_at",
+      "id"
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS "workflow_signals_workflow_run_idempotency_key_idx"
+    ON ${quotedSchema}."workflow_signals" ("namespace_id", "workflow_run_id", "idempotency_key")
+    WHERE "idempotency_key" IS NOT NULL;
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
+    VALUES (5)
+    ON CONFLICT DO NOTHING;
+
+    COMMIT;`,
   ];
 }
 

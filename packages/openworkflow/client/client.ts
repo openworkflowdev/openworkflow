@@ -1,5 +1,6 @@
 import type { Backend } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
+import type { JsonValue } from "../core/json.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -172,6 +173,28 @@ export class OpenWorkflow {
    */
   async cancelWorkflowRun(workflowRunId: string): Promise<void> {
     await this.backend.cancelWorkflowRun({ workflowRunId });
+  }
+
+  /**
+   * Sends a buffered signal to a workflow run.
+   * @param workflowRunId - Target workflow run id
+   * @param signal - Signal name
+   * @param options - Optional signal payload and client idempotency key
+   */
+  async sendSignal(
+    workflowRunId: string,
+    signal: string,
+    options?: Readonly<{
+      data?: JsonValue;
+      idempotencyKey?: string;
+    }>,
+  ): Promise<void> {
+    await this.backend.sendWorkflowSignal({
+      workflowRunId,
+      signal,
+      data: options?.data ?? null,
+      idempotencyKey: options?.idempotencyKey ?? null,
+    });
   }
 }
 

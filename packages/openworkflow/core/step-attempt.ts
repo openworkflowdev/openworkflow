@@ -7,7 +7,12 @@ import { err, ok } from "./result.js";
 /**
  * The kind of step in a workflow.
  */
-export type StepKind = "function" | "sleep" | "workflow";
+export type StepKind =
+  | "function"
+  | "sleep"
+  | "workflow"
+  | "signal-send"
+  | "signal-wait";
 
 /**
  * Status of a step attempt through its lifecycle.
@@ -35,11 +40,21 @@ export interface WorkflowStepAttemptContext {
 }
 
 /**
+ * Context for a signal-wait step attempt.
+ */
+export interface SignalWaitStepAttemptContext {
+  kind: "signal-wait";
+  signal: string;
+  timeoutAt: string;
+}
+
+/**
  * Context for a step attempt.
  */
 export type StepAttemptContext =
   | SleepStepAttemptContext
-  | WorkflowStepAttemptContext;
+  | WorkflowStepAttemptContext
+  | SignalWaitStepAttemptContext;
 
 /**
  * StepAttempt represents a single attempt of a step within a workflow.
@@ -169,5 +184,22 @@ export function createWorkflowContext(
   return {
     kind: "workflow" as const,
     timeoutAt: timeoutAt?.toISOString() ?? null,
+  };
+}
+
+/**
+ * Create the context object for a signal-wait step attempt.
+ * @param signal - Signal name
+ * @param timeoutAt - Wait timeout deadline
+ * @returns The context object for the signal-wait step
+ */
+export function createSignalWaitContext(
+  signal: string,
+  timeoutAt: Readonly<Date>,
+): SignalWaitStepAttemptContext {
+  return {
+    kind: "signal-wait" as const,
+    signal,
+    timeoutAt: timeoutAt.toISOString(),
   };
 }

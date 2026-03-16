@@ -17,6 +17,8 @@ import {
   FailStepAttemptParams,
   CompleteStepAttemptParams,
   SetStepAttemptChildWorkflowRunParams,
+  SendWorkflowSignalParams,
+  ConsumeWorkflowSignalParams,
   FailWorkflowRunParams,
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
@@ -247,6 +249,168 @@ export class BackendPostgres implements Backend {
     return workflowRun ?? null;
   }
 
+  async sendWorkflowSignal(params: SendWorkflowSignalParams): Promise<void> {
+    const workflowSignalsTable = this.workflowSignalsTable();
+    const workflowRunsTable = this.workflowRunsTable();
+
+    if (params.idempotencyKey !== null) {
+      const [existing] = await this.pg<{ id: string }[]>`
+        SELECT "id"
+        FROM ${workflowSignalsTable}
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "workflow_run_id" = ${params.workflowRunId}
+          AND "idempotency_key" = ${params.idempotencyKey}
+        LIMIT 1
+      `;
+
+      if (existing) {
+        await this.wakeWorkflowRunForSignal(params.workflowRunId);
+        return;
+      }
+    }
+
+    const conflictClause =
+      params.idempotencyKey === null
+        ? this.pg``
+        : this.pg`
+            ON CONFLICT ("namespace_id", "workflow_run_id", "idempotency_key")
+            WHERE "idempotency_key" IS NOT NULL
+            DO NOTHING
+          `;
+
+    const [inserted] = await this.pg<{ id: string }[]>`
+      INSERT INTO ${workflowSignalsTable} (
+        "namespace_id",
+        "id",
+        "workflow_run_id",
+        "signal",
+        "data",
+        "idempotency_key",
+        "consumed_step_attempt_namespace_id",
+        "consumed_step_attempt_id",
+        "consumed_at",
+        "created_at",
+        "updated_at"
+      )
+      SELECT
+        ${this.namespaceId},
+        gen_random_uuid(),
+        ${params.workflowRunId},
+        ${params.signal},
+        ${this.pg.json(params.data)},
+        ${params.idempotencyKey},
+        NULL,
+        NULL,
+        NULL,
+        date_trunc('milliseconds', NOW()),
+        NOW()
+      FROM ${workflowRunsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "id" = ${params.workflowRunId}
+        AND "status" NOT IN ('succeeded', 'completed', 'failed', 'canceled')
+      ${conflictClause}
+      RETURNING "id"
+    `;
+
+    if (!inserted && params.idempotencyKey !== null) {
+      const [existing] = await this.pg<{ id: string }[]>`
+        SELECT "id"
+        FROM ${workflowSignalsTable}
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "workflow_run_id" = ${params.workflowRunId}
+          AND "idempotency_key" = ${params.idempotencyKey}
+        LIMIT 1
+      `;
+
+      if (existing) {
+        await this.wakeWorkflowRunForSignal(params.workflowRunId);
+        return;
+      }
+    }
+
+    if (!inserted) {
+      const workflowRun = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      if (!workflowRun) {
+        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
+      }
+
+      if (
+        ["succeeded", "completed", "failed", "canceled"].includes(
+          workflowRun.status,
+        )
+      ) {
+        throw new Error(
+          `Cannot send signal to workflow run ${params.workflowRunId} with status ${workflowRun.status}`,
+        );
+      }
+
+      throw new Error("Failed to send workflow signal");
+    }
+
+    await this.wakeWorkflowRunForSignal(params.workflowRunId);
+  }
+
+  async consumeWorkflowSignal(
+    params: ConsumeWorkflowSignalParams,
+  ): Promise<JsonValue | undefined> {
+    const workflowSignalsTable = this.workflowSignalsTable();
+    const stepAttemptsTable = this.stepAttemptsTable();
+    const workflowRunsTable = this.workflowRunsTable();
+
+    const [existing] = await this.pg<{ data: JsonValue | null }[]>`
+      SELECT "data"
+      FROM ${workflowSignalsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "workflow_run_id" = ${params.workflowRunId}
+        AND "signal" = ${params.signal}
+        AND "consumed_step_attempt_namespace_id" = ${this.namespaceId}
+        AND "consumed_step_attempt_id" = ${params.stepAttemptId}
+      ORDER BY "created_at" ASC, "id" ASC
+      LIMIT 1
+    `;
+
+    if (existing) {
+      return existing.data ?? null;
+    }
+
+    const [consumed] = await this.pg<{ data: JsonValue | null }[]>`
+      WITH candidate AS (
+        SELECT "id", "data"
+        FROM ${workflowSignalsTable}
+        WHERE "namespace_id" = ${this.namespaceId}
+          AND "workflow_run_id" = ${params.workflowRunId}
+          AND "signal" = ${params.signal}
+          AND "consumed_at" IS NULL
+        ORDER BY "created_at" ASC, "id" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE ${workflowSignalsTable} ws
+      SET
+        "consumed_step_attempt_namespace_id" = ${this.namespaceId},
+        "consumed_step_attempt_id" = ${params.stepAttemptId},
+        "consumed_at" = NOW(),
+        "updated_at" = NOW()
+      FROM candidate, ${stepAttemptsTable} sa, ${workflowRunsTable} wr
+      WHERE ws."namespace_id" = ${this.namespaceId}
+        AND ws."id" = candidate."id"
+        AND sa."namespace_id" = ${this.namespaceId}
+        AND sa."workflow_run_id" = ${params.workflowRunId}
+        AND sa."id" = ${params.stepAttemptId}
+        AND sa."kind" = 'signal-wait'
+        AND sa."status" = 'running'
+        AND wr."namespace_id" = sa."namespace_id"
+        AND wr."id" = sa."workflow_run_id"
+        AND wr."status" = 'running'
+        AND wr."worker_id" = ${params.workerId}
+      RETURNING candidate."data" AS "data"
+    `;
+
+    return consumed ? (consumed.data ?? null) : undefined;
+  }
+
   async listWorkflowRuns(
     params: ListWorkflowRunsParams,
   ): Promise<PaginatedResponse<WorkflowRun>> {
@@ -449,7 +613,8 @@ export class BackendPostgres implements Backend {
       AND wr."id" = ${workflowRunId}
       AND wr."status" = 'running'
       AND wr."worker_id" IS NULL
-      AND EXISTS (
+      AND (
+        EXISTS (
         SELECT 1
         FROM ${stepAttemptsTable} sa
         JOIN ${workflowRunsTable} child
@@ -460,6 +625,19 @@ export class BackendPostgres implements Backend {
         AND sa."kind" = 'workflow'
         AND sa."status" = 'running'
         AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+      ) OR EXISTS (
+        SELECT 1
+        FROM ${stepAttemptsTable} sa
+        JOIN ${this.workflowSignalsTable()} ws
+          ON ws."namespace_id" = sa."namespace_id"
+          AND ws."workflow_run_id" = sa."workflow_run_id"
+          AND ws."signal" = sa."context"->>'signal'
+        WHERE sa."namespace_id" = wr."namespace_id"
+        AND sa."workflow_run_id" = wr."id"
+        AND sa."kind" = 'signal-wait'
+        AND sa."status" = 'running'
+        AND ws."consumed_at" IS NULL
+      )
       )
       RETURNING wr.*
     `;
@@ -649,6 +827,25 @@ export class BackendPostgres implements Backend {
     await this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  private async wakeWorkflowRunForSignal(workflowRunId: string): Promise<void> {
+    const workflowRunsTable = this.workflowRunsTable();
+
+    await this.pg`
+      UPDATE ${workflowRunsTable}
+      SET
+        "available_at" = CASE
+          WHEN "available_at" IS NULL OR "available_at" > NOW()
+            THEN NOW()
+          ELSE "available_at"
+        END,
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+        AND "id" = ${workflowRunId}
+        AND "status" IN ('pending', 'running', 'sleeping')
+        AND "worker_id" IS NULL
+    `;
   }
 
   private async wakeParentWorkflowRun(
@@ -941,6 +1138,10 @@ export class BackendPostgres implements Backend {
 
   private stepAttemptsTable(pg: Postgres = this.pg) {
     return pg`${pg(this.schema)}.${pg("step_attempts")}`;
+  }
+
+  private workflowSignalsTable(pg: Postgres = this.pg) {
+    return pg`${pg(this.schema)}.${pg("workflow_signals")}`;
   }
 }
 

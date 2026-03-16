@@ -105,6 +105,7 @@ of coordination. There is no separate orchestrator server.
                       |                              |
                       | - workflow_runs              |
                       | - step_attempts              |
+                      | - workflow_signals           |
                       +------------------------------+
 ```
 
@@ -122,9 +123,9 @@ of coordination. There is no separate orchestrator server.
   `npx @openworkflow/cli worker start` with
   auto-discovery of workflow files.
 - **Backend**: The source of truth. It stores workflow runs and step attempts.
-  The `workflow_runs` table serves as the job queue for the workers, while the
-  `step_attempts` table serves as a record of started and completed work,
-  enabling memoization.
+  The `workflow_runs` table serves as the job queue for the workers, the
+  `step_attempts` table serves as a record of started and completed work, and
+  the `workflow_signals` buffers signals until a waiting step consumes them.
 
 ### 2.3. Basic Execution Flow
 
@@ -149,7 +150,7 @@ of coordination. There is no separate orchestrator server.
     `step_attempt` record with status `running`, executes the step function, and
     then updates the `step_attempt` to `completed` upon completion. The Worker
     continues executing inline until the workflow code completes or encounters a
-    sleep.
+    durable wait such as sleep, child-workflow waiting, or signal waiting.
 6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
     it is created and completed, and updates the status of the `workflow_run`
     (e.g., `completed`, `running` for parked waits).
@@ -234,10 +235,23 @@ target workflow name in `spec`) and `options.timeout` controls the wait timeout
 (default 1y). When the timeout is reached, the parent step fails but the child
 workflow continues running independently.
 
-All step APIs (`step.run`, `step.sleep`, and `step.runWorkflow`) share the same
-collision logic for durable keys. If duplicate base names are encountered in one
-execution pass, OpenWorkflow auto-indexes them as `name`, `name:1`, `name:2`,
-and so on so each step call maps to a distinct step attempt.
+**`step.sendSignal(workflowRunId, signal, options?)`**: Sends signal to another
+workflow run as a durable step. The signal is stored in `workflow_signals` and
+retried safely using a deterministic idempotency key derived from the logical
+step name.
+
+**`step.waitForSignal(signal, options?)`**: Waits durably for the next buffered
+signal with that name for the current workflow run. The common-case API uses
+the signal string itself as the durable step name. When needed,
+`step.waitForSignal({ name, signal, timeout, schema })` lets callers override
+the durable step name explicitly. Waits return the parsed payload or `null` on
+timeout.
+
+All step APIs (`step.run`, `step.sleep`, `step.runWorkflow`,
+`step.sendSignal`, and `step.waitForSignal`) share the same collision logic for
+durable keys. If duplicate base names are encountered in one execution pass,
+OpenWorkflow auto-indexes them as `name`, `name:1`, `name:2`, and so on so each
+step call maps to a distinct step attempt.
 
 ## 4. Error Handling & Retries
 

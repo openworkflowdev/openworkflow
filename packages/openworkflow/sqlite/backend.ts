@@ -16,6 +16,8 @@ import {
   FailStepAttemptParams,
   CompleteStepAttemptParams,
   SetStepAttemptChildWorkflowRunParams,
+  SendWorkflowSignalParams,
+  ConsumeWorkflowSignalParams,
   FailWorkflowRunParams,
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
   CompleteWorkflowRunParams,
@@ -236,6 +238,199 @@ export class BackendSqlite implements Backend {
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }
 
+  async sendWorkflowSignal(params: SendWorkflowSignalParams): Promise<void> {
+    const currentTime = now();
+
+    if (params.idempotencyKey !== null) {
+      const existing = this.db
+        .prepare(
+          `
+        SELECT 1
+        FROM "workflow_signals"
+        WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+          AND "idempotency_key" = ?
+        LIMIT 1
+      `,
+        )
+        .get(this.namespaceId, params.workflowRunId, params.idempotencyKey) as
+        | { 1: number }
+        | undefined;
+
+      if (existing) {
+        this.wakeWorkflowRunForSignal(params.workflowRunId, currentTime);
+        return;
+      }
+    }
+
+    const stmt = this.db.prepare(`
+      INSERT ${params.idempotencyKey === null ? "" : "OR IGNORE "}INTO "workflow_signals" (
+        "namespace_id",
+        "id",
+        "workflow_run_id",
+        "signal",
+        "data",
+        "idempotency_key",
+        "consumed_step_attempt_namespace_id",
+        "consumed_step_attempt_id",
+        "consumed_at",
+        "created_at",
+        "updated_at"
+      )
+      SELECT ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+        AND "id" = ?
+        AND "status" NOT IN ('succeeded', 'completed', 'failed', 'canceled')
+    `);
+
+    const result = stmt.run(
+      this.namespaceId,
+      generateUUID(),
+      params.workflowRunId,
+      params.signal,
+      toJSON(params.data),
+      params.idempotencyKey,
+      currentTime,
+      currentTime,
+      this.namespaceId,
+      params.workflowRunId,
+    );
+
+    if (result.changes === 0 && params.idempotencyKey !== null) {
+      const existing = this.db
+        .prepare(
+          `
+        SELECT 1
+        FROM "workflow_signals"
+        WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+          AND "idempotency_key" = ?
+        LIMIT 1
+      `,
+        )
+        .get(this.namespaceId, params.workflowRunId, params.idempotencyKey) as
+        | { 1: number }
+        | undefined;
+
+      if (existing) {
+        this.wakeWorkflowRunForSignal(params.workflowRunId, currentTime);
+        return;
+      }
+    }
+
+    if (result.changes === 0) {
+      const workflowRun = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      if (!workflowRun) {
+        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
+      }
+
+      if (
+        ["succeeded", "completed", "failed", "canceled"].includes(
+          workflowRun.status,
+        )
+      ) {
+        throw new Error(
+          `Cannot send signal to workflow run ${params.workflowRunId} with status ${workflowRun.status}`,
+        );
+      }
+
+      throw new Error("Failed to send workflow signal");
+    }
+
+    this.wakeWorkflowRunForSignal(params.workflowRunId, currentTime);
+  }
+
+  consumeWorkflowSignal(
+    params: ConsumeWorkflowSignalParams,
+  ): Promise<JsonValue | undefined> {
+    const existing = this.db
+      .prepare(
+        `
+      SELECT "data"
+      FROM "workflow_signals"
+      WHERE "namespace_id" = ?
+        AND "workflow_run_id" = ?
+        AND "signal" = ?
+        AND "consumed_step_attempt_namespace_id" = ?
+        AND "consumed_step_attempt_id" = ?
+      ORDER BY "created_at" ASC, "id" ASC
+      LIMIT 1
+    `,
+      )
+      .get(
+        this.namespaceId,
+        params.workflowRunId,
+        params.signal,
+        this.namespaceId,
+        params.stepAttemptId,
+      ) as { data: string | null } | undefined;
+
+    if (existing) {
+      return Promise.resolve(fromJSON(existing.data) as JsonValue | null);
+    }
+
+    const currentTime = now();
+    const row = this.db
+      .prepare(
+        `
+      UPDATE "workflow_signals"
+      SET
+        "consumed_step_attempt_namespace_id" = ?,
+        "consumed_step_attempt_id" = ?,
+        "consumed_at" = ?,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+        AND "id" = (
+          SELECT "id"
+          FROM "workflow_signals"
+          WHERE "namespace_id" = ?
+            AND "workflow_run_id" = ?
+            AND "signal" = ?
+            AND "consumed_at" IS NULL
+          ORDER BY "created_at" ASC, "id" ASC
+          LIMIT 1
+        )
+        AND "consumed_at" IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM "step_attempts" sa
+          JOIN "workflow_runs" wr
+            ON wr."namespace_id" = sa."namespace_id"
+            AND wr."id" = sa."workflow_run_id"
+          WHERE sa."namespace_id" = ?
+            AND sa."workflow_run_id" = ?
+            AND sa."id" = ?
+            AND sa."kind" = 'signal-wait'
+            AND sa."status" = 'running'
+            AND wr."status" = 'running'
+            AND wr."worker_id" = ?
+        )
+      RETURNING "data"
+    `,
+      )
+      .get(
+        this.namespaceId,
+        params.stepAttemptId,
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        this.namespaceId,
+        params.workflowRunId,
+        params.signal,
+        this.namespaceId,
+        params.workflowRunId,
+        params.stepAttemptId,
+        params.workerId,
+      ) as { data: string | null } | undefined;
+
+    return Promise.resolve(
+      row ? (fromJSON(row.data) as JsonValue | null) : undefined,
+    );
+  }
+
   async claimWorkflowRun(
     params: ClaimWorkflowRunParams,
   ): Promise<WorkflowRun | null> {
@@ -367,7 +562,8 @@ export class BackendSqlite implements Backend {
       SET
         "status" = 'running',
         "available_at" = CASE
-          WHEN EXISTS (
+          WHEN (
+            EXISTS (
             SELECT 1
             FROM "step_attempts" sa
             JOIN "workflow_runs" child
@@ -378,6 +574,19 @@ export class BackendSqlite implements Backend {
             AND sa."kind" = 'workflow'
             AND sa."status" = 'running'
             AND child."status" IN ('completed', 'succeeded', 'failed', 'canceled')
+          ) OR EXISTS (
+            SELECT 1
+            FROM "step_attempts" sa
+            JOIN "workflow_signals" ws
+              ON ws."namespace_id" = sa."namespace_id"
+              AND ws."workflow_run_id" = sa."workflow_run_id"
+              AND ws."signal" = json_extract(sa."context", '$.signal')
+            WHERE sa."namespace_id" = "workflow_runs"."namespace_id"
+            AND sa."workflow_run_id" = "workflow_runs"."id"
+            AND sa."kind" = 'signal-wait'
+            AND sa."status" = 'running'
+            AND ws."consumed_at" IS NULL
+          )
           ) AND ? > ? THEN ?
           ELSE ?
         END,
@@ -599,6 +808,35 @@ export class BackendSqlite implements Backend {
     this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  private wakeWorkflowRunForSignal(
+    workflowRunId: string,
+    currentTime: string,
+  ): void {
+    this.db
+      .prepare(
+        `
+      UPDATE "workflow_runs"
+      SET
+        "available_at" = CASE
+          WHEN "available_at" IS NULL OR "available_at" > ? THEN ?
+          ELSE "available_at"
+        END,
+        "updated_at" = ?
+      WHERE "namespace_id" = ?
+        AND "id" = ?
+        AND "status" IN ('pending', 'running', 'sleeping')
+        AND "worker_id" IS NULL
+    `,
+      )
+      .run(
+        currentTime,
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        workflowRunId,
+      );
   }
 
   private wakeParentWorkflowRun(childWorkflowRun: Readonly<WorkflowRun>): void {

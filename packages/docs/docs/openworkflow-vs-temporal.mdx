@@ -50,8 +50,9 @@ Temporal exposes multiple timeout classes and retry options per workflow and
 activity. That flexibility is useful when you need it.
 
 OpenWorkflow keeps the default surface smaller (`step.run`, `step.sleep`,
-retries with backoff, optional `deadlineAt`) and is often faster to adopt for
-TypeScript teams that want fewer moving parts.
+`step.runWorkflow`, `step.waitForSignal`, retries with backoff, optional
+`deadlineAt`) and is often faster to adopt for TypeScript teams that want fewer
+moving parts.
 
 ### Tradeoff: happy-path overhead vs resume-path replay CPU
 
@@ -67,8 +68,7 @@ resume.
 
 - **Polyglot platform**: You need one orchestration platform across multiple
   languages.
-- **Advanced runtime interaction**: You need Signals, Queries, Updates, or
-  Activity heartbeats. These are coming to OpenWorkflow but are available right
-  now in Temporal.
+- **Advanced runtime interaction**: You need the full Temporal surface such as
+  Queries, Updates, or Activity heartbeats.
 - **Dedicated platform ownership**: Your team can operate Temporal Server as
   shared infrastructure.

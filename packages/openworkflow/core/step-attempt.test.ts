@@ -6,6 +6,7 @@ import {
   normalizeStepOutput,
   calculateDateFromDuration,
   createSleepContext,
+  createSignalWaitContext,
   createWorkflowContext,
 } from "./step-attempt.js";
 import type { StepAttempt, StepAttemptCache } from "./step-attempt.js";
@@ -335,6 +336,19 @@ describe("createWorkflowContext", () => {
     expect(context).toEqual({
       kind: "workflow",
       timeoutAt: null,
+    });
+  });
+});
+
+describe("createSignalWaitContext", () => {
+  test("creates signal-wait context with signal and timeout", () => {
+    const timeoutAt = new Date("2025-06-15T10:30:00.000Z");
+    const context = createSignalWaitContext("approval", timeoutAt);
+
+    expect(context).toEqual({
+      kind: "signal-wait",
+      signal: "approval",
+      timeoutAt: "2025-06-15T10:30:00.000Z",
     });
   });
 });

@@ -566,3 +566,250 @@ describe("BackendSqlite workflow wake-up reconciliation", () => {
     }
   });
 });
+
+describe("BackendSqlite.sendWorkflowSignal fallback branches", () => {
+  type BackendSqliteCtor = new (
+    db: Database,
+    namespaceId: string,
+  ) => BackendSqlite;
+
+  test("re-reads an existing signal after an idempotent insert conflict", async () => {
+    let selectCount = 0;
+    const fakeDb = createFakeSqliteForSendWorkflowSignal((sql) => {
+      if (sql.startsWith('SELECT 1 FROM "workflow_signals"')) {
+        return {
+          get() {
+            selectCount += 1;
+            return selectCount === 2 ? { 1: 1 } : undefined;
+          },
+        };
+      }
+
+      if (sql.startsWith('INSERT OR IGNORE INTO "workflow_signals"')) {
+        return {
+          run() {
+            return { changes: 0 };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendSqlite as unknown as BackendSqliteCtor)(
+      fakeDb,
+      randomUUID(),
+    );
+    const wakeWorkflowRunForSignal = vi.fn();
+    const internalBackend = backend as unknown as {
+      wakeWorkflowRunForSignal: (
+        workflowRunId: string,
+        currentTime: string,
+      ) => void;
+    };
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+
+    await backend.sendWorkflowSignal({
+      workflowRunId: "workflow-run-id",
+      signal: "approval",
+      data: { approved: true },
+      idempotencyKey: "signal-key",
+    });
+
+    expect(selectCount).toBe(2);
+    expect(wakeWorkflowRunForSignal).toHaveBeenCalledTimes(1);
+    expect(wakeWorkflowRunForSignal).toHaveBeenCalledWith(
+      "workflow-run-id",
+      expect.any(String),
+    );
+  });
+
+  test("throws the generic error when no signal row is inserted for an active run", async () => {
+    const fakeDb = createFakeSqliteForSendWorkflowSignal((sql) => {
+      if (sql.startsWith('INSERT INTO "workflow_signals"')) {
+        return {
+          run() {
+            return { changes: 0 };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendSqlite as unknown as BackendSqliteCtor)(
+      fakeDb,
+      randomUUID(),
+    );
+    const wakeWorkflowRunForSignal = vi.fn();
+    const getWorkflowRun = vi.fn(() =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: "workflow-run-id",
+          status: "running",
+        }),
+      ),
+    );
+    const internalBackend = backend as unknown as {
+      wakeWorkflowRunForSignal: (
+        workflowRunId: string,
+        currentTime: string,
+      ) => void;
+      getWorkflowRun: typeof backend.getWorkflowRun;
+    };
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+    internalBackend.getWorkflowRun =
+      getWorkflowRun as unknown as typeof backend.getWorkflowRun;
+
+    await expect(
+      backend.sendWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        data: null,
+        idempotencyKey: null,
+      }),
+    ).rejects.toThrow("Failed to send workflow signal");
+
+    expect(getWorkflowRun).toHaveBeenCalledWith({
+      workflowRunId: "workflow-run-id",
+    });
+    expect(wakeWorkflowRunForSignal).not.toHaveBeenCalled();
+  });
+
+  test("throws the generic error when the idempotent fallback re-read still finds nothing", async () => {
+    let selectCount = 0;
+    const fakeDb = createFakeSqliteForSendWorkflowSignal((sql) => {
+      if (sql.startsWith('SELECT 1 FROM "workflow_signals"')) {
+        return {
+          get() {
+            selectCount += 1;
+          },
+        };
+      }
+
+      if (sql.startsWith('INSERT OR IGNORE INTO "workflow_signals"')) {
+        return {
+          run() {
+            return { changes: 0 };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected SQL: ${sql}`);
+    });
+    const backend = new (BackendSqlite as unknown as BackendSqliteCtor)(
+      fakeDb,
+      randomUUID(),
+    );
+    const wakeWorkflowRunForSignal = vi.fn();
+    const getWorkflowRun = vi.fn(() =>
+      Promise.resolve(
+        createMockWorkflowRun({
+          id: "workflow-run-id",
+          status: "running",
+        }),
+      ),
+    );
+    const internalBackend = backend as unknown as {
+      wakeWorkflowRunForSignal: (
+        workflowRunId: string,
+        currentTime: string,
+      ) => void;
+      getWorkflowRun: typeof backend.getWorkflowRun;
+    };
+    internalBackend.wakeWorkflowRunForSignal = wakeWorkflowRunForSignal;
+    internalBackend.getWorkflowRun =
+      getWorkflowRun as unknown as typeof backend.getWorkflowRun;
+
+    await expect(
+      backend.sendWorkflowSignal({
+        workflowRunId: "workflow-run-id",
+        signal: "approval",
+        data: null,
+        idempotencyKey: "signal-key",
+      }),
+    ).rejects.toThrow("Failed to send workflow signal");
+
+    expect(selectCount).toBe(2);
+    expect(getWorkflowRun).toHaveBeenCalledWith({
+      workflowRunId: "workflow-run-id",
+    });
+    expect(wakeWorkflowRunForSignal).not.toHaveBeenCalled();
+  });
+});
+
+function createFakeSqliteForSendWorkflowSignal(
+  handler: (sql: string) => {
+    get?: (...args: unknown[]) => unknown;
+    run?: (...args: unknown[]) => { changes: number };
+  },
+): Database {
+  return {
+    exec() {
+      throw new Error("exec should not be called in this test");
+    },
+    prepare(sql: string) {
+      const normalized = sql.replaceAll(/\s+/g, " ").trim();
+      return handler(normalized) as ReturnType<Database["prepare"]>;
+    },
+    close() {
+      // no-op for tests
+    },
+  } as Database;
+}
+
+function createMockWorkflowRun(
+  overrides: Partial<{
+    namespaceId: string;
+    id: string;
+    workflowName: string;
+    version: string | null;
+    status:
+      | "pending"
+      | "running"
+      | "sleeping"
+      | "completed"
+      | "succeeded"
+      | "failed"
+      | "canceled";
+    idempotencyKey: string | null;
+    config: Record<string, unknown>;
+    context: Record<string, unknown> | null;
+    input: Record<string, unknown> | null;
+    output: Record<string, unknown> | null;
+    error: Record<string, unknown> | null;
+    attempts: number;
+    parentStepAttemptNamespaceId: string | null;
+    parentStepAttemptId: string | null;
+    workerId: string | null;
+    availableAt: Date | null;
+    deadlineAt: Date | null;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = {},
+) {
+  return {
+    namespaceId: "default",
+    id: "workflow-run-id",
+    workflowName: "workflow-name",
+    version: null,
+    status: "running",
+    idempotencyKey: null,
+    config: {},
+    context: null,
+    input: null,
+    output: null,
+    error: null,
+    attempts: 1,
+    parentStepAttemptNamespaceId: null,
+    parentStepAttemptId: null,
+    workerId: "worker-id",
+    availableAt: null,
+    deadlineAt: null,
+    startedAt: new Date("2026-01-01T00:00:00.000Z"),
+    finishedAt: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}

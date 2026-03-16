@@ -1436,6 +1436,201 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
+    describe("workflow signals", () => {
+      test("buffers signals and consumes them in FIFO order", async () => {
+        const claimed = await createClaimedWorkflowRun(backend);
+        const firstWait = await createSignalWaitAttempt(backend, claimed.id);
+
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: { order: 1 },
+          idempotencyKey: null,
+        });
+        await sleep(10);
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: { order: 2 },
+          idempotencyKey: null,
+        });
+
+        const first = await backend.consumeWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          stepAttemptId: firstWait.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        const firstReplay = await backend.consumeWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          stepAttemptId: firstWait.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+
+        expect(first).toEqual({ order: 1 });
+        expect(firstReplay).toEqual({ order: 1 });
+
+        await backend.completeStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: firstWait.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: first ?? null,
+        });
+
+        const secondWait = await createSignalWaitAttempt(backend, claimed.id);
+        const second = await backend.consumeWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          stepAttemptId: secondWait.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+
+        expect(second).toEqual({ order: 2 });
+      });
+
+      test("dedupes client sends by idempotency key", async () => {
+        const claimed = await createClaimedWorkflowRun(backend);
+
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: { accepted: true },
+          idempotencyKey: "signal-key",
+        });
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: { accepted: false },
+          idempotencyKey: "signal-key",
+        });
+
+        const waitAttempt = await createSignalWaitAttempt(backend, claimed.id);
+        const consumed = await backend.consumeWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          stepAttemptId: waitAttempt.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+
+        expect(consumed).toEqual({ accepted: true });
+
+        await backend.completeStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: waitAttempt.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: consumed ?? null,
+        });
+
+        const secondWait = await createSignalWaitAttempt(backend, claimed.id);
+        const next = await backend.consumeWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          stepAttemptId: secondWait.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+
+        expect(next).toBeUndefined();
+      });
+
+      test("wakes idle runs but does not steal active leases", async () => {
+        const futureRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: newDateInOneYear(),
+          deadlineAt: null,
+        });
+
+        await backend.sendWorkflowSignal({
+          workflowRunId: futureRun.id,
+          signal: "approval",
+          data: null,
+          idempotencyKey: null,
+        });
+
+        const woken = await backend.getWorkflowRun({
+          workflowRunId: futureRun.id,
+        });
+        expect(woken?.workerId).toBeNull();
+        expect(deltaSeconds(woken?.availableAt)).toBeLessThan(1);
+
+        const claimed = await createClaimedWorkflowRun(backend);
+        const leasedAvailableAt = claimed.availableAt;
+
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: null,
+          idempotencyKey: null,
+        });
+
+        const stillLeased = await backend.getWorkflowRun({
+          workflowRunId: claimed.id,
+        });
+        expect(stillLeased?.workerId).toBe(claimed.workerId);
+        expect(stillLeased?.availableAt?.getTime()).toBe(
+          leasedAvailableAt?.getTime(),
+        );
+      });
+
+      test("reconciles parked signal waits that already have pending signals", async () => {
+        const claimed = await createClaimedWorkflowRun(backend);
+        await createSignalWaitAttempt(backend, claimed.id);
+
+        await backend.sendWorkflowSignal({
+          workflowRunId: claimed.id,
+          signal: "approval",
+          data: { approved: true },
+          idempotencyKey: null,
+        });
+
+        const parked = await backend.sleepWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        expect(parked.workerId).toBeNull();
+        expect(deltaSeconds(parked.availableAt)).toBeLessThan(1);
+      });
+
+      test("rejects sends to missing and terminal workflow runs", async () => {
+        const missingId = randomUUID();
+        await expect(
+          backend.sendWorkflowSignal({
+            workflowRunId: missingId,
+            signal: "approval",
+            data: null,
+            idempotencyKey: null,
+          }),
+        ).rejects.toThrow(`Workflow run ${missingId} does not exist`);
+
+        const claimed = await createClaimedWorkflowRun(backend);
+        await backend.completeWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output: null,
+        });
+
+        await expect(
+          backend.sendWorkflowSignal({
+            workflowRunId: claimed.id,
+            signal: "approval",
+            data: null,
+            idempotencyKey: null,
+          }),
+        ).rejects.toThrow(
+          `Cannot send signal to workflow run ${claimed.id} with status completed`,
+        );
+      });
+    });
+
     describe("setStepAttemptChildWorkflowRun()", () => {
       test("sets child workflow linkage on a running step attempt", async () => {
         const parentRun = await createClaimedWorkflowRun(backend);
@@ -2267,6 +2462,32 @@ async function createClaimedWorkflowRun(b: Backend) {
   if (!claimed) throw new Error("Failed to claim workflow run");
 
   return claimed;
+}
+
+/**
+ * Create a running signal-wait step attempt for tests.
+ * @param b - Backend
+ * @param workflowRunId - Parent workflow run id
+ * @returns Created step attempt
+ */
+async function createSignalWaitAttempt(b: Backend, workflowRunId: string) {
+  const workflowRun = await b.getWorkflowRun({ workflowRunId });
+  if (!workflowRun?.workerId) {
+    throw new Error("Expected claimed workflow run");
+  }
+
+  return await b.createStepAttempt({
+    workflowRunId,
+    workerId: workflowRun.workerId,
+    stepName: randomUUID(),
+    kind: "signal-wait",
+    config: {},
+    context: {
+      kind: "signal-wait",
+      signal: "approval",
+      timeoutAt: newDateInOneYear().toISOString(),
+    },
+  });
 }
 
 /**
