@@ -85,7 +85,7 @@ Migrations run automatically when the backend connects. OpenWorkflow creates:
 - `<schema>.workflow_runs` - Stores workflow run state
 - `<schema>.step_attempts` - Stores step execution history
 
-### 4. Deploy Workers
+### 4. Start Workers
 
 <CodeGroup>
 ```bash npm
@@ -98,6 +98,52 @@ pnpx @openworkflow/cli worker start
 
 ```bash bun
 bunx @openworkflow/cli worker start
+```
+
+</CodeGroup>
+
+### Dockerfile Templates
+
+If you deploy workers in containers, these Dockerfile templates are a good
+starting point:
+
+<CodeGroup>
+```dockerfile npm
+FROM node:22-slim
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+CMD ["npx", "@openworkflow/cli", "worker", "start"]
+
+````
+
+```dockerfile pnpm
+FROM node:22-slim
+RUN corepack enable
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
+
+CMD ["pnpx", "@openworkflow/cli", "worker", "start"]
+````
+
+```dockerfile bun
+FROM oven/bun:1
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+COPY . .
+
+CMD ["bunx", "@openworkflow/cli", "worker", "start"]
 ```
 
 </CodeGroup>
