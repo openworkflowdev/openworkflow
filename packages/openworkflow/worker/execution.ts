@@ -242,7 +242,7 @@ export function createStepExecutionStateFromAttempts(
 }
 
 /**
- * Resolve workflow timeout input to an absolute deadline.
+ * Resolve a step wait timeout input to an absolute deadline.
  * @param timeout - Relative/absolute timeout input
  * @returns Absolute timeout deadline
  * @throws {Error} When timeout is invalid
@@ -258,7 +258,7 @@ function resolveWaitTimeoutAt(timeout?: StepWaitTimeout): Date {
 
   if (typeof timeout === "number") {
     if (!Number.isFinite(timeout) || timeout < 0) {
-      throw new Error("Workflow timeout must be a non-negative number");
+      throw new Error("Step wait timeout must be a non-negative number");
     }
     return new Date(Date.now() + timeout);
   }
@@ -271,7 +271,7 @@ function resolveWaitTimeoutAt(timeout?: StepWaitTimeout): Date {
 }
 
 /**
- * Default workflow timeout: 1 year from a base time.
+ * Default step wait timeout: 1 year from a base time.
  * @param base - Base timestamp (defaults to now)
  * @returns Timeout deadline
  */

@@ -721,7 +721,7 @@ describe("StepExecutor", () => {
 
     expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
-      /Workflow timeout must be a non-negative number/,
+      /Step wait timeout must be a non-negative number/,
     );
   });
 
@@ -2570,6 +2570,33 @@ describe("StepExecutor", () => {
       await worker.tick();
 
       await expect(handle.result()).resolves.toBeNull();
+    });
+
+    test("fails when a signal wait timeout number is invalid", async () => {
+      const backend = await createBackend();
+      const client = new OpenWorkflow({ backend });
+
+      const workflow = client.defineWorkflow(
+        { name: `signal-invalid-timeout-number-${randomUUID()}` },
+        async ({ step }) => {
+          return await step.waitForSignal("approval", { timeout: -1 });
+        },
+      );
+
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        150,
+        10,
+      );
+
+      expect(status).toBe("failed");
+      await expect(handle.result()).rejects.toThrow(
+        /Step wait timeout must be a non-negative number/,
+      );
     });
 
     test("fails when a consumed signal does not match the schema", async () => {
