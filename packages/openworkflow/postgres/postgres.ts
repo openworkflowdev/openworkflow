@@ -223,7 +223,7 @@ export function migrations(schema: string): string[] {
       PRIMARY KEY ("namespace_id", "id")
     );
 
-    CREATE INDEX IF NOT EXISTS "workflow_signals_step_attempt_idx"
+    CREATE UNIQUE INDEX IF NOT EXISTS "workflow_signals_step_attempt_idx"
     ON ${quotedSchema}."workflow_signals" ("namespace_id", "step_attempt_id");
 
     CREATE INDEX IF NOT EXISTS "workflow_signals_idempotency_idx"

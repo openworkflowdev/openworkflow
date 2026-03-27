@@ -281,7 +281,7 @@ export class BackendSqlite implements Backend {
       }
 
       const insertStmt = this.db.prepare(`
-        INSERT INTO "workflow_signals" (
+        INSERT OR IGNORE INTO "workflow_signals" (
           "namespace_id", "id", "signal", "data",
           "sender_idempotency_key", "workflow_run_id",
           "step_attempt_id", "created_at"

@@ -2416,6 +2416,90 @@ export function testBackend(options: TestBackendOptions): void {
 
         expect(first.workflowRunIds).toEqual(second.workflowRunIds);
       });
+
+      test("duplicate send to same waiter delivers at most once", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const signalString = `dup-send-${randomUUID()}`;
+
+        const step = await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        // send the same signal twice (no idempotency key — different senders)
+        await backend.sendSignal({
+          signal: signalString,
+          data: { first: true },
+          idempotencyKey: null,
+        });
+        await backend.sendSignal({
+          signal: signalString,
+          data: { second: true },
+          idempotencyKey: null,
+        });
+
+        // only the first delivery should be stored
+        const delivered = await backend.getSignalDelivery({
+          stepAttemptId: step.id,
+        });
+        expect(delivered).toEqual({ first: true });
+      });
+
+      test("idempotent send does not create duplicate delivery rows", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const signalString = `idem-dup-${randomUUID()}`;
+        const idempotencyKey = randomUUID();
+
+        const step = await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        await backend.sendSignal({
+          signal: signalString,
+          data: { original: true },
+          idempotencyKey,
+        });
+
+        // second send with same idempotency key
+        await backend.sendSignal({
+          signal: signalString,
+          data: { duplicate: true },
+          idempotencyKey,
+        });
+
+        // should still return the original delivery, not the duplicate
+        const delivered = await backend.getSignalDelivery({
+          stepAttemptId: step.id,
+        });
+        expect(delivered).toEqual({ original: true });
+      });
     });
 
     describe("getSignalDelivery()", () => {

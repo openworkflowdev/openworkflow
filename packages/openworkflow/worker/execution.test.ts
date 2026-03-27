@@ -2727,6 +2727,43 @@ describe("StepExecutor", () => {
       .toSorted((a, b) => a.localeCompare(b));
     expect(signalSteps).toEqual(["notify", "notify:1"]);
   });
+
+  test("waitForSignal is replay-safe across re-executions", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `replay-wait-${randomUUID()}`;
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-wait-replay-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+        });
+        const value = await step.run({ name: "after-signal" }, () => "ok");
+        return { data, value };
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const handle = await workflow.run();
+
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
+
+    await client.sendSignal({ signal: signalString, data: { x: 1 } });
+
+    // resume — the first replay hits the cached waitForSignal path
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await handle.result();
+    expect(result).toEqual({ data: { x: 1 }, value: "ok" });
+  });
 });
 
 describe("executeWorkflow", () => {

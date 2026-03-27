@@ -302,6 +302,7 @@ export class BackendPostgres implements Backend {
               ${w.id},
               NOW()
             )
+            ON CONFLICT ("namespace_id", "step_attempt_id") DO NOTHING
           `;
       }
 
