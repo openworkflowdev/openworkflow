@@ -68,6 +68,12 @@ export interface Backend {
     params: Readonly<SetStepAttemptChildWorkflowRunParams>,
   ): Promise<StepAttempt>;
 
+  // Signals
+  sendSignal(params: Readonly<SendSignalParams>): Promise<SendSignalResult>;
+  getSignalDelivery(
+    params: Readonly<GetSignalDeliveryParams>,
+  ): Promise<JsonValue | undefined>;
+
   // Lifecycle
   stop(): Promise<void>;
 }
@@ -171,6 +177,20 @@ export interface SetStepAttemptChildWorkflowRunParams {
   workerId: string;
   childWorkflowRunNamespaceId: string;
   childWorkflowRunId: string;
+}
+
+export interface SendSignalParams {
+  signal: string;
+  data: JsonValue | null;
+  idempotencyKey: string | null;
+}
+
+export interface SendSignalResult {
+  workflowRunIds: string[];
+}
+
+export interface GetSignalDeliveryParams {
+  stepAttemptId: string;
 }
 
 export interface PaginationOptions {

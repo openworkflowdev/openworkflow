@@ -7,6 +7,7 @@ import {
   calculateDateFromDuration,
   createSleepContext,
   createWorkflowContext,
+  createSignalWaitContext,
 } from "./step-attempt.js";
 import type { StepAttempt, StepAttemptCache } from "./step-attempt.js";
 import { describe, expect, test } from "vitest";
@@ -336,6 +337,26 @@ describe("createWorkflowContext", () => {
       kind: "workflow",
       timeoutAt: null,
     });
+  });
+});
+
+describe("createSignalWaitContext", () => {
+  test("creates signal-wait context with signal and timeout", () => {
+    const timeoutAt = new Date("2025-06-15T10:30:00.000Z");
+    const context = createSignalWaitContext("approval:order_456", timeoutAt);
+
+    expect(context).toEqual({
+      kind: "signal-wait",
+      signal: "approval:order_456",
+      timeoutAt: "2025-06-15T10:30:00.000Z",
+    });
+  });
+
+  test("preserves millisecond precision in timeout", () => {
+    const timeoutAt = new Date("2025-01-01T00:00:00.123Z");
+    const context = createSignalWaitContext("test-signal", timeoutAt);
+
+    expect(context.timeoutAt).toBe("2025-01-01T00:00:00.123Z");
   });
 });
 

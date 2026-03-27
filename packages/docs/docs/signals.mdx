@@ -1,0 +1,345 @@
+---
+title: Signals
+description: Send data between workflows at runtime without polling
+---
+
+Signals let workflows communicate at runtime. A workflow can pause and wait for
+a signal, and another workflow (or your application code) can send that signal
+to wake it up with data attached.
+
+This is useful any time a workflow needs to wait for something that isn't on a
+timer: a human approval, a webhook callback, a payment confirmation, or a
+coordination message from another workflow.
+
+## Basic Usage
+
+### Waiting for a Signal
+
+Use `step.waitForSignal()` inside a workflow to pause until a matching signal
+arrives:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const approvalWorkflow = defineWorkflow(
+  { name: "approval-workflow" },
+  async ({ input, step }) => {
+    await step.run({ name: "request-approval" }, async () => {
+      await slack.send({
+        channel: "#approvals",
+        text: `Please approve order ${input.orderId}`,
+      });
+    });
+
+    // wait until someone sends the "approval" signal
+    const decision = await step.waitForSignal<{ approved: boolean }>({
+      signal: `approval:${input.orderId}`,
+      timeout: "7d",
+    });
+
+    if (decision?.approved) {
+      await step.run({ name: "process-order" }, async () => {
+        await orders.process(input.orderId);
+      });
+    }
+  },
+);
+```
+
+### Sending a Signal
+
+Send a signal from another workflow using `step.sendSignal()`:
+
+```ts
+export const reviewWorkflow = defineWorkflow(
+  { name: "review-workflow" },
+  async ({ input, step }) => {
+    const verdict = await step.run({ name: "run-review" }, async () => {
+      return await reviewService.evaluate(input.orderId);
+    });
+
+    await step.sendSignal({
+      signal: `approval:${input.orderId}`,
+      data: { approved: verdict.passed },
+    });
+  },
+);
+```
+
+Or send a signal from your application code using the client:
+
+```ts
+import { ow } from "./openworkflow/client";
+
+// from an API route, webhook handler, etc.
+await ow.sendSignal({
+  signal: `approval:${orderId}`,
+  data: { approved: true },
+});
+```
+
+<Warning>
+  Signals are not buffered. If you send a signal before any workflow is waiting
+  for it, the signal is lost.
+</Warning>
+
+## Signal Names
+
+Signal names are arbitrary strings scoped to the backend namespace. Use
+descriptive, unique names — often including an entity ID — to avoid collisions:
+
+```ts
+// Good - scoped to a specific entity
+await step.waitForSignal({ signal: `payment:${invoiceId}` });
+await step.waitForSignal({ signal: `approval:order:${orderId}` });
+
+// Bad - too generic, could collide across workflows
+await step.waitForSignal({ signal: "done" });
+```
+
+## Step Names
+
+Like other step types, signal steps need unique names within a workflow. If you
+don't provide one, OpenWorkflow uses the signal name as the step name.
+
+```ts
+// Implicit — step name defaults to signal name
+await step.waitForSignal({ signal: `payment:${invoiceId}` });
+
+// Explicit step name
+await step.waitForSignal({
+  name: "wait-for-payment",
+  signal: `payment:${invoiceId}`,
+});
+```
+
+## Timeout
+
+`step.waitForSignal` accepts an optional `timeout`. If the signal doesn't
+arrive before the timeout, the step resolves with `null` instead of blocking
+forever.
+
+```ts
+const result = await step.waitForSignal({
+  signal: `approval:${orderId}`,
+  timeout: "24h",
+});
+
+if (result === null) {
+  // timed out — no signal arrived within 24 hours
+  await step.run({ name: "escalate" }, async () => {
+    await alerts.send("Approval timed out");
+  });
+}
+```
+
+`timeout` accepts a [duration string](/docs/sleeping#duration-formats), a
+number of milliseconds, or a `Date`.
+
+If no timeout is specified, the wait defaults to **1 year**.
+
+## Schema Validation
+
+Validate signal payloads at receive time using any
+[Standard Schema](/docs/standard-schema) compatible validator:
+
+```ts
+import { z } from "zod";
+
+const approvalSchema = z.object({
+  approved: z.boolean(),
+  reviewedBy: z.string(),
+});
+
+const decision = await step.waitForSignal({
+  signal: `approval:${orderId}`,
+  schema: approvalSchema,
+  timeout: "7d",
+});
+
+// `decision` is typed as { approved: boolean; reviewedBy: string } | null
+```
+
+If the signal data doesn't match the schema, the step fails permanently (no
+retries) to surface the contract violation immediately.
+
+## Idempotency
+
+When sending signals from the client, you can provide an idempotency key to
+safely retry without delivering the signal twice:
+
+```ts
+await ow.sendSignal({
+  signal: `payment:${invoiceId}`,
+  data: { amount: 99.99 },
+  idempotencyKey: `payment-confirmed:${invoiceId}`,
+});
+```
+
+If a signal with the same idempotency key has already been sent, the call
+returns the original result without re-delivering.
+
+## Fan-Out: One Signal, Many Waiters
+
+A single `sendSignal` call delivers to **every** workflow currently waiting on
+that signal name. This makes fan-out coordination straightforward:
+
+```ts
+// Multiple workflows waiting on the same signal
+const workflowA = defineWorkflow({ name: "listener-a" }, async ({ step }) => {
+  const data = await step.waitForSignal({ signal: "config-updated" });
+  // handle update
+});
+
+const workflowB = defineWorkflow({ name: "listener-b" }, async ({ step }) => {
+  const data = await step.waitForSignal({ signal: "config-updated" });
+  // handle update
+});
+
+// One signal wakes both workflows
+await ow.sendSignal({
+  signal: "config-updated",
+  data: { version: 42 },
+});
+```
+
+## Sending Signals from Workflows
+
+Use `step.sendSignal()` inside a workflow to send signals durably. The send is
+recorded as a step attempt, so it won't be repeated on replay:
+
+```ts
+const result = await step.sendSignal({
+  signal: `approval:${orderId}`,
+  data: { approved: true },
+});
+
+// result.workflowRunIds contains IDs of workflows that received the signal
+```
+
+## Common Patterns
+
+### Human-in-the-Loop Approval
+
+```ts
+export const purchaseWorkflow = defineWorkflow(
+  { name: "purchase" },
+  async ({ input, step }) => {
+    await step.run({ name: "send-approval-request" }, async () => {
+      await email.send({
+        to: input.managerEmail,
+        subject: `Approve purchase: $${input.amount}`,
+        body: `Click to approve: ${approvalUrl(input.purchaseId)}`,
+      });
+    });
+
+    const approval = await step.waitForSignal<{ approved: boolean }>({
+      signal: `purchase-approval:${input.purchaseId}`,
+      timeout: "3d",
+    });
+
+    if (!approval?.approved) {
+      await step.run({ name: "notify-rejected" }, async () => {
+        await email.send({
+          to: input.requesterEmail,
+          subject: "Purchase request denied",
+        });
+      });
+      return { status: "rejected" };
+    }
+
+    await step.run({ name: "process-purchase" }, async () => {
+      await purchasing.submit(input.purchaseId);
+    });
+
+    return { status: "approved" };
+  },
+);
+
+// in your API route handler:
+app.post("/approve/:purchaseId", async (req, res) => {
+  await ow.sendSignal({
+    signal: `purchase-approval:${req.params.purchaseId}`,
+    data: { approved: req.body.approved },
+  });
+  res.json({ ok: true });
+});
+```
+
+### Webhook Callback
+
+```ts
+export const paymentWorkflow = defineWorkflow(
+  { name: "payment" },
+  async ({ input, step }) => {
+    const checkout = await step.run({ name: "create-checkout" }, async () => {
+      return await stripe.checkout.sessions.create({
+        metadata: { workflowSignal: `payment:${input.orderId}` },
+        // ...
+      });
+    });
+
+    const payment = await step.waitForSignal({
+      signal: `payment:${input.orderId}`,
+      timeout: "1h",
+    });
+
+    if (!payment) {
+      return { status: "expired" };
+    }
+
+    await step.run({ name: "fulfill-order" }, async () => {
+      await orders.fulfill(input.orderId);
+    });
+
+    return { status: "paid" };
+  },
+);
+
+// in your Stripe webhook handler:
+app.post("/webhooks/stripe", async (req, res) => {
+  const event = req.body;
+  if (event.type === "checkout.session.completed") {
+    await ow.sendSignal({
+      signal: event.data.object.metadata.workflowSignal,
+      data: { sessionId: event.data.object.id },
+      idempotencyKey: event.id,
+    });
+  }
+  res.sendStatus(200);
+});
+```
+
+### Workflow-to-Workflow Coordination
+
+```ts
+const producer = defineWorkflow(
+  { name: "data-producer" },
+  async ({ input, step }) => {
+    const data = await step.run({ name: "generate-data" }, async () => {
+      return await heavyComputation(input);
+    });
+
+    await step.sendSignal({
+      signal: `data-ready:${input.batchId}`,
+      data: { recordCount: data.length },
+    });
+  },
+);
+
+const consumer = defineWorkflow(
+  { name: "data-consumer" },
+  async ({ input, step }) => {
+    const notification = await step.waitForSignal({
+      signal: `data-ready:${input.batchId}`,
+      timeout: "1h",
+    });
+
+    if (notification) {
+      await step.run({ name: "process-data" }, async () => {
+        await processRecords(input.batchId, notification.recordCount);
+      });
+    }
+  },
+);
+```

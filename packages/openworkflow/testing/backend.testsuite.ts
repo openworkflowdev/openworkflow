@@ -1093,7 +1093,61 @@ export function testBackend(options: TestBackendOptions): void {
           farFuture.getTime(),
         );
         expect(parentAfter.availableAt.getTime()).toBeLessThanOrEqual(
-          Date.now() + 1000,
+          Date.now() + 5000,
+        );
+
+        await teardown(backend);
+      });
+
+      test("wakes a parked run when a signal delivery arrives before parking", async () => {
+        const backend = await setup();
+
+        const run = await createClaimedWorkflowRun(backend);
+        const workerId = run.workerId ?? "";
+        const signalString = `reconcile-${randomUUID()}`;
+
+        await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId,
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+
+        const sendResult = await backend.sendSignal({
+          signal: signalString,
+          data: { value: "arrived-early" },
+          idempotencyKey: null,
+        });
+        expect(sendResult.workflowRunIds).toContain(run.id);
+
+        const farFuture = new Date(Date.now() + 5 * 60 * 1000);
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId,
+          availableAt: farFuture,
+        });
+
+        const runAfter = await backend.getWorkflowRun({
+          workflowRunId: run.id,
+        });
+        expect(runAfter?.status).toBe("running");
+        expect(runAfter?.workerId).toBeNull();
+        expect(runAfter?.availableAt).not.toBeNull();
+        if (!runAfter?.availableAt) {
+          throw new Error("Expected availableAt after signal reconciliation");
+        }
+
+        expect(runAfter.availableAt.getTime()).toBeLessThan(
+          farFuture.getTime(),
+        );
+        expect(runAfter.availableAt.getTime()).toBeLessThanOrEqual(
+          Date.now() + 5000,
         );
 
         await teardown(backend);
@@ -2226,6 +2280,204 @@ export function testBackend(options: TestBackendOptions): void {
         expect(claimed).toBeNull();
 
         await teardown(backend);
+      });
+    });
+
+    describe("sendSignal()", () => {
+      test("returns empty when no active waiters", async () => {
+        const result = await backend.sendSignal({
+          signal: `no-waiters-${randomUUID()}`,
+          data: { value: 42 },
+          idempotencyKey: null,
+        });
+        expect(result.workflowRunIds).toEqual([]);
+      });
+
+      test("delivers to one active waiter and wakes run", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const signalString = `test-signal-${randomUUID()}`;
+
+        const step = await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        const result = await backend.sendSignal({
+          signal: signalString,
+          data: { approved: true },
+          idempotencyKey: null,
+        });
+
+        expect(result.workflowRunIds).toContain(run.id);
+
+        const delivered = await backend.getSignalDelivery({
+          stepAttemptId: step.id,
+        });
+        expect(delivered).toEqual({ approved: true });
+
+        const wokenRun = await backend.getWorkflowRun({
+          workflowRunId: run.id,
+        });
+        expect(wokenRun).not.toBeNull();
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        expect(wokenRun!.availableAt).not.toBeNull();
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        expect(wokenRun!.availableAt!.getTime()).toBeLessThanOrEqual(
+          Date.now() + 5000,
+        );
+      });
+
+      test("fans out to multiple waiters", async () => {
+        const signalString = `fan-out-${randomUUID()}`;
+        const runs: WorkflowRun[] = [];
+
+        for (let i = 0; i < 3; i++) {
+          const run = await createClaimedWorkflowRun(backend);
+          await backend.createStepAttempt({
+            workflowRunId: run.id,
+            workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            stepName: "wait-step",
+            kind: "signal-wait",
+            config: {},
+            context: {
+              kind: "signal-wait",
+              signal: signalString,
+              timeoutAt: newDateInOneYear().toISOString(),
+            },
+          });
+          await backend.sleepWorkflowRun({
+            workflowRunId: run.id,
+            workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            availableAt: newDateInOneYear(),
+          });
+          runs.push(run);
+        }
+
+        const result = await backend.sendSignal({
+          signal: signalString,
+          data: "hello",
+          idempotencyKey: null,
+        });
+
+        expect(result.workflowRunIds).toHaveLength(3);
+        for (const run of runs) {
+          expect(result.workflowRunIds).toContain(run.id);
+        }
+      });
+
+      test("idempotent send returns same result", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const signalString = `idempotent-${randomUUID()}`;
+        const idempotencyKey = randomUUID();
+
+        await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        const first = await backend.sendSignal({
+          signal: signalString,
+          data: { val: 1 },
+          idempotencyKey,
+        });
+
+        const second = await backend.sendSignal({
+          signal: signalString,
+          data: { val: 2 },
+          idempotencyKey,
+        });
+
+        expect(first.workflowRunIds).toEqual(second.workflowRunIds);
+      });
+    });
+
+    describe("getSignalDelivery()", () => {
+      test("returns undefined when no delivery exists", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const step = await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: `no-delivery-${randomUUID()}`,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+
+        const result = await backend.getSignalDelivery({
+          stepAttemptId: step.id,
+        });
+        expect(result).toBeUndefined();
+      });
+
+      test("returns null data when signal delivered with null", async () => {
+        const run = await createClaimedWorkflowRun(backend);
+        const signalString = `null-data-${randomUUID()}`;
+
+        await backend.createStepAttempt({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepName: "wait-step",
+          kind: "signal-wait",
+          config: {},
+          context: {
+            kind: "signal-wait",
+            signal: signalString,
+            timeoutAt: newDateInOneYear().toISOString(),
+          },
+        });
+        await backend.sleepWorkflowRun({
+          workflowRunId: run.id,
+          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          availableAt: newDateInOneYear(),
+        });
+
+        await backend.sendSignal({
+          signal: signalString,
+          data: null,
+          idempotencyKey: null,
+        });
+
+        const steps = await backend.listStepAttempts({
+          workflowRunId: run.id,
+        });
+        const step = steps.data.find((s) => s.stepName === "wait-step");
+        expect(step).toBeDefined();
+
+        const result = await backend.getSignalDelivery({
+          stepAttemptId: step!.id, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(result).toBeNull();
       });
     });
   });

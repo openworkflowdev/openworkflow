@@ -193,6 +193,37 @@ export function migrations(): string[] {
     VALUES (4);
 
     COMMIT;`,
+
+    // 5 - workflow signals
+    `BEGIN;
+
+    CREATE TABLE IF NOT EXISTS "workflow_signals" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      "signal" TEXT NOT NULL,
+      "data" TEXT,
+      "sender_idempotency_key" TEXT,
+      "workflow_run_id" TEXT NOT NULL,
+      "step_attempt_id" TEXT NOT NULL,
+      "created_at" TEXT NOT NULL,
+      PRIMARY KEY ("namespace_id", "id")
+    );
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_step_attempt_idx"
+    ON "workflow_signals" ("namespace_id", "step_attempt_id");
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_idempotency_idx"
+    ON "workflow_signals" ("namespace_id", "sender_idempotency_key")
+    WHERE "sender_idempotency_key" IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS "step_attempts_signal_wait_idx"
+    ON "step_attempts" ("namespace_id", json_extract("context", '$.signal'))
+    WHERE "kind" = 'signal-wait' AND "status" = 'running';
+
+    INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
+    VALUES (5);
+
+    COMMIT;`,
   ];
 }
 

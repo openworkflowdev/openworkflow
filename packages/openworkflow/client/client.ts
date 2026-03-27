@@ -1,5 +1,6 @@
-import type { Backend } from "../core/backend.js";
+import type { Backend, SendSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
+import { JsonValue } from "../core/json.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -172,6 +173,33 @@ export class OpenWorkflow {
    */
   async cancelWorkflowRun(workflowRunId: string): Promise<void> {
     await this.backend.cancelWorkflowRun({ workflowRunId });
+  }
+
+  /**
+   * Send a signal to all workflows currently waiting on the given signal
+   * string. If no workflow is waiting, the signal is silently dropped.
+   * @param options - Signal options
+   * @returns IDs of workflow runs that received the signal
+   * @example
+   * ```ts
+   * const { workflowRunIds } = await ow.sendSignal({
+   *   signal: "approval:order_456",
+   *   data: { approved: true },
+   * });
+   * ```
+   */
+  async sendSignal(
+    options: Readonly<{
+      signal: string;
+      data?: JsonValue;
+      idempotencyKey?: string;
+    }>,
+  ): Promise<SendSignalResult> {
+    return this.backend.sendSignal({
+      signal: options.signal,
+      data: options.data ?? null,
+      idempotencyKey: options.idempotencyKey ?? null,
+    });
   }
 }
 

@@ -206,6 +206,39 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 5 - workflow signals
+    `BEGIN;
+
+    CREATE TABLE IF NOT EXISTS ${quotedSchema}."workflow_signals" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      --
+      "signal" TEXT NOT NULL,
+      "data" JSONB,
+      "sender_idempotency_key" TEXT,
+      "workflow_run_id" TEXT NOT NULL,
+      "step_attempt_id" TEXT NOT NULL,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY ("namespace_id", "id")
+    );
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_step_attempt_idx"
+    ON ${quotedSchema}."workflow_signals" ("namespace_id", "step_attempt_id");
+
+    CREATE INDEX IF NOT EXISTS "workflow_signals_idempotency_idx"
+    ON ${quotedSchema}."workflow_signals" ("namespace_id", "sender_idempotency_key")
+    WHERE "sender_idempotency_key" IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS "step_attempts_signal_wait_idx"
+    ON ${quotedSchema}."step_attempts" ("namespace_id", ("context"->>'signal'))
+    WHERE "kind" = 'signal-wait' AND "status" = 'running';
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
+    VALUES (5)
+    ON CONFLICT DO NOTHING;
+
+    COMMIT;`,
   ];
 }
 

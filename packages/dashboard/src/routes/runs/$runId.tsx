@@ -352,8 +352,7 @@ function RunDetailsPage() {
                   const config = STEP_STATUS_CONFIG[step.status];
                   const StatusIcon = config.icon;
                   const iconColor = config.color;
-                  const stepTypeLabel =
-                    step.kind === "function" ? "function" : step.kind;
+                  const stepTypeLabel = formatStepKindLabel(step.kind);
                   const stepDuration = computeDuration(
                     step.startedAt,
                     step.finishedAt,
@@ -1043,6 +1042,20 @@ function getDefaultSelectedStepId(
   }
 
   return steps.at(-1)?.id ?? null;
+}
+
+function formatStepKindLabel(kind: string): string {
+  switch (kind) {
+    case "signal-send": {
+      return "signal send";
+    }
+    case "signal-wait": {
+      return "signal wait";
+    }
+    default: {
+      return kind;
+    }
+  }
 }
 
 function getRunStatusHelp(status: string): string {

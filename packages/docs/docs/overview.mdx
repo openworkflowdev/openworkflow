@@ -37,6 +37,8 @@ work.
 
 - **Memoized steps** prevent duplicate side effects on retries
 - **Durable sleep** (`step.sleep`) pauses runs without holding worker capacity
+- **Signals** (`step.sendSignal`, `step.waitForSignal`) enable runtime
+  communication to & between workflows
 - **Heartbeats + leases** (`availableAt`) allow automatic crash recovery
 - **Database as source of truth** avoids a separate orchestration service
 

@@ -42,6 +42,7 @@
           "docs/parallel-steps",
           "docs/dynamic-steps",
           "docs/child-workflows",
+          "docs/signals",
           "docs/retries",
           "docs/type-safety",
           "docs/versioning",

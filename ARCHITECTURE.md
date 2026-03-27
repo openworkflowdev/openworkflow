@@ -36,6 +36,10 @@ durable execution with minimal operational complexity.
   discovery paths, and optional ignore patterns for CLI commands. It typically
   imports the shared `backend` from `openworkflow/client.*` so app code and CLI
   use the same connection.
+- **Signal**: A named, point-in-time message sent to all workflows currently
+  waiting on that signal name. Signals carry an optional JSON payload. When
+  sent, a row is written to `workflow_signals` for each waiting workflow and
+  the workflow is woken. If no workflow is waiting, the signal is dropped.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.
@@ -105,6 +109,7 @@ of coordination. There is no separate orchestrator server.
                       |                              |
                       | - workflow_runs              |
                       | - step_attempts              |
+                      | - workflow_signals           |
                       +------------------------------+
 ```
 
@@ -122,9 +127,10 @@ of coordination. There is no separate orchestrator server.
   `npx @openworkflow/cli worker start` with
   auto-discovery of workflow files.
 - **Backend**: The source of truth. It stores workflow runs and step attempts.
-  The `workflow_runs` table serves as the job queue for the workers, while the
-  `step_attempts` table serves as a record of started and completed work,
-  enabling memoization.
+  The `workflow_runs` table serves as the job queue for the workers, the
+  `step_attempts` table serves as a record of started and completed work
+  enabling memoization, and the `workflow_signals` table records signal
+  deliveries so a waking workflow can read the payload.
 
 ### 2.3. Basic Execution Flow
 
@@ -149,7 +155,7 @@ of coordination. There is no separate orchestrator server.
     `step_attempt` record with status `running`, executes the step function, and
     then updates the `step_attempt` to `completed` upon completion. The Worker
     continues executing inline until the workflow code completes or encounters a
-    sleep.
+    durable wait such as sleep, child-workflow waiting, or signal waiting.
 6.  **State Update**: The Worker updates the Backend with each `step_attempt` as
     it is created and completed, and updates the status of the `workflow_run`
     (e.g., `completed`, `running` for parked waits).
@@ -234,10 +240,34 @@ target workflow name in `spec`) and `options.timeout` controls the wait timeout
 (default 1y). When the timeout is reached, the parent step fails but the child
 workflow continues running independently.
 
-All step APIs (`step.run`, `step.sleep`, and `step.runWorkflow`) share the same
-collision logic for durable keys. If duplicate base names are encountered in one
-execution pass, OpenWorkflow auto-indexes them as `name`, `name:1`, `name:2`,
-and so on so each step call maps to a distinct step attempt.
+**`step.sendSignal(options)`**: Sends a named signal to all workflows currently
+waiting on it. The send is recorded as a step attempt so it won't repeat on
+replay. If no workflow is waiting, the signal is silently dropped.
+
+```ts
+await step.sendSignal({
+  signal: `approval:${orderId}`,
+  data: { approved: true },
+});
+```
+
+**`step.waitForSignal(options)`**: Parks the workflow until a matching signal
+arrives or the timeout expires. When a signal is sent targeting this signal
+name, a delivery row is written to `workflow_signals` and the workflow is woken.
+If the timeout expires first, the step resolves with `null`.
+
+```ts
+const data = await step.waitForSignal({
+  signal: `approval:${orderId}`,
+  timeout: "7d",
+});
+```
+
+All step APIs (`step.run`, `step.sleep`, `step.runWorkflow`, `step.sendSignal`,
+and `step.waitForSignal`) share the same collision logic for durable keys. If
+duplicate base names are encountered in one execution pass, OpenWorkflow
+auto-indexes them as `name`, `name:1`, `name:2`, and so on so each step call
+maps to a distinct step attempt.
 
 ## 4. Error Handling & Retries
 

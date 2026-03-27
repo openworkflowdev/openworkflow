@@ -213,12 +213,12 @@ create a separate run.
 
 The workflow function receives an object with four properties:
 
-| Parameter | Type                  | Description                                                           |
-| --------- | --------------------- | --------------------------------------------------------------------- |
-| `input`   | Generic               | The input data passed when starting the workflow                      |
-| `step`    | `StepApi`             | API for defining steps (`step.run`, `step.sleep`, `step.runWorkflow`) |
-| `version` | `string \| null`      | The workflow version, if specified                                    |
-| `run`     | `WorkflowRunMetadata` | Read-only run metadata snapshot (`run.id`, etc.)                      |
+| Parameter | Type                  | Description                                                                                                    |
+| --------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `input`   | Generic               | The input data passed when starting the workflow                                                               |
+| `step`    | `StepApi`             | API for defining steps (`step.run`, `step.sleep`, `step.runWorkflow`, `step.sendSignal`, `step.waitForSignal`) |
+| `version` | `string \| null`      | The workflow version, if specified                                                                             |
+| `run`     | `WorkflowRunMetadata` | Read-only run metadata snapshot (`run.id`, etc.)                                                               |
 
 ```ts
 defineWorkflow({ name: "example" }, async ({ input, step, version, run }) => {
