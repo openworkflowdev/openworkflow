@@ -566,3 +566,35 @@ describe("BackendSqlite workflow wake-up reconciliation", () => {
     }
   });
 });
+
+describe("BackendSqlite.sendSignal error handling", () => {
+  test("rolls back transaction and rethrows when an error occurs inside sendSignal", async () => {
+    const backend = BackendSqlite.connect(":memory:", {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      const internalBackend = backend as unknown as {
+        db: Database;
+      };
+      // Make prepare throw to trigger the catch/rollback path.
+      vi.spyOn(internalBackend.db, "prepare").mockImplementation(() => {
+        // Restore immediately so the rollback can work
+        vi.restoreAllMocks();
+        throw new Error("simulated prepare failure");
+      });
+
+      expect(() =>
+        backend.sendSignal({
+          signal: "test-signal",
+          data: null,
+          idempotencyKey: null,
+        }),
+      ).toThrow("simulated prepare failure");
+
+      vi.restoreAllMocks();
+    } finally {
+      await backend.stop();
+    }
+  });
+});
