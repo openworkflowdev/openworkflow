@@ -251,27 +251,27 @@ export class BackendPostgres implements Backend {
   }
 
   async sendSignal(params: SendSignalParams): Promise<SendSignalResult> {
-    return await this.pg.begin(async (tx): Promise<SendSignalResult> => {
-      // eslint-disable-next-line sonarjs/todo-tag
-      const sql = tx as unknown as Postgres; // todo: come back and clean up before merging PR
-      const stepAttemptsTable = this.stepAttemptsTable(sql);
-      const workflowSignalsTable = this.workflowSignalsTable(sql);
+    return await this.pg.begin(async (sql): Promise<SendSignalResult> => {
+      const tx = sql as unknown as Postgres;
+      const stepAttemptsTable = this.stepAttemptsTable(tx);
+      const workflowSignalsTable = this.workflowSignalsTable(tx);
 
       if (params.idempotencyKey !== null) {
-        const existing = await sql<{ workflowRunId: string }[]>`
+        const existing = await tx<{ workflowRunId: string }[]>`
             SELECT DISTINCT "workflow_run_id" AS "workflowRunId"
             FROM ${workflowSignalsTable}
             WHERE "namespace_id" = ${this.namespaceId}
+              AND "signal" = ${params.signal}
               AND "sender_idempotency_key" = ${params.idempotencyKey}
           `;
         if (existing.length > 0) {
           return { workflowRunIds: existing.map((r) => r.workflowRunId) };
         }
       }
-      const workflowRunsTable = this.workflowRunsTable(sql);
+      const workflowRunsTable = this.workflowRunsTable(tx);
 
       // find active waiting step attempts & insert a signal delivery row for each
-      const waiters = await sql<{ id: string; workflowRunId: string }[]>`
+      const waiters = await tx<{ id: string; workflowRunId: string }[]>`
           SELECT "id", "workflow_run_id" AS "workflowRunId"
           FROM ${stepAttemptsTable}
           WHERE "namespace_id" = ${this.namespaceId}
@@ -285,8 +285,9 @@ export class BackendPostgres implements Backend {
         return { workflowRunIds: [] };
       }
 
+      const deliveredRunIds = new Set<string>();
       for (const w of waiters) {
-        await sql`
+        const inserted = await tx`
             INSERT INTO ${workflowSignalsTable} (
               "namespace_id", "id", "signal", "data",
               "sender_idempotency_key", "workflow_run_id",
@@ -296,19 +297,27 @@ export class BackendPostgres implements Backend {
               ${this.namespaceId},
               gen_random_uuid(),
               ${params.signal},
-              ${sql.json(params.data)},
+              ${tx.json(params.data)},
               ${params.idempotencyKey},
               ${w.workflowRunId},
               ${w.id},
               NOW()
             )
             ON CONFLICT ("namespace_id", "step_attempt_id") DO NOTHING
+            RETURNING "workflow_run_id"
           `;
+        if (inserted.length > 0) {
+          deliveredRunIds.add(w.workflowRunId);
+        }
+      }
+
+      if (deliveredRunIds.size === 0) {
+        return { workflowRunIds: [] };
       }
 
       // wake each waiting workflow run
-      const runIds = [...new Set(waiters.map((w) => w.workflowRunId))];
-      await sql`
+      const runIds = [...deliveredRunIds];
+      await tx`
           UPDATE ${workflowRunsTable}
           SET
             "available_at" = CASE

@@ -213,7 +213,7 @@ export function migrations(): string[] {
     ON "workflow_signals" ("namespace_id", "step_attempt_id");
 
     CREATE INDEX IF NOT EXISTS "workflow_signals_idempotency_idx"
-    ON "workflow_signals" ("namespace_id", "sender_idempotency_key")
+    ON "workflow_signals" ("namespace_id", "signal", "sender_idempotency_key")
     WHERE "sender_idempotency_key" IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS "step_attempts_signal_wait_idx"

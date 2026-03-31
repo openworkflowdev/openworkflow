@@ -248,10 +248,11 @@ export class BackendSqlite implements Backend {
         const existingStmt = this.db.prepare(`
           SELECT DISTINCT "workflow_run_id"
           FROM "workflow_signals"
-          WHERE "namespace_id" = ? AND "sender_idempotency_key" = ?
+          WHERE "namespace_id" = ? AND "signal" = ? AND "sender_idempotency_key" = ?
         `);
         const existing = existingStmt.all(
           this.namespaceId,
+          params.signal,
           params.idempotencyKey,
         ) as { workflow_run_id: string }[];
         if (existing.length > 0) {
@@ -288,8 +289,9 @@ export class BackendSqlite implements Backend {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `);
+      const deliveredRunIds = new Set<string>();
       for (const w of waiters) {
-        insertStmt.run(
+        const result = insertStmt.run(
           this.namespaceId,
           generateUUID(),
           params.signal,
@@ -299,10 +301,18 @@ export class BackendSqlite implements Backend {
           w.id,
           currentTime,
         );
+        if (result.changes > 0) {
+          deliveredRunIds.add(w.workflow_run_id);
+        }
+      }
+
+      if (deliveredRunIds.size === 0) {
+        this.db.exec("COMMIT");
+        return Promise.resolve({ workflowRunIds: [] });
       }
 
       // wake each waiting workflow run
-      const runIds = [...new Set(waiters.map((w) => w.workflow_run_id))];
+      const runIds = [...deliveredRunIds];
       const wakeStmt = this.db.prepare(`
         UPDATE "workflow_runs"
         SET
