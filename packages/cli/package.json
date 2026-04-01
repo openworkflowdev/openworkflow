@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "openworkflow": "*",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.2"
   },
   "peerDependencies": {
     "openworkflow": "^0.6.0 || ^0.7.0 || ^0.8.0"
