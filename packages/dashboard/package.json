@@ -53,7 +53,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.1",
     "vite": "^7.3.1",
     "web-vitals": "^5.1.0"
   }
