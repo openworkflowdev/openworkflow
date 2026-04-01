@@ -27,7 +27,6 @@ import type {
   StepFunction,
   StepFunctionConfig,
   WorkflowFunction,
-  WorkflowRunMetadata,
 } from "../core/workflow-function.js";
 import {
   isTerminalStatus,
@@ -1086,7 +1085,7 @@ export async function executeWorkflow(
       executionFence,
     });
 
-    const run = Object.freeze<WorkflowRunMetadata>({
+    const run = Object.freeze({
       id: workflowRun.id,
       workflowName: workflowRun.workflowName,
       createdAt: workflowRun.createdAt,
