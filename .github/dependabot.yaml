@@ -26,3 +26,6 @@ updates:
       tailwind:
         patterns:
           - "*tailwind*"
+      vitest:
+        patterns:
+          - "*vitest*"
