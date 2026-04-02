@@ -127,8 +127,9 @@ const DEFAULT_STEP_RETRY_POLICY: RetryPolicy = {
 };
 
 /**
- * Retry policy for terminal/non-retryable step failures (no retries, the
- * caller or child workflow is responsible for handling retries).
+ * No-retry policy for terminal/non-retryable steps (child-workflow results,
+ * signal sends, signal waits). The caller or child workflow is responsible
+ * for handling retries.
  */
 const TERMINAL_STEP_RETRY_POLICY: RetryPolicy = {
   ...DEFAULT_STEP_RETRY_POLICY,
