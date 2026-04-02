@@ -2068,6 +2068,11 @@ describe("StepExecutor", () => {
         run.parentStepAttemptId !== null,
     );
     expect(childRuns).toHaveLength(300);
+
+    // Stop backend eagerly within the test body (which has a longer timeout
+    // than the afterEach hook) so in-flight child workflow queries can drain.
+    backendsToStop.splice(backendsToStop.indexOf(backend), 1);
+    await backend.stop();
   });
 
   test("completes when child 150 has transient failure handled by child-level retries", async () => {
