@@ -346,26 +346,15 @@ function getRunningWaitAttemptResumeAt(
     return Number.isFinite(resumeAt.getTime()) ? resumeAt : null;
   }
 
-  if (attempt.kind === "signal-wait") {
-    const timeoutAt =
-      getContextTimeoutAt(attempt) ?? defaultWaitTimeoutAt(attempt.createdAt);
-    return Number.isFinite(timeoutAt.getTime())
-      ? timeoutAt
-      : defaultWaitTimeoutAt(attempt.createdAt);
-  }
-
-  if (attempt.kind !== "workflow") {
+  if (attempt.kind !== "signal-wait" && attempt.kind !== "workflow") {
     return null;
   }
 
   const timeoutAt =
     getContextTimeoutAt(attempt) ?? defaultWaitTimeoutAt(attempt.createdAt);
-  if (Number.isFinite(timeoutAt.getTime())) {
-    return timeoutAt;
-  }
-
-  // Backward compatibility for malformed historical workflow timeout values.
-  return defaultWaitTimeoutAt(attempt.createdAt);
+  return Number.isFinite(timeoutAt.getTime())
+    ? timeoutAt
+    : defaultWaitTimeoutAt(attempt.createdAt);
 }
 
 /**
@@ -531,7 +520,6 @@ class StepExecutor implements StepApi {
   private readonly expectedNextStepIndexByName: Map<string, number>;
   private readonly resolvedStepNames: Set<string>;
   private readonly executionFence: ExecutionFenceController;
-  private readonly activeSignalWaitStepNameBySignal: Map<string, string>;
 
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
@@ -548,20 +536,6 @@ class StepExecutor implements StepApi {
     this.expectedNextStepIndexByName = new Map();
     this.resolvedStepNames = new Set();
     this.executionFence = options.executionFence;
-
-    // build signal → step name map from running signal-wait attempts.
-    this.activeSignalWaitStepNameBySignal = new Map();
-    for (const [, attempt] of state.runningByStepName) {
-      if (
-        attempt.kind === "signal-wait" &&
-        attempt.context?.kind === "signal-wait"
-      ) {
-        this.activeSignalWaitStepNameBySignal.set(
-          attempt.context.signal,
-          attempt.stepName,
-        );
-      }
-    }
   }
 
   private assertExecutionActive(): void {
@@ -1070,12 +1044,11 @@ class StepExecutor implements StepApi {
         idempotencyKey: buildSignalIdempotencyKey(this.workflowRunId, stepName),
       });
 
-      const output = { workflowRunIds: result.workflowRunIds };
       const completed = await this.backend.completeStepAttempt({
         workflowRunId: this.workflowRunId,
         stepAttemptId: attempt.id,
         workerId: this.workerId,
-        output,
+        output: { ...result },
       });
       this.cache = addToStepAttemptCache(this.cache, completed);
       this.runningByStepName.delete(stepName);
@@ -1116,13 +1089,17 @@ class StepExecutor implements StepApi {
       );
     }
 
-    const existingWaiter = this.activeSignalWaitStepNameBySignal.get(
-      options.signal,
-    );
-    if (existingWaiter && existingWaiter !== stepName) {
-      throw new Error(
-        `Signal "${options.signal}" is already being waited on by step "${existingWaiter}"`,
-      );
+    for (const [name, a] of this.runningByStepName) {
+      if (
+        name !== stepName &&
+        a.kind === "signal-wait" &&
+        a.context?.kind === "signal-wait" &&
+        a.context.signal === options.signal
+      ) {
+        throw new Error(
+          `Signal "${options.signal}" is already being waited on by step "${name}"`,
+        );
+      }
     }
 
     const timeoutAt = resolveWaitTimeoutAt(options.timeout);
@@ -1138,7 +1115,6 @@ class StepExecutor implements StepApi {
     });
     this.stepCount += 1;
     this.runningByStepName.set(stepName, attempt);
-    this.activeSignalWaitStepNameBySignal.set(options.signal, stepName);
 
     return await this.resolveSignalWait<Output>(stepName, attempt, options);
   }
@@ -1208,9 +1184,6 @@ class StepExecutor implements StepApi {
     });
     this.cache = addToStepAttemptCache(this.cache, completed);
     this.runningByStepName.delete(attempt.stepName);
-    if (attempt.context?.kind === "signal-wait") {
-      this.activeSignalWaitStepNameBySignal.delete(attempt.context.signal);
-    }
     return completed.output as Output | null;
   }
 
