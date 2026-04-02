@@ -32,7 +32,7 @@
     "worker": "npm run openworkflow worker start"
   },
   "dependencies": {
-    "openworkflow": "^0.7.3"
+    "openworkflow": "^0.8.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
