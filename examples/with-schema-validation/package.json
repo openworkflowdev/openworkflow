@@ -12,7 +12,7 @@
     "@openworkflow/backend-postgres": "*",
     "arktype": "^2.2.0",
     "openworkflow": "*",
-    "valibot": "^1.2.0",
+    "valibot": "^1.3.1",
     "yup": "^1.7.1",
     "zod": "^4.3.6"
   },
