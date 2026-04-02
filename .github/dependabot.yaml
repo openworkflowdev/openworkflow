@@ -19,7 +19,8 @@ updates:
           - "*commitlint*"
       eslint:
         patterns:
-          - "*eslint*"
+          - "@eslint/js"
+          - "eslint"
       tanstack:
         patterns:
           - "*tanstack*"
