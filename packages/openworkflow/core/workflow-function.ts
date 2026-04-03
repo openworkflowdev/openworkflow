@@ -78,7 +78,7 @@ export interface StepApi {
       timeout?: StepWaitTimeout;
       schema?: StandardSchemaV1<unknown, Output>;
     }>,
-  ) => Promise<Output | null>;
+  ) => Promise<{ data: Output } | null>;
 }
 
 /**

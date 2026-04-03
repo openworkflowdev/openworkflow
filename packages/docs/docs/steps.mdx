@@ -164,11 +164,11 @@ const { workflowRunIds } = await step.sendSignal({
 Pauses the workflow until a matching signal is sent, or the timeout expires:
 
 ```ts
-const data = await step.waitForSignal({
+const result = await step.waitForSignal({
   signal: `approval:${orderId}`,
   timeout: "7d",
 });
-// data is the signal payload, or null if timed out
+// result is { data } or null if timed out
 ```
 
 See [Signals](/docs/signals) for details.

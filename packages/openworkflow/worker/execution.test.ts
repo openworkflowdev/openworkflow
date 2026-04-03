@@ -2539,7 +2539,7 @@ describe("StepExecutor", () => {
     );
     expect(waiterStatus).toBe("completed");
     const waiterResult = await waiterHandle.result();
-    expect(waiterResult).toEqual({ approved: true });
+    expect(waiterResult).toEqual({ data: { approved: true } });
   });
 
   test("waitForSignal returns null on timeout", async () => {
@@ -2664,7 +2664,7 @@ describe("StepExecutor", () => {
     );
     expect(status).toBe("completed");
     const result = await waiterHandle.result();
-    expect(result).toEqual({ approved: true });
+    expect(result).toEqual({ data: { approved: true } });
   });
 
   test("waitForSignal fails step when schema validation fails", async () => {
@@ -2816,7 +2816,10 @@ describe("StepExecutor", () => {
     );
     expect(status).toBe("completed");
     const result = await handle.result();
-    expect(result).toEqual({ data: { x: 1 }, value: "ok" });
+    expect(result).toEqual({
+      data: { data: { x: 1 } },
+      value: "ok",
+    });
   });
 
   test("sendSignal replays from cache when followed by a sleep step", async () => {
@@ -2884,7 +2887,7 @@ describe("StepExecutor", () => {
     );
     expect(status).toBe("completed");
     const result = await handle.result();
-    expect(result).toEqual({ cached: true });
+    expect(result).toEqual({ data: { cached: true } });
   });
 
   test("waitForSignal throws when another step already waits on the same signal", async () => {

@@ -254,10 +254,10 @@ await step.sendSignal({
 **`step.waitForSignal(options)`**: Parks the workflow until a matching signal
 arrives or the timeout expires. When a signal is sent targeting this signal
 name, a delivery row is written to `workflow_signals` and the workflow is woken.
-If the timeout expires first, the step resolves with `null`.
+Returns `{ data }` on delivery, or `null` on timeout.
 
 ```ts
-const data = await step.waitForSignal({
+const result = await step.waitForSignal({
   signal: `approval:${orderId}`,
   timeout: "7d",
 });

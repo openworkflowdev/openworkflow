@@ -37,7 +37,7 @@ export const approvalWorkflow = defineWorkflow(
       timeout: "7d",
     });
 
-    if (decision?.approved) {
+    if (decision?.data.approved) {
       await step.run({ name: "process-order" }, async () => {
         await orders.process(input.orderId);
       });
@@ -157,7 +157,7 @@ const decision = await step.waitForSignal({
   timeout: "7d",
 });
 
-// `decision` is typed as { approved: boolean; reviewedBy: string } | null
+// `decision` is typed as { data: { approved: boolean; reviewedBy: string } } | null
 ```
 
 If the signal data doesn't match the schema, the step fails permanently (no
@@ -188,12 +188,12 @@ that signal name. This makes fan-out coordination straightforward:
 ```ts
 // Multiple workflows waiting on the same signal
 const workflowA = defineWorkflow({ name: "listener-a" }, async ({ step }) => {
-  const data = await step.waitForSignal({ signal: "config-updated" });
+  const config = await step.waitForSignal({ signal: "config-updated" });
   // handle update
 });
 
 const workflowB = defineWorkflow({ name: "listener-b" }, async ({ step }) => {
-  const data = await step.waitForSignal({ signal: "config-updated" });
+  const config = await step.waitForSignal({ signal: "config-updated" });
   // handle update
 });
 
@@ -239,7 +239,7 @@ export const purchaseWorkflow = defineWorkflow(
       timeout: "3d",
     });
 
-    if (!approval?.approved) {
+    if (!approval?.data.approved) {
       await step.run({ name: "notify-rejected" }, async () => {
         await email.send({
           to: input.requesterEmail,
@@ -338,7 +338,7 @@ const consumer = defineWorkflow(
 
     if (notification) {
       await step.run({ name: "process-data" }, async () => {
-        await processRecords(input.batchId, notification.recordCount);
+        await processRecords(input.batchId, notification.data.recordCount);
       });
     }
   },

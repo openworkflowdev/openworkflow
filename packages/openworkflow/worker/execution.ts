@@ -1072,12 +1072,12 @@ class StepExecutor implements StepApi {
       timeout?: StepWaitTimeout;
       schema?: StandardSchemaV1<unknown, Output>;
     }>,
-  ): Promise<Output | null> {
+  ): Promise<{ data: Output } | null> {
     const stepName = this.resolveStepName(options.name ?? options.signal);
 
     const existingAttempt = getCachedStepAttempt(this.cache, stepName);
     if (existingAttempt) {
-      return existingAttempt.output as Output | null;
+      return existingAttempt.output as { data: Output } | null;
     }
 
     const runningAttempt = this.runningByStepName.get(stepName);
@@ -1125,7 +1125,7 @@ class StepExecutor implements StepApi {
     options: Readonly<{
       schema?: StandardSchemaV1<unknown, Output>;
     }>,
-  ): Promise<Output | null> {
+  ): Promise<{ data: Output } | null> {
     const signalData = await this.backend.getSignalDelivery({
       stepAttemptId: attempt.id,
     });
@@ -1151,10 +1151,9 @@ class StepExecutor implements StepApi {
         outputValue = validationResult.value;
       }
 
-      return await this.completeSignalWaitStep<Output>(
-        attempt,
-        normalizeStepOutput(outputValue),
-      );
+      return await this.completeSignalWaitStep<Output>(attempt, {
+        data: normalizeStepOutput(outputValue) as Output,
+      });
     }
 
     const timeoutAt =
@@ -1169,13 +1168,13 @@ class StepExecutor implements StepApi {
   /**
    * Complete a signal-wait step attempt and update internal maps.
    * @param attempt - Step attempt being completed
-   * @param output - Output value (null for timeout)
+   * @param output - Envelope with data, or null for timeout
    * @returns The completed step output
    */
   private async completeSignalWaitStep<Output>(
     attempt: Readonly<StepAttempt>,
-    output: JsonValue | null,
-  ): Promise<Output | null> {
+    output: { data: Output } | null,
+  ): Promise<{ data: Output } | null> {
     const completed = await this.backend.completeStepAttempt({
       workflowRunId: this.workflowRunId,
       stepAttemptId: attempt.id,
@@ -1184,7 +1183,7 @@ class StepExecutor implements StepApi {
     });
     this.cache = addToStepAttemptCache(this.cache, completed);
     this.runningByStepName.delete(attempt.stepName);
-    return completed.output as Output | null;
+    return completed.output as { data: Output } | null;
   }
 
   private ensureStepLimitNotReached(): void {
