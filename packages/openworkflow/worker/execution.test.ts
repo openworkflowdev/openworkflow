@@ -2574,6 +2574,60 @@ describe("StepExecutor", () => {
     expect(result).toBeNull();
   });
 
+  test("waitForSignal handles legacy null timeoutAt in signal-wait context", async () => {
+    const backend = await createBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-wait-null-timeout-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: `legacy-null-${randomUUID()}`,
+          timeout: 1, // expires immediately
+        });
+        return data;
+      },
+    );
+
+    // corrupt the signal-wait context to have null timeoutAt (simulates
+    // legacy persisted data where timeoutAt was missing) and backdate
+    // createdAt so the 1-year default fallback has already expired.
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const originalCreateStepAttempt = backend.createStepAttempt.bind(backend);
+    const createStepAttemptSpy = vi
+      .spyOn(backend, "createStepAttempt")
+      .mockImplementation(async (params) => {
+        const attempt = await originalCreateStepAttempt(params);
+        if (attempt.kind === "signal-wait") {
+          return {
+            ...attempt,
+            createdAt: twoYearsAgo,
+            context: null,
+          };
+        }
+        return attempt;
+      });
+
+    try {
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        20,
+        50,
+      );
+
+      expect(status).toBe("completed");
+      const result = await handle.result();
+      expect(result).toBeNull();
+    } finally {
+      createStepAttemptSpy.mockRestore();
+    }
+  });
+
   test("waitForSignal validates data against schema", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
