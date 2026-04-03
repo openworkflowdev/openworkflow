@@ -1179,7 +1179,7 @@ class StepExecutor implements StepApi {
       workflowRunId: this.workflowRunId,
       stepAttemptId: attempt.id,
       workerId: this.workerId,
-      output,
+      output: output as JsonValue | null,
     });
     this.cache = addToStepAttemptCache(this.cache, completed);
     this.runningByStepName.delete(attempt.stepName);
