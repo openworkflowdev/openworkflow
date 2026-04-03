@@ -2574,24 +2574,24 @@ describe("StepExecutor", () => {
     expect(result).toBeNull();
   });
 
-  test("waitForSignal handles legacy null timeoutAt in signal-wait context", async () => {
+  test("waitForSignal handles missing context gracefully", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
-      { name: `signal-wait-null-timeout-${randomUUID()}` },
+      { name: `signal-wait-null-context-${randomUUID()}` },
       async ({ step }) => {
         const data = await step.waitForSignal({
-          signal: `legacy-null-${randomUUID()}`,
+          signal: `missing-ctx-${randomUUID()}`,
           timeout: 1, // expires immediately
         });
         return data;
       },
     );
 
-    // corrupt the signal-wait context to have null timeoutAt (simulates
-    // legacy persisted data where timeoutAt was missing) and backdate
-    // createdAt so the 1-year default fallback has already expired.
+    // corrupt the signal-wait step attempt to have a null context (simulates
+    // a corrupted or partially-written row) and backdate createdAt so the
+    // 1-year default fallback timeout has already expired.
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
     const originalCreateStepAttempt = backend.createStepAttempt.bind(backend);
