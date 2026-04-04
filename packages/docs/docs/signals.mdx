@@ -176,9 +176,8 @@ await ow.sendSignal({
 });
 ```
 
-If a signal with the same idempotency key has already been sent and delivered
-to at least one waiter, the call returns the original result without
-re-delivering.
+If a signal with the same idempotency key has already been sent and delivered to
+at least one waiter, the call returns the original result without re-delivering.
 
 ## Fan-Out: One Signal, Many Waiters
 

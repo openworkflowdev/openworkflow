@@ -1,6 +1,6 @@
 import type { Backend, SendSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
-import { JsonValue } from "../core/json.js";
+import type { JsonValue } from "../core/json.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {

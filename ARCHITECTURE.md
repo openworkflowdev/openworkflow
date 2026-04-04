@@ -39,7 +39,10 @@ durable execution with minimal operational complexity.
 - **Signal**: A named, point-in-time message sent to all workflows currently
   waiting on that signal name. Signals carry an optional JSON payload. When
   sent, a row is written to `workflow_signals` for each waiting workflow and
-  the workflow is woken. If no workflow is waiting, the signal is dropped.
+  the workflow is woken. If no workflow is waiting at send time, the signal
+  has no effect and no delivery row is persisted. A retry with the same
+  idempotency key may therefore deliver to workflows that began waiting after
+  the original attempt.
 - **`availableAt`**: A critical timestamp on a workflow run that controls its
   visibility to workers. It is used for scheduling, heartbeating, crash
   recovery, and durable timers.

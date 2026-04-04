@@ -2574,7 +2574,7 @@ describe("StepExecutor", () => {
     expect(result).toBeNull();
   });
 
-  test("waitForSignal handles missing context gracefully", async () => {
+  test("waitForSignal handles null context gracefully (corrupted row)", async () => {
     const backend = await createBackend();
     const client = new OpenWorkflow({ backend });
 
