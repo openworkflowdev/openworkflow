@@ -63,7 +63,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "postgres": ">=3"
+    "postgres": "^3.4.9"
   },
   "peerDependenciesMeta": {
     "postgres": {
