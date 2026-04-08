@@ -37,7 +37,7 @@
     "openworkflow": "*",
     "prom-client": "^15.1.3",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
+    "react-dom": "^19.2.5",
     "shadcn": "^4.2.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
