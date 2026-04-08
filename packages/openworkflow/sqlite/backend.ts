@@ -262,7 +262,6 @@ export class BackendSqlite implements Backend {
           });
         }
       }
-      // find active waiting step attempts & insert a signal delivery row for each
       const waitersStmt = this.db.prepare(`
         SELECT "id", "workflow_run_id"
         FROM "step_attempts"

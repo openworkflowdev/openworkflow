@@ -270,7 +270,6 @@ export class BackendPostgres implements Backend {
       }
       const workflowRunsTable = this.workflowRunsTable(tx);
 
-      // find active waiting step attempts & insert a signal delivery row for each
       const waiters = await tx<{ id: string; workflowRunId: string }[]>`
           SELECT "id", "workflow_run_id" AS "workflowRunId"
           FROM ${stepAttemptsTable}
