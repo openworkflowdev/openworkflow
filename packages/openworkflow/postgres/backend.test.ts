@@ -49,6 +49,78 @@ describe("BackendPostgres.connect errors", () => {
   });
 });
 
+describe("BackendPostgres.fromPool", () => {
+  test("uses an existing pool with the provided namespace", async () => {
+    const namespaceId = randomUUID();
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const backend = BackendPostgres.fromPool(pg, {
+      namespaceId,
+    });
+
+    try {
+      const workflowRun = await backend.createWorkflowRun({
+        workflowName: "from-pool-namespace",
+        version: null,
+        idempotencyKey: null,
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      expect(workflowRun.namespaceId).toBe(namespaceId);
+    } finally {
+      await pg.end();
+    }
+  });
+
+  test("does not run migrations automatically", async () => {
+    const schema = `test_schema_${randomUUID().replaceAll("-", "_")}`;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const backend = BackendPostgres.fromPool(pg, {
+      namespaceId: randomUUID(),
+      schema,
+    });
+
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: "from-pool-no-migrations",
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toThrow(/does not exist/i);
+    } finally {
+      await dropSchema(pg, schema);
+      await pg.end();
+    }
+  });
+
+  test("throws a clear error for invalid schema names", async () => {
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+
+    try {
+      expect(() =>
+        BackendPostgres.fromPool(pg, {
+          schema: "invalid-schema",
+        }),
+      ).toThrow(/Invalid schema name/);
+    } finally {
+      await pg.end();
+    }
+  });
+});
+
 describe("BackendPostgres schema option", () => {
   test("stores workflow data in the configured schema", async () => {
     const schema = `test_schema_${randomUUID().replaceAll("-", "_")}`;

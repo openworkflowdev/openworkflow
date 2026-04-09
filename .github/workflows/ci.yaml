@@ -30,7 +30,7 @@ jobs:
           node-version-file: package.json
       - run: npm ci
       - run: npm run ci
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
   ci-bun:

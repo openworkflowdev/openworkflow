@@ -27,10 +27,10 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@clack/prompts": "^1.1.0",
+    "@clack/prompts": "^1.2.0",
     "commander": "^14.0.3",
     "consola": "^3.4.2",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.1",
     "jiti": "^2.6.1",
     "nypm": "^0.6.5"
   },

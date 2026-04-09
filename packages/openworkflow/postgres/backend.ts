@@ -99,6 +99,28 @@ export class BackendPostgres implements Backend {
     }
   }
 
+  /**
+   * Create a BackendPostgres instance from an existing Postgres connection pool.
+   * Unlike `connect`, this does not create a new pool or run migrations — the
+   * caller is responsible for pool lifecycle and ensuring migrations have
+   * already been applied.
+   * @param pg - An existing Postgres connection pool
+   * @param options - Backend options (namespaceId, schema)
+   * @returns A BackendPostgres instance sharing the provided pool
+   */
+  static fromPool(
+    pg: Postgres,
+    options?: Omit<BackendPostgresOptions, "runMigrations">,
+  ): BackendPostgres {
+    const { namespaceId, schema } = {
+      namespaceId: DEFAULT_NAMESPACE_ID,
+      schema: DEFAULT_SCHEMA,
+      ...options,
+    };
+    assertValidSchemaName(schema);
+    return new BackendPostgres(pg, namespaceId, schema);
+  }
+
   async stop(): Promise<void> {
     await this.pg.end();
   }

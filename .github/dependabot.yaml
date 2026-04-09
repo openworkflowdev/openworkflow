@@ -19,10 +19,14 @@ updates:
           - "*commitlint*"
       eslint:
         patterns:
-          - "*eslint*"
+          - "@eslint/js"
+          - "eslint"
       tanstack:
         patterns:
           - "*tanstack*"
       tailwind:
         patterns:
           - "*tailwind*"
+      vitest:
+        patterns:
+          - "*vitest*"
