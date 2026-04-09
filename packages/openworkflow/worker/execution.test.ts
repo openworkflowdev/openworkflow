@@ -2476,7 +2476,7 @@ describe("StepExecutor", () => {
   // ---- step.sendSignal / step.waitForSignal --------------------------------
 
   test("sendSignal sends a signal and returns workflow run IDs", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `test-signal-${randomUUID()}`;
 
@@ -2535,7 +2535,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal returns null on timeout", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -2567,7 +2567,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal handles null context gracefully (corrupted row)", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -2621,7 +2621,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal validates data against schema", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `schema-signal-${randomUUID()}`;
 
@@ -2660,7 +2660,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal fails step when schema validation fails", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `bad-schema-signal-${randomUUID()}`;
 
@@ -2697,7 +2697,7 @@ describe("StepExecutor", () => {
   });
 
   test("sendSignal is replay-safe across re-executions", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `replay-signal-${randomUUID()}`;
 
@@ -2740,7 +2740,7 @@ describe("StepExecutor", () => {
   });
 
   test("sendSignal auto-indexes duplicate signal step names", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -2775,7 +2775,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal is replay-safe across re-executions", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `replay-wait-${randomUUID()}`;
 
@@ -2815,7 +2815,7 @@ describe("StepExecutor", () => {
   });
 
   test("sendSignal replays from cache when followed by a sleep step", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -2847,7 +2847,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal replays from cache when followed by a sleep step", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `wait-cache-replay-${randomUUID()}`;
 
@@ -2883,7 +2883,7 @@ describe("StepExecutor", () => {
   });
 
   test("waitForSignal throws when another step already waits on the same signal", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const signalString = `dup-signal-${randomUUID()}`;
 
@@ -2942,7 +2942,7 @@ describe("StepExecutor", () => {
   });
 
   test("sendSignal step fails when backend.sendSignal throws", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     // spy on the backend to force an error during signal send
