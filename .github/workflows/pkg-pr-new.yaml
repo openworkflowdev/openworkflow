@@ -15,7 +15,7 @@ jobs:
         with:
           node-version-file: package.json
       - run: npm ci
-      - run: npm run build
+      - run: npm run build -- --force
       - run: >
           npx pkg-pr-new publish
           ./packages/openworkflow
