@@ -5,12 +5,12 @@ import {
   defineWorkflowSpec,
 } from "../core/workflow-definition.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
-import { BackendPostgres } from "../postgres.js";
 import {
   DEFAULT_POSTGRES_URL,
   DEFAULT_SCHEMA,
   newPostgresMaxOne,
 } from "../postgres/postgres.js";
+import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
@@ -25,7 +25,7 @@ import { z } from "zod";
 
 describe("OpenWorkflow", () => {
   test("enqueues workflow runs via backend", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "enqueue-test" }, noopFn);
@@ -50,7 +50,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("accepts valid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-zod-valid", schema },
@@ -66,7 +66,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("rejects invalid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-zod-invalid", schema },
@@ -86,7 +86,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("accepts valid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-arktype-valid", schema },
@@ -102,7 +102,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("rejects invalid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-arktype-invalid", schema },
@@ -122,7 +122,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("accepts valid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-valibot-valid", schema },
@@ -138,7 +138,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("rejects invalid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-valibot-invalid", schema },
@@ -158,7 +158,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("accepts valid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-yup-valid", schema },
@@ -174,7 +174,7 @@ describe("OpenWorkflow", () => {
       });
 
       test("rejects invalid input", async () => {
-        const backend = await createBackend();
+        const backend = await createTestBackend();
         const client = new OpenWorkflow({ backend });
         const workflow = client.defineWorkflow(
           { name: "schema-yup-invalid", schema },
@@ -189,7 +189,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("result resolves when workflow succeeds", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "result-success" }, noopFn);
@@ -215,7 +215,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("result rejects when workflow fails", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "result-failure" }, noopFn);
@@ -321,7 +321,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run with deadline", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "deadline-test" }, noopFn);
@@ -333,7 +333,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run with availableAt", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -350,7 +350,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run with availableAt duration", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -372,7 +372,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("throws for invalid availableAt duration", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -387,7 +387,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run with version", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -400,7 +400,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run without version", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -413,7 +413,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates workflow run with idempotency key", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -427,7 +427,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("reuses existing workflow run for same idempotency key", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -444,7 +444,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("creates a new workflow run after the 24h idempotency window", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const workflow = client.defineWorkflow(
       { name: "idempotency-expiration-test" },
@@ -475,7 +475,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("cancels workflow run via handle", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "cancel-test" }, noopFn);
@@ -491,7 +491,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("cancels workflow run via client by ID", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow({ name: "cancel-test" }, noopFn);
@@ -507,7 +507,7 @@ describe("OpenWorkflow", () => {
   });
 
   test("throws when canceling a non-existent workflow run", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const nonExistentId = randomUUID();
@@ -519,7 +519,7 @@ describe("OpenWorkflow", () => {
 
   describe("defineWorkflowSpec / implementWorkflow API", () => {
     test("defineWorkflowSpec returns a spec that can be used to schedule runs", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const spec = defineWorkflowSpec({ name: "declare-test" });
@@ -531,7 +531,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("implementWorkflow registers the workflow for worker execution", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const spec = defineWorkflowSpec({ name: "implement-test" });
@@ -549,7 +549,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("implementWorkflow throws when workflow is already registered", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const spec = defineWorkflowSpec({ name: "duplicate-test" });
@@ -561,7 +561,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("implementWorkflow allows registering different versions of the same workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const specV1 = defineWorkflowSpec({
@@ -579,7 +579,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("implementWorkflow throws for same name+version combination", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const spec1 = defineWorkflowSpec({
@@ -601,7 +601,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("defineWorkflowSpec with schema validates input on runWorkflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const schema = z.object({
@@ -623,7 +623,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("defineWorkflowSpec with version sets version on workflow run", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const spec = defineWorkflowSpec({
@@ -638,7 +638,7 @@ describe("OpenWorkflow", () => {
     });
 
     test("defineWorkflow defines a workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow<
@@ -658,12 +658,6 @@ describe("OpenWorkflow", () => {
     });
   });
 });
-
-async function createBackend(): Promise<BackendPostgres> {
-  return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
-    namespaceId: randomUUID(), // unique namespace per test
-  });
-}
 
 function createMockWorkflowRun(
   overrides: Partial<WorkflowRun> = {},

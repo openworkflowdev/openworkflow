@@ -5,8 +5,8 @@ import type { StepAttempt } from "../core/step-attempt.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowFunctionParams } from "../core/workflow-function.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
-import { BackendPostgres } from "../postgres.js";
-import { DEFAULT_POSTGRES_URL } from "../postgres/postgres.js";
+import type { BackendPostgres } from "../postgres.js";
+import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import {
   WORKFLOW_STEP_LIMIT,
   STEP_LIMIT_EXCEEDED_ERROR_CODE,
@@ -14,20 +14,12 @@ import {
   executeWorkflow,
 } from "./execution.js";
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { z } from "zod";
-
-const backendsToStop: BackendPostgres[] = [];
-
-afterEach(async () => {
-  await Promise.all(
-    backendsToStop.splice(0).map(async (backend) => backend.stop()),
-  );
-});
 
 describe("StepExecutor", () => {
   test("executes step and returns result", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -47,7 +39,7 @@ describe("StepExecutor", () => {
   });
 
   test("auto-indexes duplicate step.run names", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let executionCount = 0;
@@ -88,7 +80,7 @@ describe("StepExecutor", () => {
   });
 
   test("avoids step-name collisions with explicit numeric suffixes", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let thirdStepExecutions = 0;
@@ -127,7 +119,7 @@ describe("StepExecutor", () => {
   });
 
   test("handles chaotic explicit numeric suffix naming without collisions", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let executionCount = 0;
@@ -208,7 +200,7 @@ describe("StepExecutor", () => {
   });
 
   test("different step names execute independently", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let executionCount = 0;
@@ -237,7 +229,7 @@ describe("StepExecutor", () => {
   });
 
   test("propagates step errors with deadline exceeded", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -260,7 +252,7 @@ describe("StepExecutor", () => {
   });
 
   test("sleep parks workflow in running status", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -287,7 +279,7 @@ describe("StepExecutor", () => {
   });
 
   test("workflow resumes after sleep duration", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -322,7 +314,7 @@ describe("StepExecutor", () => {
   });
 
   test("auto-indexes duplicate sleep names", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -359,7 +351,7 @@ describe("StepExecutor", () => {
   });
 
   test("runs a child workflow and returns child output", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -402,7 +394,7 @@ describe("StepExecutor", () => {
   });
 
   test("wakes parent runWorkflow wait when child completes before parent parks", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -447,7 +439,7 @@ describe("StepExecutor", () => {
   });
 
   test("completes parent immediately when child workflow already finished", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -525,7 +517,7 @@ describe("StepExecutor", () => {
   });
 
   test("supports explicit runWorkflow options.name override", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -561,7 +553,7 @@ describe("StepExecutor", () => {
   });
 
   test("applies collision indexing across step.run and step.runWorkflow", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -622,7 +614,7 @@ describe("StepExecutor", () => {
   });
 
   test("supports workflow spec targets, date/number timeouts, and auto-indexed duplicate workflow names", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -694,7 +686,7 @@ describe("StepExecutor", () => {
   });
 
   test("fails workflow when timeout number is invalid", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const parent = client.defineWorkflow(
@@ -726,7 +718,7 @@ describe("StepExecutor", () => {
   });
 
   test("fails workflow when timeout duration string is invalid", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const parent = client.defineWorkflow(
@@ -758,7 +750,7 @@ describe("StepExecutor", () => {
   });
 
   test("validates child input before creating child run", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -802,7 +794,7 @@ describe("StepExecutor", () => {
   });
 
   test("handles runWorkflow replay with non-workflow context shape", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -850,7 +842,7 @@ describe("StepExecutor", () => {
   });
 
   test("handles runWorkflow replay with legacy null timeout context", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -898,7 +890,7 @@ describe("StepExecutor", () => {
   });
 
   test("handles runWorkflow replay with invalid timeout timestamp context", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -980,7 +972,7 @@ describe("StepExecutor", () => {
   });
 
   test("fails workflow when child linkage is missing run id", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1043,7 +1035,7 @@ describe("StepExecutor", () => {
   });
 
   test("fails workflow when linked child run cannot be loaded", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1114,7 +1106,7 @@ describe("StepExecutor", () => {
   });
 
   test("uses fallback child error when failed child run has no error payload", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1192,7 +1184,7 @@ describe("StepExecutor", () => {
   });
 
   test("surfaces canceled child workflow through parent workflow step", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1277,7 +1269,7 @@ describe("StepExecutor", () => {
   });
 
   test("surfaces child failure through parent workflow step", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1316,7 +1308,7 @@ describe("StepExecutor", () => {
   });
 
   test("workflow timeout fails parent wait but child continues and completes", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1383,7 +1375,7 @@ describe("StepExecutor", () => {
   });
 
   test("workflow timeout still fails when child finishes after timeout before parent replay", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1486,7 +1478,7 @@ describe("StepExecutor", () => {
   });
 
   test("runWorkflow wait parks until timeout and does not use poll-loop wake-up events", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1534,7 +1526,7 @@ describe("StepExecutor", () => {
   });
 
   test("parks using earliest timeout across parallel runWorkflow waits", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1639,7 +1631,7 @@ describe("StepExecutor", () => {
   });
 
   test("replay pre-pass parks on earliest running wait across sleep and runWorkflow history", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
 
     const workflowRun = await backend.createWorkflowRun({
       workflowName: `workflow-replay-earliest-wait-${randomUUID()}`,
@@ -1714,7 +1706,7 @@ describe("StepExecutor", () => {
   });
 
   test("best-effort fences late parallel branches after parent parks", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const lateStepName = "late-after-park";
 
@@ -1772,7 +1764,7 @@ describe("StepExecutor", () => {
   });
 
   test("supports parallel workflows via Promise.all", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -1812,7 +1804,7 @@ describe("StepExecutor", () => {
   });
 
   test("fans out 300 isolated child workflows in parallel and notifies once all complete", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let activeChildren = 0;
@@ -1936,7 +1928,7 @@ describe("StepExecutor", () => {
   });
 
   test("fails parent when child 150 fails and does not auto-replay the failed child", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let injectedFailures = 0;
@@ -2068,15 +2060,10 @@ describe("StepExecutor", () => {
         run.parentStepAttemptId !== null,
     );
     expect(childRuns).toHaveLength(300);
-
-    // Stop backend eagerly within the test body (which has a longer timeout
-    // than the afterEach hook) so in-flight child workflow queries can drain.
-    backendsToStop.splice(backendsToStop.indexOf(backend), 1);
-    await backend.stop();
   });
 
   test("completes when child 150 has transient failure handled by child-level retries", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     let injectedFailures = 0;
@@ -2168,7 +2155,7 @@ describe("StepExecutor", () => {
   });
 
   test("auto-indexes duplicate workflow names in parallel Promise.all", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -2225,7 +2212,7 @@ describe("StepExecutor", () => {
   });
 
   test("does not create duplicate child runs while waiting across replays", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -2277,7 +2264,7 @@ describe("StepExecutor", () => {
   });
 
   test("does not replay a failed workflow step when Promise.all has waiting siblings", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow<
@@ -2429,7 +2416,7 @@ describe("StepExecutor", () => {
   });
 
   test("canceling parent while waiting does not cancel child workflow", async () => {
-    const backend = await createBackend();
+    const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
     const child = client.defineWorkflow(
@@ -2490,7 +2477,7 @@ describe("StepExecutor", () => {
 describe("executeWorkflow", () => {
   describe("successful execution", () => {
     test("executes a simple workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2509,7 +2496,7 @@ describe("executeWorkflow", () => {
     });
 
     test("executes a multi-step workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow<{ value: number }, number>(
@@ -2530,7 +2517,7 @@ describe("executeWorkflow", () => {
     });
 
     test("returns null for workflows without return", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2547,7 +2534,7 @@ describe("executeWorkflow", () => {
     });
 
     test("returns null from workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2859,7 +2846,7 @@ describe("executeWorkflow", () => {
     });
 
     test("handles workflow errors with deadline exceeded", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2879,7 +2866,7 @@ describe("executeWorkflow", () => {
     });
 
     test("handles step errors with deadline exceeded", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2901,7 +2888,7 @@ describe("executeWorkflow", () => {
     });
 
     test("serializes non-Error exceptions", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2926,7 +2913,7 @@ describe("executeWorkflow", () => {
 
   describe("sleep handling", () => {
     test("workflow parks in running status", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -2940,6 +2927,7 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run();
       const worker = client.newWorker();
       await worker.tick();
+      await sleep(50);
 
       const workflowRun = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
@@ -2949,7 +2937,7 @@ describe("executeWorkflow", () => {
     });
 
     test("resumes workflow after sleep duration", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow<{ value: number }, number>(
@@ -2986,7 +2974,7 @@ describe("executeWorkflow", () => {
 
   describe("workflow with complex data", () => {
     test("handles objects as input and output", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3011,7 +2999,7 @@ describe("executeWorkflow", () => {
     });
 
     test("handles arrays in workflow", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3032,7 +3020,7 @@ describe("executeWorkflow", () => {
 
   describe("result type handling", () => {
     test("returns success with numeric result", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3051,7 +3039,7 @@ describe("executeWorkflow", () => {
     });
 
     test("returns success with string result", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3070,7 +3058,7 @@ describe("executeWorkflow", () => {
     });
 
     test("returns success with boolean result", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3091,7 +3079,7 @@ describe("executeWorkflow", () => {
 
   describe("step execution order", () => {
     test("executes steps in sequence", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const order: string[] = [];
@@ -3116,7 +3104,7 @@ describe("executeWorkflow", () => {
 
   describe("version handling", () => {
     test("passes version to workflow function", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3135,7 +3123,7 @@ describe("executeWorkflow", () => {
     });
 
     test("passes null version when not specified", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -3156,7 +3144,7 @@ describe("executeWorkflow", () => {
 
   describe("run", () => {
     test("exposes run metadata from workflow run", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
       const deadlineAt = new Date(Date.now() + 60_000);
       const idempotencyKey = "run-metadata-idempotency";
@@ -3198,7 +3186,7 @@ describe("executeWorkflow", () => {
     });
 
     test("keeps run metadata frozen at runtime", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
       let mutationError: unknown = null;
 
@@ -3231,7 +3219,7 @@ describe("executeWorkflow", () => {
     });
 
     test("keeps id and timestamps stable across replay", async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
       const snapshots: {
         id: string;
@@ -3326,15 +3314,6 @@ describe("createStepExecutionStateFromAttempts", () => {
     expect(state.runningByStepName.size).toBe(0);
   });
 });
-
-async function createBackend(): Promise<BackendPostgres> {
-  const backend = await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
-    namespaceId: randomUUID(),
-  });
-  backendsToStop.push(backend);
-
-  return backend;
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

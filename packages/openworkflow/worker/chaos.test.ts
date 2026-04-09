@@ -1,8 +1,7 @@
 import { OpenWorkflow } from "../client/client.js";
-import { BackendPostgres } from "../postgres.js";
-import { DEFAULT_POSTGRES_URL } from "../postgres/postgres.js";
+import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import { Worker } from "./worker.js";
-import { randomInt, randomUUID } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
 const TOTAL_STEPS = 50;
@@ -17,7 +16,7 @@ describe("chaos test", () => {
   test(
     "workflow completes despite random worker deaths",
     async () => {
-      const backend = await createBackend();
+      const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
 
       const workflow = client.defineWorkflow(
@@ -66,7 +65,6 @@ describe("chaos test", () => {
         workflowCompleted = true;
         if (chaosTask) await chaosTask;
         await Promise.all(workers.map((worker) => worker.stop()));
-        await backend.stop();
       }
     },
     TEST_TIMEOUT_MS,
@@ -101,12 +99,6 @@ async function runChaosTest(params: {
   }
 
   return restartCount;
-}
-
-async function createBackend(): Promise<BackendPostgres> {
-  return await BackendPostgres.connect(DEFAULT_POSTGRES_URL, {
-    namespaceId: randomUUID(),
-  });
 }
 
 async function createAndStartWorker(client: OpenWorkflow): Promise<Worker> {
