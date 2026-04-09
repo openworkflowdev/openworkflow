@@ -26,6 +26,9 @@ export interface Backend {
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
   countWorkflowRuns(): Promise<WorkflowRunCounts>;
+  cleanupTerminalWorkflowRuns(
+    params: Readonly<CleanupTerminalWorkflowRunsParams>,
+  ): Promise<number>;
   claimWorkflowRun(
     params: Readonly<ClaimWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -94,6 +97,11 @@ export type ListWorkflowRunsParams = PaginationOptions;
 export interface ClaimWorkflowRunParams {
   workerId: string;
   leaseDurationMs: number;
+}
+
+export interface CleanupTerminalWorkflowRunsParams {
+  finishedBefore: Date;
+  limit?: number;
 }
 
 export interface ExtendWorkflowRunLeaseParams {

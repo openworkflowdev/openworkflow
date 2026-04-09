@@ -3,6 +3,7 @@
 ## 0.4.3
 
 - Add a `--port` option to run the dashboard server on a custom port (#357)
+- Add `retention` config support for automatic terminal workflow run cleanup
 
 ## 0.4.2
 
