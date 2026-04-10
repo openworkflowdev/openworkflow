@@ -713,7 +713,7 @@ describe("StepExecutor", () => {
 
     expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(
-      /Workflow timeout must be a non-negative number/,
+      /Timeout must be a non-negative number/,
     );
   });
 
@@ -2472,6 +2472,507 @@ describe("StepExecutor", () => {
     );
     expect(childStatus).toBe("completed");
   });
+
+  // ---- step.sendSignal / step.waitForSignal --------------------------------
+
+  test("sendSignal sends a signal and returns workflow run IDs", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `test-signal-${randomUUID()}`;
+
+    const waiter = client.defineWorkflow(
+      { name: `signal-waiter-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+        });
+        return data;
+      },
+    );
+
+    const sender = client.defineWorkflow(
+      { name: `signal-sender-${randomUUID()}` },
+      async ({ step }) => {
+        const result = await step.sendSignal({
+          signal: signalString,
+          data: { approved: true },
+        });
+        return result;
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+
+    const waiterHandle = await waiter.run();
+    await tickUntilParked(backend, worker, waiterHandle.workflowRun.id, 20, 50);
+
+    const senderHandle = await sender.run();
+    const senderStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      senderHandle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(senderStatus).toBe("completed");
+
+    const senderResult = await senderHandle.result();
+    expect(senderResult).toEqual({
+      workflowRunIds: [waiterHandle.workflowRun.id],
+    });
+
+    const waiterStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      waiterHandle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(waiterStatus).toBe("completed");
+    const waiterResult = await waiterHandle.result();
+    expect(waiterResult).toEqual({ data: { approved: true } });
+  });
+
+  test("waitForSignal returns null on timeout", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-timeout-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: `never-sent-${randomUUID()}`,
+          timeout: 1, // 1ms — expires immediately
+        });
+        return data;
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+
+    // first tick: creates the signal-wait step and parks (timeout is in the future at creation time)
+    // subsequent ticks: timeout has expired, completes with null
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await handle.result();
+    expect(result).toBeNull();
+  });
+
+  test("waitForSignal handles null context gracefully (corrupted row)", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-wait-null-context-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: `missing-ctx-${randomUUID()}`,
+          timeout: 1, // expires immediately
+        });
+        return data;
+      },
+    );
+
+    // corrupt the signal-wait step attempt to have a null context (simulates
+    // a corrupted or partially-written row) and backdate createdAt so the
+    // 1-year default fallback timeout has already expired.
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    const originalCreateStepAttempt = backend.createStepAttempt.bind(backend);
+    const createStepAttemptSpy = vi
+      .spyOn(backend, "createStepAttempt")
+      .mockImplementation(async (params) => {
+        const attempt = await originalCreateStepAttempt(params);
+        if (attempt.kind === "signal-wait") {
+          return {
+            ...attempt,
+            createdAt: twoYearsAgo,
+            context: null,
+          };
+        }
+        return attempt;
+      });
+
+    try {
+      const worker = client.newWorker();
+      const handle = await workflow.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        20,
+        50,
+      );
+
+      expect(status).toBe("completed");
+      const result = await handle.result();
+      expect(result).toBeNull();
+    } finally {
+      createStepAttemptSpy.mockRestore();
+    }
+  });
+
+  test("waitForSignal validates data against schema", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `schema-signal-${randomUUID()}`;
+
+    const waiter = client.defineWorkflow(
+      { name: `signal-schema-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+          schema: z.object({ approved: z.boolean() }),
+        });
+        return data;
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const waiterHandle = await waiter.run();
+    await tickUntilParked(backend, worker, waiterHandle.workflowRun.id, 20, 50);
+
+    // w/ valid data
+    await client.sendSignal({
+      signal: signalString,
+      data: { approved: true },
+    });
+
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      waiterHandle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await waiterHandle.result();
+    expect(result).toEqual({ data: { approved: true } });
+  });
+
+  test("waitForSignal fails step when schema validation fails", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `bad-schema-signal-${randomUUID()}`;
+
+    const waiter = client.defineWorkflow(
+      { name: `signal-bad-schema-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+          schema: z.object({ approved: z.boolean() }),
+        });
+        return data;
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const waiterHandle = await waiter.run();
+    await tickUntilParked(backend, worker, waiterHandle.workflowRun.id, 20, 50);
+
+    // w/ invalid data
+    await client.sendSignal({
+      signal: signalString,
+      data: { approved: "not-a-boolean" },
+    });
+
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      waiterHandle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("failed");
+  });
+
+  test("sendSignal is replay-safe across re-executions", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `replay-signal-${randomUUID()}`;
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-replay-${randomUUID()}` },
+      async ({ step }) => {
+        const first = await step.sendSignal({
+          signal: signalString,
+          data: { v: 1 },
+        });
+        const value = await step.run({ name: "compute" }, () => 42);
+        return { sent: first, value };
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+
+    const result = await handle.result();
+    expect(result).toEqual({
+      sent: { workflowRunIds: [] },
+      value: 42,
+    });
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const signalStep = steps.data.find((s) => s.kind === "signal-send");
+    expect(signalStep).toBeDefined();
+    expect(signalStep?.status).toBe("completed");
+  });
+
+  test("sendSignal auto-indexes duplicate signal step names", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-autoindex-${randomUUID()}` },
+      async ({ step }) => {
+        await step.sendSignal({ signal: "notify", data: "first" });
+        await step.sendSignal({ signal: "notify", data: "second" });
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+
+    const steps = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const signalSteps = steps.data
+      .filter((s) => s.kind === "signal-send")
+      .map((s) => s.stepName)
+      .toSorted((a, b) => a.localeCompare(b));
+    expect(signalSteps).toEqual(["notify", "notify:1"]);
+  });
+
+  test("waitForSignal is replay-safe across re-executions", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `replay-wait-${randomUUID()}`;
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-wait-replay-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+        });
+        const value = await step.run({ name: "after-signal" }, () => "ok");
+        return { data, value };
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 2 });
+    const handle = await workflow.run();
+
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
+
+    await client.sendSignal({ signal: signalString, data: { x: 1 } });
+
+    // resume — the first replay hits the cached waitForSignal path
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await handle.result();
+    expect(result).toEqual({
+      data: { data: { x: 1 } },
+      value: "ok",
+    });
+  });
+
+  test("sendSignal replays from cache when followed by a sleep step", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-send-cache-replay-${randomUUID()}` },
+      async ({ step }) => {
+        const result = await step.sendSignal({
+          signal: "no-one-listening",
+          data: null,
+        });
+        // sleep forces a park; on resume the workflow replays and sendSignal
+        // hits the cached step attempt path.
+        await step.sleep("pause", "10ms");
+        return result;
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await handle.result();
+    expect(result).toEqual({ workflowRunIds: [] });
+  });
+
+  test("waitForSignal replays from cache when followed by a sleep step", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `wait-cache-replay-${randomUUID()}`;
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-wait-cache-replay-${randomUUID()}` },
+      async ({ step }) => {
+        const data = await step.waitForSignal({
+          signal: signalString,
+          timeout: 30_000,
+        });
+        // sleep forces a park; on resume waitForSignal hits the cached path
+        await step.sleep("pause", "10ms");
+        return data;
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
+
+    await client.sendSignal({ signal: signalString, data: { cached: true } });
+
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("completed");
+    const result = await handle.result();
+    expect(result).toEqual({ data: { cached: true } });
+  });
+
+  test("waitForSignal throws when another step already waits on the same signal", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const signalString = `dup-signal-${randomUUID()}`;
+
+    // first execution: create signal-wait step "waiter-a" on signalString,
+    // parks. Then we force a re-execution. Constructor loads running "waiter-a"
+    // → activeSignalWaitStepNameBySignal maps signalString → "waiter-a".
+    // Workflow code now calls waitForSignal with name "waiter-b" on the same
+    // signal → duplicate signal guard fires.
+    let firstExecution = true;
+    const workflow = client.defineWorkflow(
+      { name: `signal-dup-waiter-${randomUUID()}` },
+      async ({ step }) => {
+        if (firstExecution) {
+          firstExecution = false;
+          await step.waitForSignal({
+            name: "waiter-a",
+            signal: signalString,
+            timeout: 30_000,
+          });
+        } else {
+          await step.waitForSignal({
+            name: "waiter-b",
+            signal: signalString,
+            timeout: 30_000,
+          });
+        }
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    // first tick: creates waiter-a, parks with availableAt ~30s in the future.
+    await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
+
+    // force re-execution by resetting availableAt to now via direct SQL.
+    const pg = (
+      backend as unknown as {
+        pg: { unsafe: (q: string, p?: unknown[]) => Promise<unknown> };
+      }
+    ).pg;
+    await pg.unsafe(
+      `UPDATE "openworkflow"."workflow_runs" SET "available_at" = NOW() WHERE "id" = $1`,
+      [handle.workflowRun.id],
+    );
+
+    // second tick: workflow code calls waiter-b on same signal → fails
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("failed");
+  });
+
+  test("sendSignal step fails when backend.sendSignal throws", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    // spy on the backend to force an error during signal send
+    const sendSignalSpy = vi
+      .spyOn(backend, "sendSignal")
+      .mockRejectedValueOnce(new Error("signal delivery failed"));
+
+    const workflow = client.defineWorkflow(
+      { name: `signal-send-error-${randomUUID()}` },
+      async ({ step }) => {
+        const result = await step.sendSignal({
+          signal: "will-fail",
+          data: null,
+        });
+        return result;
+      },
+    );
+
+    const worker = client.newWorker();
+    const handle = await workflow.run();
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      20,
+      50,
+    );
+    expect(status).toBe("failed");
+    sendSignalSpy.mockRestore();
+  });
 });
 
 describe("executeWorkflow", () => {
@@ -3249,6 +3750,85 @@ describe("executeWorkflow", () => {
 
       expect(snapshots.length).toBe(2);
       expect(snapshots[0]).toEqual(snapshots[1]);
+    });
+  });
+
+  describe("signal step resume from running attempt", () => {
+    test("sendSignal resolves a pre-existing running signal-send step attempt", async () => {
+      const runningAttempt = createMockStepAttempt({
+        id: "running-signal-send",
+        stepName: "notify",
+        kind: "signal-send",
+        status: "running",
+        output: null,
+        finishedAt: null,
+      });
+
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: [runningAttempt],
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const sendSignalMock = vi.fn(() =>
+        Promise.resolve({ workflowRunIds: ["run-abc"] }),
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) =>
+          Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              stepName: "notify",
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          ),
+      );
+
+      const workflowRun = createMockWorkflowRun({
+        id: "signal-send-resume-run",
+        workerId: "worker-resume",
+      });
+
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          sendSignal: sendSignalMock,
+          completeStepAttempt,
+          completeWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn: async ({ step }) => {
+          const result = await step.sendSignal({
+            signal: "notify",
+            data: { v: 1 },
+          });
+          return result;
+        },
+        workflowVersion: null,
+        workerId: "worker-resume",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+
+      expect(sendSignalMock).toHaveBeenCalled();
+      expect(completeStepAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({ stepAttemptId: "running-signal-send" }),
+      );
+      expect(completeWorkflowRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          output: { workflowRunIds: ["run-abc"] },
+        }),
+      );
     });
   });
 });

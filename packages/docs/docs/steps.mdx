@@ -115,7 +115,7 @@ await step.run({ name: "log-event" }, async () => {
 
 ## Step Types
 
-OpenWorkflow provides three step types:
+OpenWorkflow provides five step types:
 
 ### `step.run()`
 
@@ -147,6 +147,31 @@ const childOutput = await step.runWorkflow(
   { timeout: "5m" }, // optional, defaults to 1 year
 );
 ```
+
+### `step.sendSignal()`
+
+Sends a signal to all workflows currently waiting on that signal name:
+
+```ts
+const { workflowRunIds } = await step.sendSignal({
+  signal: `approval:${orderId}`,
+  data: { approved: true },
+});
+```
+
+### `step.waitForSignal()`
+
+Pauses the workflow until a matching signal is sent, or the timeout expires:
+
+```ts
+const result = await step.waitForSignal({
+  signal: `approval:${orderId}`,
+  timeout: "7d",
+});
+// result is { data } or null if timed out
+```
+
+See [Signals](/docs/signals) for details.
 
 ## Retry Policy (Optional)
 

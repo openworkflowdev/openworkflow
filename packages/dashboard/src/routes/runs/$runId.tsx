@@ -352,8 +352,7 @@ function RunDetailsPage() {
                   const config = STEP_STATUS_CONFIG[step.status];
                   const StatusIcon = config.icon;
                   const iconColor = config.color;
-                  const stepTypeLabel =
-                    step.kind === "function" ? "function" : step.kind;
+                  const stepTypeLabel = step.kind.replaceAll("-", " ");
                   const stepDuration = computeDuration(
                     step.startedAt,
                     step.finishedAt,
