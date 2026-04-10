@@ -1,5 +1,10 @@
 # openworkflow
 
+## 0.9.0
+
+- Add name-addressed workflow signals: `step.waitForSignal()`,
+  `step.sendSignal()`, and `ow.sendSignal()` (#400)
+
 ## 0.8.1
 
 - Fix Postgres key transformation to only camel-case column names, preserving

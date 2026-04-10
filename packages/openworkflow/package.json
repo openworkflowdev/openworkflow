@@ -1,6 +1,6 @@
 {
   "name": "openworkflow",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Open-source TypeScript framework for building durable, resumable workflows",
   "keywords": [
     "durable execution",

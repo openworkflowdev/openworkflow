@@ -1,5 +1,9 @@
 # @openworkflow/cli
 
+## 0.4.4
+
+- Add support for `openworkflow` v0.9.0
+
 ## 0.4.3
 
 - Add a `--port` option to run the dashboard server on a custom port (#357)

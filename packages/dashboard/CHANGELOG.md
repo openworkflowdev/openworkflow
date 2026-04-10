@@ -1,5 +1,9 @@
 # @openworkflow/dashboard
 
+## 0.1.9
+
+- Add workflow signals support
+
 ## 0.1.8
 
 - Add pagination to runs and step attempts, including conditional pagination
