@@ -33,7 +33,7 @@ const WEEK_MS = 7 * DAY_MS;
 const MONTH_MS = 2_629_800_000;
 const YEAR_MS = 31_557_600_000;
 
-const DURATION_MULTIPLIERS: Record<string, number> = {
+const DURATION_MULTIPLIERS = {
   millisecond: 1,
   milliseconds: 1,
   msec: 1,
@@ -68,9 +68,18 @@ const DURATION_MULTIPLIERS: Record<string, number> = {
   yr: YEAR_MS,
   yrs: YEAR_MS,
   y: YEAR_MS,
-};
+} satisfies Record<Unit, number>;
 
 const DURATION_REGEX = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i;
+
+/**
+ * Type guard narrowing an arbitrary string to a known duration unit.
+ * @param value - Lowercased unit string from the parse regex
+ * @returns True when the value is a known Unit
+ */
+function isDurationUnit(value: string): value is Unit {
+  return value in DURATION_MULTIPLIERS;
+}
 
 /**
  * Parse a duration string into milliseconds. Examples:
@@ -101,10 +110,9 @@ export function parseDuration(str: DurationString): Result<number> {
   const numValue = Number.parseFloat(match[1]);
   const unit = match[2]?.toLowerCase() ?? "ms"; // default to ms if not provided
 
-  const multiplier = DURATION_MULTIPLIERS[unit];
-  if (multiplier === undefined) {
+  if (!isDurationUnit(unit)) {
     return err(new Error(`Invalid duration format: "${str}"`));
   }
 
-  return ok(numValue * multiplier);
+  return ok(numValue * DURATION_MULTIPLIERS[unit]);
 }
