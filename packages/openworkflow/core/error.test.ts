@@ -1,4 +1,9 @@
-import { deserializeError, serializeError, wrapError } from "./error.js";
+import {
+  BackendError,
+  deserializeError,
+  serializeError,
+  wrapError,
+} from "./error.js";
 import { describe, expect, test } from "vitest";
 
 describe("serializeError", () => {
@@ -124,5 +129,15 @@ describe("deserializeError", () => {
 
     expect(restored.message).toBe(original.message);
     expect(restored.name).toBe(original.name);
+  });
+});
+
+describe("BackendError", () => {
+  test("sets code, message, and name", () => {
+    const error = new BackendError("NOT_FOUND", "run not found");
+    expect(error.code).toBe("NOT_FOUND");
+    expect(error.message).toBe("run not found");
+    expect(error.name).toBe("BackendError");
+    expect(error).toBeInstanceOf(Error);
   });
 });

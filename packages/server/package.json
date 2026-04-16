@@ -1,0 +1,38 @@
+{
+  "name": "@openworkflow/server",
+  "version": "0.1.0",
+  "description": "HTTP server for OpenWorkflow — exposes the Backend interface as a REST API",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!*.test.*",
+    "!*.testsuite.*",
+    "!*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.3",
+    "hono": "^4.7.11",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "openworkflow": "*",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "openworkflow": "^0.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

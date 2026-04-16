@@ -11,7 +11,8 @@
     { "path": "./packages/backend-postgres" },
     { "path": "./packages/backend-sqlite" },
     { "path": "./packages/cli" },
-    { "path": "./packages/dashboard" }
+    { "path": "./packages/dashboard" },
+    { "path": "./packages/server" }
   ],
 
   // project-wide settings for configs, workflows, etc.

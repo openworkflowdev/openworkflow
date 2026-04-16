@@ -5,6 +5,7 @@ import {
   doctor,
   getVersion,
   init,
+  serverStart,
   workerStart,
 } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
@@ -58,5 +59,18 @@ program
   )
   .option("--config <path>", "path to OpenWorkflow config file")
   .action(withErrorHandling(dashboard));
+
+// server
+const serverCmd = program
+  .command("server")
+  .description("manage the API server");
+
+// server start
+serverCmd
+  .command("start")
+  .description("start the HTTP API server")
+  .option("-p, --port <number>", "port to listen on", Number.parseInt)
+  .option("--config <path>", "path to OpenWorkflow config file")
+  .action(withErrorHandling(serverStart));
 
 await program.parseAsync(process.argv);

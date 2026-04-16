@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "dist"
   },
-  "references": [{ "path": "../openworkflow" }, { "path": "../server" }],
+  "references": [{ "path": "../openworkflow" }],
   "include": ["**/*.ts"],
   "exclude": ["dist"]
 }

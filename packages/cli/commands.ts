@@ -39,6 +39,10 @@ interface DashboardOptions extends CommandOptions {
   port?: number;
 }
 
+interface ServerStartOptions extends CommandOptions {
+  port?: number;
+}
+
 /**
  * openworkflow -V | --version
  * @returns the version string, or "-" if it cannot be determined
@@ -283,21 +287,13 @@ export async function workerStart(
   const ow = new OpenWorkflow({ backend });
 
   let worker: ReturnType<typeof ow.newWorker> | null = null;
-  let shuttingDown = false;
-
-  /** Stop the worker on process shutdown. */
-  async function gracefulShutdown(): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
-
-    consola.warn("Shutting down worker...");
-    try {
+  const gracefulShutdown = registerGracefulShutdown({
+    noun: "worker",
+    stopApp: async () => {
       await worker?.stop();
-    } finally {
-      await backend.stop();
-    }
-    consola.success("Worker stopped");
-  }
+    },
+    backend,
+  });
 
   try {
     // discover and import workflows
@@ -329,9 +325,6 @@ export async function workerStart(
     }
 
     worker = ow.newWorker(workerOptions);
-
-    process.on("SIGINT", () => void gracefulShutdown());
-    process.on("SIGTERM", () => void gracefulShutdown());
 
     await worker.start();
     consola.success("Worker started.");
@@ -458,7 +451,100 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   });
 }
 
+export type { ServerStartOptions };
+
+/**
+ * openworkflow server start
+ * Start the OpenWorkflow HTTP API server.
+ * @param options - Server start options.
+ */
+export async function serverStart(
+  options: ServerStartOptions = {},
+): Promise<void> {
+  const { config: configPath, port: rawPort } = options;
+  const port = rawPort ?? 3000;
+  consola.start("Starting server...");
+
+  const { configFile, config } = await loadConfigWithEnv(configPath);
+  if (!configFile) {
+    throw new CLIError(
+      "No config file found.",
+      "Run `npx @openworkflow/cli init` to create a config file.",
+    );
+  }
+  consola.info(`Using config: ${configFile}`);
+
+  let createServer: typeof import("@openworkflow/server").createServer;
+  let serve: typeof import("@openworkflow/server").serve;
+  try {
+    ({ createServer, serve } = await import("@openworkflow/server"));
+  } catch {
+    throw new CLIError(
+      "@openworkflow/server is not installed.",
+      'Run `npm install @openworkflow/server` to enable the "server start" command.',
+    );
+  }
+
+  const backend = config.backend;
+  const server = createServer(backend, {
+    logRequests: true,
+    onError: (error, ctx) => {
+      consola.error(`[${ctx.method} ${ctx.path}]`, error);
+    },
+  });
+  const handle = serve(server, { port });
+  consola.success(`Server listening on http://localhost:${String(port)}`);
+
+  registerGracefulShutdown({
+    noun: "server",
+    stopApp: () => handle.close(),
+    backend,
+  });
+}
+
 // -----------------------------------------------------------------------------
+
+interface ShutdownOptions {
+  /** Lower-case name of the thing being stopped (e.g. "worker", "server"). */
+  noun: string;
+  /** App-level stop — `worker.stop` or `handle.close`. */
+  stopApp: () => Promise<void>;
+  /** Backend whose `stop()` runs last, even if `stopApp` throws. */
+  backend: { stop: () => Promise<void> };
+}
+
+/**
+ * Wire SIGINT/SIGTERM to a graceful shutdown. The HTTP handle / worker is
+ * stopped first (so no new work starts), then the backend is stopped even if
+ * the app-level close fails.
+ * @param options - What to stop on shutdown
+ * @returns The shutdown function (also registered against SIGINT/SIGTERM)
+ */
+function registerGracefulShutdown(
+  options: ShutdownOptions,
+): () => Promise<void> {
+  let shuttingDown = false;
+  /**
+   * Stop the app and backend; idempotent against repeat signals.
+   * @returns Resolves when both are stopped
+   */
+  async function shutdown(): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    consola.warn(`Shutting down ${options.noun}...`);
+    try {
+      await options.stopApp();
+    } finally {
+      await options.backend.stop();
+    }
+    const capitalized =
+      options.noun.charAt(0).toUpperCase() + options.noun.slice(1);
+    consola.success(`${capitalized} stopped`);
+  }
+  process.on("SIGINT", () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
+  return shutdown;
+}
 
 /**
  * Get workflow directories from config.
@@ -828,11 +914,6 @@ async function discoverWorkflowsInDirs(
   return { files, workflows };
 }
 
-/**
- * Get the config template for a backend choice.
- * @param backendChoice - The selected backend choice
- * @returns The config template string
- */
 /**
  * Get the client template for a backend choice.
  * @param backendChoice - The selected backend choice

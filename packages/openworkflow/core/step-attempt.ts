@@ -5,14 +5,21 @@ import type { Result } from "./result.js";
 import { err, ok } from "./result.js";
 
 /**
+ * Runtime tuple of every known step kind. Single source of truth — the
+ * `StepKind` type is derived from this list so adding a kind is one edit.
+ */
+export const STEP_KINDS = [
+  "function",
+  "sleep",
+  "workflow",
+  "signal-send",
+  "signal-wait",
+] as const;
+
+/**
  * The kind of step in a workflow.
  */
-export type StepKind =
-  | "function"
-  | "sleep"
-  | "workflow"
-  | "signal-send"
-  | "signal-wait";
+export type StepKind = (typeof STEP_KINDS)[number];
 
 /**
  * Status of a step attempt through its lifecycle.

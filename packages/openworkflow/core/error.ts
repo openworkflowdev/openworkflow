@@ -8,6 +8,43 @@ export interface SerializedError {
 }
 
 /**
+ * Runtime tuple of every known Backend error code. Single source of truth —
+ * the `BackendErrorCode` type is derived from this list so adding a code is
+ * one edit.
+ */
+export const BACKEND_ERROR_CODES = ["NOT_FOUND", "CONFLICT"] as const;
+
+/**
+ * Error codes for typed Backend errors that can be mapped to HTTP status codes.
+ */
+export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
+
+/**
+ * Type guard narrowing an arbitrary string to a known {@link BackendErrorCode}.
+ * @param code - Candidate code string (e.g. from a server response)
+ * @returns Whether `code` is a recognized backend error code
+ */
+export function isBackendErrorCode(code: string): code is BackendErrorCode {
+  return (BACKEND_ERROR_CODES as readonly string[]).includes(code);
+}
+
+/**
+ * A typed error thrown by Backend implementations to signal well-known failure
+ * modes. Consumers (e.g. the HTTP server) can inspect `code` to choose the
+ * appropriate response status.
+ */
+// eslint-disable-next-line functional/no-classes, functional/no-class-inheritance
+export class BackendError extends Error {
+  readonly code: BackendErrorCode;
+
+  constructor(code: BackendErrorCode, message: string) {
+    super(message);
+    this.name = "BackendError";
+    this.code = code;
+  }
+}
+
+/**
  * Serialize an error to a JSON-compatible format.
  * @param error - The error to serialize (can be Error instance or any value)
  * @returns A JSON-serializable error object
