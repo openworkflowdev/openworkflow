@@ -1,5 +1,6 @@
 import {
   errorToResponse,
+  HttpValidationError,
   parseJsonBody,
   type ServerErrorHook,
 } from "./errors.js";
@@ -38,7 +39,8 @@ import type {
   ListStepAttemptsParams,
   ListWorkflowRunsParams,
   RescheduleWorkflowRunAfterFailedStepAttemptParams,
-  SendSignalParams,
+  RetryPolicy,
+  SerializedError,
   SetStepAttemptChildWorkflowRunParams,
   SleepWorkflowRunParams,
 } from "openworkflow/internal";
@@ -55,36 +57,18 @@ export interface OpenWorkflowServer {
  * Options for {@link createServer}.
  */
 export interface CreateServerOptions {
-  /**
-   * Maximum allowed request body size, in bytes. Requests exceeding this
-   * limit are rejected with HTTP 413 before the handler is invoked.
-   * Defaults to 1 MiB.
-   */
+  /** Maximum request body size, in bytes. Defaults to 1 MiB. */
   maxBodyBytes?: number;
-  /**
-   * Whether to attach Hono's request logger middleware.
-   * Defaults to `false` so tests stay quiet; enable in production.
-   */
+  /** Attach Hono's request logger middleware. Defaults to `false`. */
   logRequests?: boolean;
-  /**
-   * Hook invoked for every unexpected server-side error. Intended for
-   * structured logging or error reporting. Not called for expected 4xx
-   * conditions (validation errors, `BackendError`, body-limit rejection).
-   */
+  /** Hook invoked for unexpected server-side errors (not validation/`BackendError`). */
   onError?: ServerErrorHook;
   /**
-   * If `true`, the `message` of unexpected `Error`s thrown from the backend
-   * is included in the 500 response body. Useful during development and for
-   * the shared test suite; dangerous in production because it can leak
-   * implementation details (SQL fragments, connection URIs, etc.).
-   * `BackendError` messages and validation errors are always exposed
-   * regardless of this flag.
-   * Defaults to `false` (production-safe).
+   * Include the message of unexpected backend errors in the 500 response.
+   * Defaults to `false`; leaks implementation details if enabled in production.
    */
   exposeInternalErrors?: boolean;
 }
-
-const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1 MiB
 
 /**
  * Create an OpenWorkflow HTTP server backed by the given Backend.
@@ -101,14 +85,13 @@ export function createServer(
   if (options.logRequests) {
     app.use("*", logger());
   }
-  app.use(
-    "*",
-    bodyLimit({ maxSize: options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES }),
-  );
+  app.use("*", bodyLimit({ maxSize: options.maxBodyBytes ?? 1_048_576 }));
   app.onError((error, c) =>
     errorToResponse(error, c, {
-      onError: options.onError,
-      exposeInternalErrors: options.exposeInternalErrors,
+      ...(options.onError === undefined ? {} : { onError: options.onError }),
+      ...(options.exposeInternalErrors === undefined
+        ? {}
+        : { exposeInternalErrors: options.exposeInternalErrors }),
     }),
   );
 
@@ -133,13 +116,9 @@ export function createServer(
   return app;
 }
 
-// ---------------------------------------------------------------------------
-// Verb dispatch — POST /...:{verb} and POST /.../:id:{verb}
-//
-// Hono doesn't support literal colons inside a route that also has a `:param`,
-// so we capture `id:verb` as a single segment and dispatch via table. Shared
-// between workflow-run and step-attempt instance methods.
-// ---------------------------------------------------------------------------
+// Hono doesn't support a literal `:` inside a route that also has a `:param`,
+// so `POST /resource/:id:verb` is captured as a single segment and dispatched
+// via the `VerbHandler` tables below.
 
 type VerbHandler = (
   backend: Backend,
@@ -148,11 +127,11 @@ type VerbHandler = (
 ) => Promise<Response>;
 
 /**
- * Register `POST {pathPrefix}/:idVerb` with the given verb dispatch table.
- * @param app - Hono app instance
- * @param pathPrefix - Collection path (e.g. "/v0/workflow-runs")
- * @param backend - Backend implementation to proxy
- * @param verbs - Verb-name → handler map
+ * Register `POST {pathPrefix}/:id:verb` routes that dispatch through `verbs`.
+ * @param app - The Hono app to mount on
+ * @param pathPrefix - Path prefix preceding the `:id:verb` segment
+ * @param backend - Backend instance passed to each verb handler
+ * @param verbs - Verb name → handler map
  */
 function registerVerbRoute(
   app: Hono,
@@ -169,10 +148,6 @@ function registerVerbRoute(
     return handler(backend, id, c);
   });
 }
-
-// ---------------------------------------------------------------------------
-// Route registration — Workflow Runs
-// ---------------------------------------------------------------------------
 
 const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
   extendLease: async (backend, id, c) => {
@@ -202,8 +177,8 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
     const params: FailWorkflowRunParams = {
       workflowRunId: id,
       workerId: body.workerId,
-      error: body.error,
-      retryPolicy: body.retryPolicy,
+      error: toSerializedError(body.error),
+      retryPolicy: body.retryPolicy as RetryPolicy,
       ...(body.attempts === undefined ? {} : { attempts: body.attempts }),
       ...(body.deadlineAt === undefined
         ? {}
@@ -217,12 +192,11 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
     const params: RescheduleWorkflowRunAfterFailedStepAttemptParams = {
       workflowRunId: id,
       workerId: body.workerId,
-      error: body.error,
+      error: toSerializedError(body.error),
       availableAt: new Date(body.availableAt),
     };
-    const run = await backend.rescheduleWorkflowRunAfterFailedStepAttempt(
-      params,
-    );
+    const run =
+      await backend.rescheduleWorkflowRunAfterFailedStepAttempt(params);
     return c.json(run);
   },
   cancel: async (backend, id, c) => {
@@ -233,9 +207,9 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
 };
 
 /**
- * Register workflow-run routes on the given app.
- * @param app - Hono app instance
- * @param backend - Backend implementation to proxy
+ * Mount workflow-run routes under `/v0/workflow-runs`.
+ * @param app - The Hono app to mount on
+ * @param backend - Backend instance to delegate to
  */
 function registerWorkflowRunRoutes(app: Hono, backend: Backend): void {
   app.post("/v0/workflow-runs", async (c) => {
@@ -286,10 +260,6 @@ function registerWorkflowRunRoutes(app: Hono, backend: Backend): void {
   registerVerbRoute(app, "/v0/workflow-runs", backend, WORKFLOW_RUN_VERBS);
 }
 
-// ---------------------------------------------------------------------------
-// Route registration — Step Attempts
-// ---------------------------------------------------------------------------
-
 const STEP_ATTEMPT_VERBS: Readonly<Record<string, VerbHandler>> = {
   complete: async (backend, id, c) => {
     const body = await parseJsonBody(c, completeStepAttemptSchema);
@@ -299,7 +269,12 @@ const STEP_ATTEMPT_VERBS: Readonly<Record<string, VerbHandler>> = {
   },
   fail: async (backend, id, c) => {
     const body = await parseJsonBody(c, failStepAttemptSchema);
-    const params: FailStepAttemptParams = { stepAttemptId: id, ...body };
+    const params: FailStepAttemptParams = {
+      stepAttemptId: id,
+      workflowRunId: body.workflowRunId,
+      workerId: body.workerId,
+      error: toSerializedError(body.error),
+    };
     const step = await backend.failStepAttempt(params);
     return c.json(step);
   },
@@ -315,16 +290,20 @@ const STEP_ATTEMPT_VERBS: Readonly<Record<string, VerbHandler>> = {
 };
 
 /**
- * Register step-attempt routes on the given app.
- * @param app - Hono app instance
- * @param backend - Backend implementation to proxy
+ * Mount step-attempt routes under `/v0/workflow-runs/:id/step-attempts` and `/v0/step-attempts`.
+ * @param app - The Hono app to mount on
+ * @param backend - Backend instance to delegate to
  */
 function registerStepAttemptRoutes(app: Hono, backend: Backend): void {
   app.post("/v0/workflow-runs/:id/step-attempts", async (c) => {
     const body = await parseJsonBody(c, createStepAttemptSchema);
     const params: CreateStepAttemptParams = {
       workflowRunId: c.req.param("id"),
-      ...body,
+      workerId: body.workerId,
+      stepName: body.stepName,
+      kind: body.kind,
+      config: body.config,
+      context: body.context,
     };
     const step = await backend.createStepAttempt(params);
     return c.json(step, 201);
@@ -336,7 +315,7 @@ function registerStepAttemptRoutes(app: Hono, backend: Backend): void {
     if (!step) {
       return c.json({ error: { message: "Step attempt not found" } }, 404);
     }
-    return c.json(step);
+    return c.json(step as unknown);
   });
 
   app.get("/v0/workflow-runs/:id/step-attempts", async (c) => {
@@ -351,20 +330,15 @@ function registerStepAttemptRoutes(app: Hono, backend: Backend): void {
   registerVerbRoute(app, "/v0/step-attempts", backend, STEP_ATTEMPT_VERBS);
 }
 
-// ---------------------------------------------------------------------------
-// Route registration — Signals
-// ---------------------------------------------------------------------------
-
 /**
- * Register signal routes on the given app.
- * @param app - Hono app instance
- * @param backend - Backend implementation to proxy
+ * Mount signal routes under `/v0/signals` and `/v0/signal-deliveries`.
+ * @param app - The Hono app to mount on
+ * @param backend - Backend instance to delegate to
  */
 function registerSignalRoutes(app: Hono, backend: Backend): void {
   app.post("/v0/signals:send", async (c) => {
     const body = await parseJsonBody(c, sendSignalSchema);
-    const params: SendSignalParams = body;
-    const result = await backend.sendSignal(params);
+    const result = await backend.sendSignal(body);
     return c.json(result);
   });
 
@@ -374,18 +348,15 @@ function registerSignalRoutes(app: Hono, backend: Backend): void {
     };
     const result = await backend.getSignalDelivery(params);
     if (result === undefined) return c.body(null, 204);
-    return c.json(result);
+    return c.json(result as unknown);
   });
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /**
- * Extract pagination query params from a Hono context.
+ * Extract pagination query params.
  * @param c - Hono context
- * @returns Pagination params object
+ * @returns Pagination params
+ * @throws {HttpValidationError} On invalid `limit` or conflicting `after`/`before`.
  */
 function paginationQuery(c: Context): {
   limit?: number;
@@ -393,19 +364,50 @@ function paginationQuery(c: Context): {
   before?: string;
 } {
   const { limit, after, before } = c.req.query();
+  if (after && before) {
+    throw new HttpValidationError(
+      "Query parameters `after` and `before` are mutually exclusive.",
+    );
+  }
+  const result: { limit?: number; after?: string; before?: string } = {};
+  if (limit) {
+    const parsed = Number(limit);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new HttpValidationError(
+        "Query parameter `limit` must be a positive integer.",
+      );
+    }
+    result.limit = parsed;
+  }
+  if (after) result.after = after;
+  if (before) result.before = before;
+  return result;
+}
+
+/**
+ * Drop undefined name/stack to satisfy `exactOptionalPropertyTypes`.
+ * @param err - Validated error payload from a request body
+ * @param err.name - Optional error name
+ * @param err.message - Error message
+ * @param err.stack - Optional stack trace
+ * @returns A {@link SerializedError} with no `undefined` properties
+ */
+function toSerializedError(err: {
+  name?: string | undefined;
+  message: string;
+  stack?: string | undefined;
+}): SerializedError {
   return {
-    ...(limit ? { limit: Number(limit) } : {}),
-    ...(after ? { after } : {}),
-    ...(before ? { before } : {}),
+    message: err.message,
+    ...(err.name === undefined ? {} : { name: err.name }),
+    ...(err.stack === undefined ? {} : { stack: err.stack }),
   };
 }
 
 /**
- * Split a path segment of the form `id:verb` into its parts.
- * Returns `[id, verb]` or `null` if no colon is present, or if the verb is
- * empty (e.g. `id:`).
- * @param segment - The path segment to split
- * @returns Tuple of [id, verb] or null
+ * Split an `{id}:{verb}` path segment; returns null if either side is empty.
+ * @param segment - Path segment of the form `id:verb`
+ * @returns A `[id, verb]` tuple, or null if the segment is malformed
  */
 function splitIdVerb(segment: string): [id: string, verb: string] | null {
   const idx = segment.lastIndexOf(":");
@@ -416,33 +418,25 @@ function splitIdVerb(segment: string): [id: string, verb: string] | null {
   return [id, verb];
 }
 
-// ---------------------------------------------------------------------------
-// Node.js HTTP server
-// ---------------------------------------------------------------------------
-
 /**
  * Options for {@link serve}.
  */
 export interface ServeOptions {
   /** Port to listen on (default: 3000). */
   port?: number;
-  /**
-   * Host/interface to bind to. Defaults to `127.0.0.1` so the server is not
-   * unexpectedly exposed to the network. Set to `0.0.0.0` (or an explicit
-   * interface) to accept remote connections.
-   */
+  /** Host/interface to bind to (default: `127.0.0.1`). */
   hostname?: string;
 }
 
 /**
- * A handle for a running Node.js HTTP server. Call `close()` to stop
- * accepting new connections and wait for in-flight requests to complete.
+ * Handle for a running Node.js HTTP server.
  */
 export interface ServeHandle {
   /** Gracefully close the server. Resolves when the socket is closed. */
   close(): Promise<void>;
 }
 
+/* v8 ignore start -- infrastructure: starts a real Node.js HTTP server */
 /**
  * Start a Node.js HTTP server for the given OpenWorkflow server.
  * @param server - OpenWorkflow server instance
@@ -453,25 +447,19 @@ export function serve(
   server: OpenWorkflowServer,
   options: ServeOptions = {},
 ): ServeHandle {
-  /* v8 ignore start -- infrastructure: starts a real Node.js HTTP server */
-  const port = options.port ?? 3000;
-  const hostname = options.hostname ?? "127.0.0.1";
   const httpServer = honoServe({
     fetch: (request) => server.fetch(request),
-    port,
-    hostname,
+    port: options.port ?? 3000,
+    hostname: options.hostname ?? "127.0.0.1",
   });
   return {
     close: () =>
       new Promise<void>((resolve, reject) => {
         httpServer.close((err) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          resolve();
+          if (err) reject(err);
+          else resolve();
         });
       }),
   };
-  /* v8 ignore stop */
 }
+/* v8 ignore stop */

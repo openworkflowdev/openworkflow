@@ -1,48 +1,44 @@
+import type { JsonValue, StepAttemptContext } from "openworkflow/internal";
 import { STEP_KINDS } from "openworkflow/internal";
 import { z } from "zod/v4";
 
-// ---------------------------------------------------------------------------
-// Request body schemas
-//
-// Each exported schema validates the JSON body of one HTTP route.
-// Dates are validated as ISO-8601 strings (via `z.iso.datetime()`) so that an
-// invalid value is rejected with 400 before the backend sees it; handlers are
-// responsible for the `new Date(...)` conversion.
-// ---------------------------------------------------------------------------
+// Request body schemas. ISO-8601 datetime strings are parsed into Date so
+// route handlers can pass the body straight through to the backend. JSON
+// payloads are typed directly as JsonValue to avoid zod's recursive
+// inference blowing TypeScript's depth limit.
 
-/** ISO-8601 datetime string. */
-const isoDatetime = z.iso.datetime();
+const isoDatetime = z.iso.datetime().transform((s) => new Date(s));
 
-/** Serialized error payload (mirrors SerializedError from core). */
+const jsonValue = z.json() as unknown as z.ZodType<JsonValue>;
+const stepAttemptContext = z.json() as unknown as z.ZodType<StepAttemptContext>;
+
 const errorSchema = z.object({
   name: z.string().optional(),
   message: z.string(),
   stack: z.string().optional(),
 });
 
-// ---------------------------------------------------------------------------
-// Workflow Runs
-// ---------------------------------------------------------------------------
-
 export const createWorkflowRunSchema = z.object({
   workflowName: z.string(),
   version: z.string().nullable(),
   idempotencyKey: z.string().nullable(),
-  config: z.json(),
-  context: z.json().nullable(),
-  input: z.json().nullable(),
+  config: jsonValue,
+  context: jsonValue.nullable(),
+  input: jsonValue.nullable(),
   parentStepAttemptNamespaceId: z.string().nullable().optional().default(null),
   parentStepAttemptId: z.string().nullable().optional().default(null),
   availableAt: isoDatetime.nullable().optional().default(null),
   deadlineAt: isoDatetime.nullable().optional().default(null),
 });
 
-export const claimWorkflowRunSchema = z.object({
+const workerLeaseFields = {
   workerId: z.string(),
   leaseDurationMs: z.number(),
-});
+};
 
-export const extendWorkflowRunLeaseSchema = claimWorkflowRunSchema;
+export const claimWorkflowRunSchema = z.object(workerLeaseFields);
+
+export const extendWorkflowRunLeaseSchema = z.object(workerLeaseFields);
 
 export const sleepWorkflowRunSchema = z.object({
   workerId: z.string(),
@@ -51,7 +47,7 @@ export const sleepWorkflowRunSchema = z.object({
 
 export const completeWorkflowRunSchema = z.object({
   workerId: z.string(),
-  output: z.json().nullable(),
+  output: jsonValue.nullable(),
 });
 
 export const failWorkflowRunSchema = z.object({
@@ -73,22 +69,18 @@ export const rescheduleWorkflowRunSchema = z.object({
   availableAt: isoDatetime,
 });
 
-// ---------------------------------------------------------------------------
-// Step Attempts
-// ---------------------------------------------------------------------------
-
 export const createStepAttemptSchema = z.object({
   workerId: z.string(),
   stepName: z.string(),
   kind: z.enum(STEP_KINDS),
-  config: z.json(),
-  context: z.json().nullable(),
+  config: jsonValue,
+  context: stepAttemptContext.nullable(),
 });
 
 export const completeStepAttemptSchema = z.object({
   workflowRunId: z.string(),
   workerId: z.string(),
-  output: z.json().nullable(),
+  output: jsonValue.nullable(),
 });
 
 export const failStepAttemptSchema = z.object({
@@ -104,12 +96,8 @@ export const setStepAttemptChildWorkflowRunSchema = z.object({
   childWorkflowRunId: z.string(),
 });
 
-// ---------------------------------------------------------------------------
-// Signals
-// ---------------------------------------------------------------------------
-
 export const sendSignalSchema = z.object({
   signal: z.string(),
-  data: z.json().nullable(),
+  data: jsonValue.nullable(),
   idempotencyKey: z.string().nullable(),
 });

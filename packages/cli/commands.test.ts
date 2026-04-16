@@ -5,7 +5,7 @@ import {
   getConfigFileName,
   getExampleWorkflowFileName,
   getRunFileName,
-  validateDashboardPort,
+  validatePort,
 } from "./commands.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -164,27 +164,29 @@ describe("getDashboardSpawnOptions", () => {
   });
 });
 
-describe("validateDashboardPort", () => {
+describe("validatePort", () => {
   test("returns undefined when no custom port is provided", () => {
-    expect(validateDashboardPort()).toBeUndefined();
+    expect(validatePort(undefined, "dashboard")).toBeUndefined();
   });
 
   test("returns the port when it is within range", () => {
-    expect(validateDashboardPort(3001)).toBe(3001);
+    expect(validatePort(3001, "dashboard")).toBe(3001);
   });
 
   test("throws for non-integer ports", () => {
-    expect(() => validateDashboardPort(Number.NaN)).toThrow(
+    expect(() => validatePort(Number.NaN, "dashboard")).toThrow(
       "Invalid dashboard port.",
     );
-    expect(() => validateDashboardPort(3000.5)).toThrow(
+    expect(() => validatePort(3000.5, "dashboard")).toThrow(
       "Invalid dashboard port.",
     );
   });
 
   test("throws for out-of-range ports", () => {
-    expect(() => validateDashboardPort(0)).toThrow("Invalid dashboard port.");
-    expect(() => validateDashboardPort(65_536)).toThrow(
+    expect(() => validatePort(0, "dashboard")).toThrow(
+      "Invalid dashboard port.",
+    );
+    expect(() => validatePort(65_536, "dashboard")).toThrow(
       "Invalid dashboard port.",
     );
   });

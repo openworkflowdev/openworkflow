@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",
+    "@openworkflow/server": "*",
     "commander": "^14.0.3",
     "consola": "^3.4.2",
     "dotenv": "^17.4.2",
@@ -35,7 +36,6 @@
     "nypm": "^0.6.5"
   },
   "devDependencies": {
-    "@openworkflow/server": "*",
     "openworkflow": "*",
     "vitest": "^4.0.18"
   },

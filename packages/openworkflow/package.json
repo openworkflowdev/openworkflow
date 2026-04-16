@@ -30,6 +30,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    },
     "./internal": {
       "types": "./dist/internal.d.ts",
       "default": "./dist/internal.js"

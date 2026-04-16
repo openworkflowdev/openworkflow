@@ -27,10 +27,6 @@ import type { JsonValue } from "../core/json.js";
 import type { StepAttempt } from "../core/step-attempt.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 
-// ---------------------------------------------------------------------------
-// Date field transforms
-// ---------------------------------------------------------------------------
-
 const WORKFLOW_RUN_DATE_FIELDS = [
   "availableAt",
   "deadlineAt",
@@ -48,49 +44,49 @@ const STEP_ATTEMPT_DATE_FIELDS = [
 ] as const;
 
 /**
- * Parse date strings into Date objects in-place.
- * @param obj - Object with potential date string fields
- * @param fields - Field names to check and convert
- * @returns The mutated object typed as T
+ * Mutate ISO-8601 string fields in `raw` into `Date` instances in place.
+ * @param raw - Raw JSON object from the server
+ * @param fields - Names of date fields to convert
  */
 function parseDates(
-  obj: Record<string, unknown>,
+  raw: Record<string, unknown>,
   fields: readonly string[],
-): Record<string, unknown> {
+): void {
   for (const field of fields) {
-    const value = obj[field];
+    const value = raw[field];
     if (typeof value === "string") {
-      obj[field] = new Date(value);
+      raw[field] = new Date(value);
     }
   }
-  return obj;
 }
 
 /**
- * Parse raw JSON into a WorkflowRun with proper Date fields.
+ * Parse a JSON workflow run payload, converting date fields.
  * @param raw - Raw JSON object from the server
- * @returns Parsed WorkflowRun
+ * @returns A fully-typed {@link WorkflowRun}
  */
 function parseWorkflowRun(raw: Record<string, unknown>): WorkflowRun {
-  return parseDates(raw, WORKFLOW_RUN_DATE_FIELDS) as unknown as WorkflowRun;
+  parseDates(raw, WORKFLOW_RUN_DATE_FIELDS);
+  return raw as unknown as WorkflowRun;
 }
 
 /**
- * Parse raw JSON into a StepAttempt with proper Date fields.
+ * Parse a JSON step attempt payload, converting date fields.
  * @param raw - Raw JSON object from the server
- * @returns Parsed StepAttempt
+ * @returns A fully-typed {@link StepAttempt}
  */
 function parseStepAttempt(raw: Record<string, unknown>): StepAttempt {
-  return parseDates(raw, STEP_ATTEMPT_DATE_FIELDS) as unknown as StepAttempt;
+  parseDates(raw, STEP_ATTEMPT_DATE_FIELDS);
+  return raw as unknown as StepAttempt;
 }
 
 /**
- * Build a query string from optional pagination params.
+ * Build a `?limit=&after=&before=` query string (empty if no params set).
  * @param params - Pagination parameters
- * @param params.limit - Maximum number of items
- * @param params.after - Cursor for forward pagination
- * @param params.before - Cursor for backward pagination
- * @returns Query string (including leading ?) or empty string
+ * @param params.limit - Page size
+ * @param params.after - Cursor for the next page
+ * @param params.before - Cursor for the previous page
+ * @returns Query string including the leading `?`, or an empty string
  */
 function buildPaginationQuery(params: {
   limit?: number;
@@ -106,10 +102,10 @@ function buildPaginationQuery(params: {
 }
 
 /**
- * Parse a paginated JSON response body.
- * @param res - Fetch Response
- * @param parseItem - Function to transform each item
- * @returns Parsed PaginatedResponse
+ * Parse a `{ data, pagination }` list response, mapping each item.
+ * @param res - Fetch response containing the paginated body
+ * @param parseItem - Per-item parser
+ * @returns The parsed page
  */
 async function parsePaginatedResponse<T>(
   res: globalThis.Response,
@@ -125,26 +121,18 @@ async function parsePaginatedResponse<T>(
   };
 }
 
-// ---------------------------------------------------------------------------
-// BackendHttp
-// ---------------------------------------------------------------------------
-
 /**
- * Options for the HTTP backend.
+ * Options for {@link BackendHttp}.
  */
 export interface BackendHttpOptions {
   /** Base URL of the OpenWorkflow server (e.g. "http://localhost:3000"). */
   url: string;
-  /**
-   * Custom fetch implementation. Defaults to `globalThis.fetch`.
-   * Useful for testing (in-process server) or adding middleware (auth headers).
-   */
+  /** Custom fetch implementation. Defaults to `globalThis.fetch`. */
   fetch?: typeof globalThis.fetch;
 }
 
 /**
  * Backend implementation that communicates with an OpenWorkflow HTTP server.
- * Implements the full Backend interface over HTTP.
  */
 export class BackendHttp implements Backend {
   private readonly baseUrl: string;
@@ -158,10 +146,6 @@ export class BackendHttp implements Backend {
     this.baseUrl = url;
     this._fetch = options.fetch ?? globalThis.fetch;
   }
-
-  // -----------------------------------------------------------------------
-  // Workflow Runs — standard methods
-  // -----------------------------------------------------------------------
 
   async createWorkflowRun(
     params: Readonly<CreateWorkflowRunParams>,
@@ -288,10 +272,6 @@ export class BackendHttp implements Backend {
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Step Attempts
-  // -----------------------------------------------------------------------
-
   async createStepAttempt(
     params: Readonly<CreateStepAttemptParams>,
   ): Promise<StepAttempt> {
@@ -365,10 +345,6 @@ export class BackendHttp implements Backend {
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Signals
-  // -----------------------------------------------------------------------
-
   async sendSignal(
     params: Readonly<SendSignalParams>,
   ): Promise<SendSignalResult> {
@@ -388,17 +364,9 @@ export class BackendHttp implements Backend {
     return (await res.json()) as JsonValue;
   }
 
-  // -----------------------------------------------------------------------
-  // Lifecycle
-  // -----------------------------------------------------------------------
-
   async stop(): Promise<void> {
-    // No-op — HTTP client has no persistent connection to close.
+    // No persistent connection to close.
   }
-
-  // -----------------------------------------------------------------------
-  // Internal helpers
-  // -----------------------------------------------------------------------
 
   private async fetch(path: string): Promise<Response> {
     return this._fetch(`${this.baseUrl}${path}`);

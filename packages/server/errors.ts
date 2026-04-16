@@ -5,16 +5,10 @@ import type { BackendError } from "openworkflow/internal";
 import { isBackendErrorCode } from "openworkflow/internal";
 import { z } from "zod/v4";
 
-// ---------------------------------------------------------------------------
-// Server-internal error types and the single error-to-Response mapping.
 // Route handlers throw; the global `app.onError` hook runs `errorToResponse`
-// to produce a consistent wire shape across the entire API.
-// ---------------------------------------------------------------------------
+// to produce a consistent wire shape for every error.
 
-/**
- * Thrown by route handlers when a request fails validation (malformed JSON,
- * unknown/invalid fields, etc.). Maps to HTTP 400.
- */
+/** Thrown by route handlers on request validation failure. Maps to HTTP 400. */
 export class HttpValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -33,32 +27,23 @@ export interface ErrorResponseBody {
   };
 }
 
-/**
- * Hook invoked for every unexpected server-side error. Intended for
- * structured logging / error reporting. `BackendError`, `HttpValidationError`,
- * and Hono's `HTTPException` (e.g. body-limit rejection) are expected outcomes
- * and are not forwarded here.
- */
+/** Hook invoked for unexpected server-side errors (not `BackendError`/validation). */
 export type ServerErrorHook = (
   error: unknown,
   context: { path: string; method: string },
 ) => void;
 
-/** Options controlling {@link errorToResponse}'s behavior. */
 export interface ErrorToResponseOptions {
-  /** See CreateServerOptions.exposeInternalErrors. */
   exposeInternalErrors?: boolean;
-  /** See CreateServerOptions.onError. */
   onError?: ServerErrorHook;
 }
 
 /**
- * Build the JSON Response for a caught error. Centralized so that every
- * handler — including the global `onError` — returns the same shape.
+ * Build the JSON Response for a caught error.
  * @param error - The caught error
- * @param c - Hono context (used only for `c.json`)
+ * @param c - Hono context
  * @param options - Behavior options
- * @returns JSON Response with status + body
+ * @returns JSON Response
  */
 export function errorToResponse(
   error: unknown,
@@ -99,12 +84,9 @@ export function errorToResponse(
 }
 
 /**
- * Duck-typed {@link BackendError} check. We intentionally avoid `instanceof`
- * so the guard is robust across realms — the `BackendError` class may be
- * loaded from the compiled `openworkflow/internal` package in production and
- * from the TypeScript source in the monorepo under vitest.
- * @param error - Candidate error
- * @returns Whether the error is a BackendError with a recognized code
+ * Duck-typed BackendError guard — works across realms (TS source vs compiled).
+ * @param error - The value to test
+ * @returns True if `error` is a BackendError with a known code
  */
 function isBackendError(error: unknown): error is BackendError {
   if (!(error instanceof Error)) return false;
@@ -114,9 +96,9 @@ function isBackendError(error: unknown): error is BackendError {
 }
 
 /**
- * Map a `BackendError.code` to an HTTP status code.
- * @param error - The backend error
- * @returns HTTP status code
+ * Map a {@link BackendError} code to its HTTP status.
+ * @param error - The backend error to map
+ * @returns The HTTP status to return to the client
  */
 function backendErrorStatus(error: BackendError): ContentfulStatusCode {
   switch (error.code) {
@@ -130,11 +112,11 @@ function backendErrorStatus(error: BackendError): ContentfulStatusCode {
 }
 
 /**
- * Parse a Hono request body and validate it against a Zod schema.
- * Throws `HttpValidationError` on malformed JSON or validation failure.
+ * Parse and validate a request body against a Zod schema.
  * @param c - Hono context
- * @param schema - Zod schema describing the expected body
- * @returns Parsed and validated data
+ * @param schema - Zod schema
+ * @returns Parsed data
+ * @throws {HttpValidationError} On malformed JSON or schema failure.
  */
 export async function parseJsonBody<T>(
   c: Context,

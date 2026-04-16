@@ -4,10 +4,7 @@ import type { JsonValue } from "./json.js";
 import type { Result } from "./result.js";
 import { err, ok } from "./result.js";
 
-/**
- * Runtime tuple of every known step kind. Single source of truth — the
- * `StepKind` type is derived from this list so adding a kind is one edit.
- */
+/** Runtime tuple of step kinds; {@link StepKind} is derived from it. */
 export const STEP_KINDS = [
   "function",
   "sleep",

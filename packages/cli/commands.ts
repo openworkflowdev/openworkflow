@@ -35,11 +35,7 @@ interface CommandOptions {
   config?: string;
 }
 
-interface DashboardOptions extends CommandOptions {
-  port?: number;
-}
-
-interface ServerStartOptions extends CommandOptions {
+interface PortedOptions extends CommandOptions {
   port?: number;
 }
 
@@ -362,19 +358,23 @@ export function getDashboardSpawnOptions(port?: number): {
 }
 
 /**
- * Validate dashboard port option.
- * @param port - Optional dashboard port.
- * @returns Validated dashboard port.
- * @throws {CLIError} If the provided port is not an integer in the 1-65535 range.
+ * Validate a port option.
+ * @param port - Optional port number.
+ * @param label - Label used in the error message (e.g. "dashboard", "server").
+ * @returns Validated port, or undefined if not provided.
+ * @throws {CLIError} If the port is not an integer in the 1-65535 range.
  */
-export function validateDashboardPort(port?: number): number | undefined {
+export function validatePort(
+  port: number | undefined,
+  label: string,
+): number | undefined {
   if (port === undefined) {
     return undefined;
   }
 
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new CLIError(
-      "Invalid dashboard port.",
+      `Invalid ${label} port.`,
       "Use an integer between 1 and 65535, for example `--port 3001`.",
     );
   }
@@ -387,9 +387,9 @@ export function validateDashboardPort(port?: number): number | undefined {
  * @param options - Dashboard command options.
  * @returns Resolves when the dashboard process exits.
  */
-export async function dashboard(options: DashboardOptions = {}): Promise<void> {
+export async function dashboard(options: PortedOptions = {}): Promise<void> {
   const configPath = options.config;
-  const port = validateDashboardPort(options.port);
+  const port = validatePort(options.port, "dashboard");
   consola.start("Starting dashboard...");
 
   const { configFile } = await loadConfigWithEnv(configPath);
@@ -451,21 +451,15 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
   });
 }
 
-export type { ServerStartOptions };
-
 /**
  * openworkflow server start
- * Start the OpenWorkflow HTTP API server.
  * @param options - Server start options.
  */
-export async function serverStart(
-  options: ServerStartOptions = {},
-): Promise<void> {
-  const { config: configPath, port: rawPort } = options;
-  const port = rawPort ?? 3000;
+export async function serverStart(options: PortedOptions = {}): Promise<void> {
+  const port = validatePort(options.port, "server") ?? 3000;
   consola.start("Starting server...");
 
-  const { configFile, config } = await loadConfigWithEnv(configPath);
+  const { configFile, config } = await loadConfigWithEnv(options.config);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -474,32 +468,32 @@ export async function serverStart(
   }
   consola.info(`Using config: ${configFile}`);
 
-  let createServer: typeof import("@openworkflow/server").createServer;
-  let serve: typeof import("@openworkflow/server").serve;
-  try {
-    ({ createServer, serve } = await import("@openworkflow/server"));
-  } catch {
-    throw new CLIError(
-      "@openworkflow/server is not installed.",
-      'Run `npm install @openworkflow/server` to enable the "server start" command.',
-    );
-  }
-
   const backend = config.backend;
-  const server = createServer(backend, {
-    logRequests: true,
-    onError: (error, ctx) => {
-      consola.error(`[${ctx.method} ${ctx.path}]`, error);
-    },
-  });
-  const handle = serve(server, { port });
-  consola.success(`Server listening on http://localhost:${String(port)}`);
-
-  registerGracefulShutdown({
+  let handle: { close(): Promise<void> } | null = null;
+  const gracefulShutdown = registerGracefulShutdown({
     noun: "server",
-    stopApp: () => handle.close(),
+    stopApp: async () => {
+      await handle?.close();
+    },
     backend,
   });
+
+  try {
+    // still dynamic to defer hono's ~150KB until `server start` is invoked
+    const { createServer, serve } = await import("@openworkflow/server");
+
+    const server = createServer(backend, {
+      logRequests: true,
+      onError: (error, ctx) => {
+        consola.error(`[${ctx.method} ${ctx.path}]`, error);
+      },
+    });
+    handle = serve(server, { port });
+    consola.success(`Server listening on http://localhost:${String(port)}`);
+  } catch (error) {
+    await gracefulShutdown();
+    throw error;
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -514,11 +508,10 @@ interface ShutdownOptions {
 }
 
 /**
- * Wire SIGINT/SIGTERM to a graceful shutdown. The HTTP handle / worker is
- * stopped first (so no new work starts), then the backend is stopped even if
- * the app-level close fails.
+ * Wire SIGINT/SIGTERM to a graceful shutdown. `stopApp` runs first; the
+ * backend is stopped even if `stopApp` throws.
  * @param options - What to stop on shutdown
- * @returns The shutdown function (also registered against SIGINT/SIGTERM)
+ * @returns The shutdown function
  */
 function registerGracefulShutdown(
   options: ShutdownOptions,

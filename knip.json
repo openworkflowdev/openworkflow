@@ -19,7 +19,8 @@
     "**/openworkflow.config.*",
     "openworkflow/**/*.ts",
     "packages/dashboard/src/components/ui/*.tsx",
-    "packages/docs/style.css"
+    "packages/docs/style.css",
+    "packages/openworkflow/http.ts"
   ],
   "ignoreIssues": {
     "packages/dashboard/src/components/ui/*.tsx": ["exports"],
