@@ -24,6 +24,54 @@ export type DurationString =
   | `${number}${UnitAnyCase}`
   | `${number} ${UnitAnyCase}`;
 
+const SECOND_MS = 1000;
+const MINUTE_MS = 60 * SECOND_MS;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+// Average Gregorian month/year (365.25 days / 12) so month * 12 === year.
+const MONTH_MS = 2_629_800_000;
+const YEAR_MS = 31_557_600_000;
+
+const DURATION_MULTIPLIERS: Record<string, number> = {
+  millisecond: 1,
+  milliseconds: 1,
+  msec: 1,
+  msecs: 1,
+  ms: 1,
+  second: SECOND_MS,
+  seconds: SECOND_MS,
+  sec: SECOND_MS,
+  secs: SECOND_MS,
+  s: SECOND_MS,
+  minute: MINUTE_MS,
+  minutes: MINUTE_MS,
+  min: MINUTE_MS,
+  mins: MINUTE_MS,
+  m: MINUTE_MS,
+  hour: HOUR_MS,
+  hours: HOUR_MS,
+  hr: HOUR_MS,
+  hrs: HOUR_MS,
+  h: HOUR_MS,
+  day: DAY_MS,
+  days: DAY_MS,
+  d: DAY_MS,
+  week: WEEK_MS,
+  weeks: WEEK_MS,
+  w: WEEK_MS,
+  month: MONTH_MS,
+  months: MONTH_MS,
+  mo: MONTH_MS,
+  year: YEAR_MS,
+  years: YEAR_MS,
+  yr: YEAR_MS,
+  yrs: YEAR_MS,
+  y: YEAR_MS,
+};
+
+const DURATION_REGEX = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i;
+
 /**
  * Parse a duration string into milliseconds. Examples:
  * - short units: "1ms", "5s", "30m", "2h", "7d", "3w", "1y"
@@ -44,7 +92,7 @@ export function parseDuration(str: DurationString): Result<number> {
     return err(new Error('Invalid duration format: ""'));
   }
 
-  const match = /^(-?\.?\d+(?:\.\d+)?)\s*([a-z]+)?$/i.exec(str);
+  const match = DURATION_REGEX.exec(str);
 
   if (!match?.[1]) {
     return err(new Error(`Invalid duration format: "${str}"`));
@@ -53,44 +101,7 @@ export function parseDuration(str: DurationString): Result<number> {
   const numValue = Number.parseFloat(match[1]);
   const unit = match[2]?.toLowerCase() ?? "ms"; // default to ms if not provided
 
-  const multipliers: Record<string, number> = {
-    millisecond: 1,
-    milliseconds: 1,
-    msec: 1,
-    msecs: 1,
-    ms: 1,
-    second: 1000,
-    seconds: 1000,
-    sec: 1000,
-    secs: 1000,
-    s: 1000,
-    minute: 60 * 1000,
-    minutes: 60 * 1000,
-    min: 60 * 1000,
-    mins: 60 * 1000,
-    m: 60 * 1000,
-    hour: 60 * 60 * 1000,
-    hours: 60 * 60 * 1000,
-    hr: 60 * 60 * 1000,
-    hrs: 60 * 60 * 1000,
-    h: 60 * 60 * 1000,
-    day: 24 * 60 * 60 * 1000,
-    days: 24 * 60 * 60 * 1000,
-    d: 24 * 60 * 60 * 1000,
-    week: 7 * 24 * 60 * 60 * 1000,
-    weeks: 7 * 24 * 60 * 60 * 1000,
-    w: 7 * 24 * 60 * 60 * 1000,
-    month: 2_629_800_000,
-    months: 2_629_800_000,
-    mo: 2_629_800_000,
-    year: 31_557_600_000,
-    years: 31_557_600_000,
-    yr: 31_557_600_000,
-    yrs: 31_557_600_000,
-    y: 31_557_600_000,
-  };
-
-  const multiplier = multipliers[unit];
+  const multiplier = DURATION_MULTIPLIERS[unit];
   if (multiplier === undefined) {
     return err(new Error(`Invalid duration format: "${str}"`));
   }
