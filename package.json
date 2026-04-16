@@ -58,7 +58,7 @@
     "husky": "^9.1.7",
     "jscpd": "^4.0.9",
     "knip": "^6.3.1",
-    "prettier": "^3.8.2",
+    "prettier": "^3.8.3",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "tsx": "^4.21.0",
