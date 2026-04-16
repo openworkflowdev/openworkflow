@@ -775,10 +775,9 @@ async function importWorkflows(
     // extract workflow exports (named and default)
     for (const [key, value] of Object.entries(module)) {
       if (isWorkflow(value)) {
-        const workflow = value as Workflow<unknown, unknown, unknown>;
-        workflows.push(workflow);
+        workflows.push(value);
         consola.debug(
-          `Found workflow "${workflow.spec.name}" in ${file} (${key})`,
+          `Found workflow "${value.spec.name}" in ${file} (${key})`,
         );
       }
     }
