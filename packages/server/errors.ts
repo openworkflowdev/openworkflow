@@ -65,10 +65,19 @@ export function errorToResponse(
     );
   }
 
-  // Hono body-limit and similar middleware throw HTTPException — respect
-  // their status/response and don't treat them as server errors.
+  // Hono body-limit and similar middleware throw HTTPException. Preserve the
+  // status/headers they chose, but normalize the body to the documented JSON
+  // error wire shape so clients can parse every error response uniformly.
   if (error instanceof HTTPException) {
-    return error.getResponse();
+    const original = error.getResponse();
+    const headers = new Headers(original.headers);
+    headers.set("content-type", "application/json; charset=utf-8");
+    const message = error.message || original.statusText || "HTTP error";
+    const body: ErrorResponseBody = { error: { message } };
+    return Response.json(body, {
+      status: original.status,
+      headers,
+    });
   }
 
   // Anything else is unexpected: surface it to the caller for logging, and

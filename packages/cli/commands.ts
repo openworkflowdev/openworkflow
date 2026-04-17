@@ -479,8 +479,18 @@ export async function serverStart(options: PortedOptions = {}): Promise<void> {
   });
 
   try {
-    // still dynamic to defer hono's ~150KB until `server start` is invoked
-    const { createServer, serve } = await import("@openworkflow/server");
+    // dynamic to defer hono's ~150KB until `server start` is invoked
+    // this is not ideal and will be addressed before release
+    let serverModule: typeof import("@openworkflow/server");
+    try {
+      serverModule = await import("@openworkflow/server");
+    } catch {
+      throw new CLIError(
+        "@openworkflow/server is not installed.",
+        'Install it to enable the "server start" command: `npm install @openworkflow/server`.',
+      );
+    }
+    const { createServer, serve } = serverModule;
 
     const server = createServer(backend, {
       logRequests: true,
@@ -534,8 +544,10 @@ function registerGracefulShutdown(
       options.noun.charAt(0).toUpperCase() + options.noun.slice(1);
     consola.success(`${capitalized} stopped`);
   }
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  // `once` so repeated worker/serverStart invocations (e.g. programmatic use,
+  // tests) don't accumulate listeners and trigger MaxListenersExceededWarning.
+  process.once("SIGINT", () => void shutdown());
+  process.once("SIGTERM", () => void shutdown());
   return shutdown;
 }
 
