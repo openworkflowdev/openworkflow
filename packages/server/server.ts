@@ -95,7 +95,6 @@ export function createServer(
     }),
   );
 
-  // cspell:ignore healthz readyz
   // /healthz is liveness (process is up). /readyz pings the backend so load
   // balancers don't route traffic to a replica whose DB connection is broken.
   app.get("/healthz", (c) => c.json({ status: "ok" }));

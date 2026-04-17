@@ -69,9 +69,11 @@ export default defineConfig(
             flagWords: ["cancellation", "cancelled"], // prefer en-US spelling for consistency
             ignoreWords: [
               "arktype",
+              "healthz",
               "heartbeating",
               "idempotently",
               "openworkflow",
+              "readyz",
               "sonarjs",
               "timestamptz",
             ],

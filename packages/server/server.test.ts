@@ -89,7 +89,6 @@ describe("Server", () => {
   // Liveness & readiness
   // -----------------------------------------------------------------------
 
-  // cspell:ignore healthz readyz
   test("GET /healthz returns 200 ok without hitting backend", async () => {
     const res = await fetch(new Request("http://localhost/healthz"));
     expect(res.status).toBe(200);
