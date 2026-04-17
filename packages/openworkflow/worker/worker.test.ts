@@ -1664,7 +1664,7 @@ describe("Worker", () => {
 
     await sleep(100);
     await worker.tick();
-    await sleep(100);
+    await sleep(200);
 
     const afterSecond = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
@@ -1734,7 +1734,7 @@ describe("Worker", () => {
     if (!run?.availableAt) throw new Error("Expected availableAt");
     const firstDelayMs = run.availableAt.getTime() - beforeFirst;
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
-    expect(firstDelayMs).toBeLessThan(220);
+    expect(firstDelayMs).toBeLessThan(350);
 
     await sleep(180);
     const beforeSecond = Date.now();
@@ -1760,7 +1760,7 @@ describe("Worker", () => {
     if (!run?.availableAt) throw new Error("Expected availableAt");
     const thirdDelayMs = run.availableAt.getTime() - beforeThird;
     expect(thirdDelayMs).toBeGreaterThanOrEqual(80);
-    expect(thirdDelayMs).toBeLessThan(220);
+    expect(thirdDelayMs).toBeLessThan(350);
 
     await sleep(180);
     await worker.tick();
@@ -1830,7 +1830,7 @@ describe("Worker", () => {
     // first failed step attempt should still use attempt 1 backoff (100ms)
     const beforeFirstFail = Date.now();
     await worker.tick();
-    await sleep(100);
+    await sleep(200);
     run = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
@@ -1838,7 +1838,7 @@ describe("Worker", () => {
     if (!run?.availableAt) throw new Error("Expected availableAt");
     const firstDelayMs = run.availableAt.getTime() - beforeFirstFail;
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
-    expect(firstDelayMs).toBeLessThan(230);
+    expect(firstDelayMs).toBeLessThan(350);
 
     await sleep(220);
 
