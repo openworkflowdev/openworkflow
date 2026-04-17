@@ -8,8 +8,6 @@
     { "path": "./examples/with-schema-validation" },
     { "path": "./examples/workflow-discovery" },
     { "path": "./packages/openworkflow" },
-    { "path": "./packages/backend-postgres" },
-    { "path": "./packages/backend-sqlite" },
     { "path": "./packages/cli" },
     { "path": "./packages/dashboard" }
   ],

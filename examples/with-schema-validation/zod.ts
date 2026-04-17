@@ -1,6 +1,6 @@
-import { BackendPostgres } from "@openworkflow/backend-postgres";
 import { randomUUID } from "node:crypto";
 import { OpenWorkflow } from "openworkflow";
+import { BackendPostgres } from "openworkflow/postgres";
 import { z } from "zod";
 
 const databaseUrl = "postgresql://postgres:postgres@localhost:5432/postgres";
