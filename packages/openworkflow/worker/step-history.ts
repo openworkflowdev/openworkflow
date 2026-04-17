@@ -144,7 +144,7 @@ function getRunningWaitAttemptResumeAt(
  * @param attempts - Persisted step attempts for the workflow run
  * @returns Earliest wake-up timestamp, or null when no running wait exists
  */
-export function getEarliestRunningWaitResumeAt(
+function getEarliestRunningWaitResumeAt(
   attempts: readonly StepAttempt[],
 ): Date | null {
   let earliest: Date | null = null;
@@ -301,10 +301,11 @@ export class StepHistory {
 
   /**
    * Earliest wake-up timestamp considering running waits and a fallback (from
-   * the in-progress wait the caller is about to park on). Always returns a
-   * concrete date.
+   * the in-progress wait the caller is about to park on).
    * @param fallback - Candidate timestamp for the in-progress wait
-   * @returns The earlier of the fallback or any known running wait
+   * @returns The earlier of the fallback or any known running wait. If no
+   * running wait exists, returns a clone of `fallback`, which will also be
+   * invalid when `fallback` is invalid.
    */
   resolveEarliestRunningWaitResumeAt(fallback: Readonly<Date>): Date {
     const earliest = this.earliestRunningWaitResumeAt();
