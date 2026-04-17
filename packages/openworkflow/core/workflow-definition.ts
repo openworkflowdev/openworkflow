@@ -106,7 +106,9 @@ export function defineWorkflow<Input, Output, RawInput>(
  * @param value - The value to check
  * @returns True if the value is a Workflow
  */
-export function isWorkflow(value: unknown) {
+export function isWorkflow(
+  value: unknown,
+): value is Workflow<unknown, unknown, unknown> {
   if (typeof value !== "object" || value === null) {
     return false;
   }

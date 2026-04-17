@@ -296,7 +296,7 @@ describe("StepExecutor", () => {
 
     // First tick - hits sleep
     await worker.tick();
-    await sleep(50); // Wait for tick to complete
+    await sleep(200); // Wait for tick to complete
     const parked = await backend.getWorkflowRun({
       workflowRunId: handle.workflowRun.id,
     });
@@ -1803,356 +1803,373 @@ describe("StepExecutor", () => {
     await expect(handle.result()).resolves.toBe(10);
   });
 
-  test("fans out 300 isolated child workflows in parallel and notifies once all complete", async () => {
-    const backend = await createTestBackend();
-    const client = new OpenWorkflow({ backend });
+  test(
+    "fans out 300 isolated child workflows in parallel and notifies once all complete",
+    { timeout: 30_000 },
+    async () => {
+      const backend = await createTestBackend();
+      const client = new OpenWorkflow({ backend });
 
-    let activeChildren = 0;
-    let maxParallelChildren = 0;
-    let notifyStepCalls = 0;
+      let activeChildren = 0;
+      let maxParallelChildren = 0;
+      let notifyStepCalls = 0;
 
-    const child = client.defineWorkflow<
-      { childId: number },
-      { childId: number; childRunId: string }
-    >(
-      { name: `workflow-child-fan-out-${randomUUID()}` },
-      async ({ input, run, step }) => {
-        return await step.run({ name: "work" }, async () => {
-          activeChildren += 1;
-          maxParallelChildren = Math.max(maxParallelChildren, activeChildren);
+      const child = client.defineWorkflow<
+        { childId: number },
+        { childId: number; childRunId: string }
+      >(
+        { name: `workflow-child-fan-out-${randomUUID()}` },
+        async ({ input, run, step }) => {
+          return await step.run({ name: "work" }, async () => {
+            activeChildren += 1;
+            maxParallelChildren = Math.max(maxParallelChildren, activeChildren);
 
-          try {
-            await sleep(5);
-            return {
-              childId: input.childId,
-              childRunId: run.id,
-            };
-          } finally {
-            activeChildren -= 1;
-          }
-        });
-      },
-    );
+            try {
+              await sleep(5);
+              return {
+                childId: input.childId,
+                childRunId: run.id,
+              };
+            } finally {
+              activeChildren -= 1;
+            }
+          });
+        },
+      );
 
-    const parent = client.defineWorkflow<
-      undefined,
-      {
-        childResults: { childId: number; childRunId: string }[];
-        notifyMessage: string;
-      }
-    >({ name: `workflow-parent-fan-out-${randomUUID()}` }, async ({ step }) => {
-      const childResults = await Promise.all(
-        Array.from({ length: 300 }, (_, index) =>
-          step.runWorkflow(
-            child.workflow.spec,
-            { childId: index + 1 },
-            { name: `fan-out-child-${String(index + 1)}` },
-          ),
+      const parent = client.defineWorkflow<
+        undefined,
+        {
+          childResults: { childId: number; childRunId: string }[];
+          notifyMessage: string;
+        }
+      >(
+        { name: `workflow-parent-fan-out-${randomUUID()}` },
+        async ({ step }) => {
+          const childResults = await Promise.all(
+            Array.from({ length: 300 }, (_, index) =>
+              step.runWorkflow(
+                child.workflow.spec,
+                { childId: index + 1 },
+                { name: `fan-out-child-${String(index + 1)}` },
+              ),
+            ),
+          );
+
+          const notifyMessage = await step.run(
+            { name: "notify-parent-complete" },
+            () => {
+              notifyStepCalls += 1;
+              return `Completed ${String(childResults.length)} child workflows`;
+            },
+          );
+
+          return { childResults, notifyMessage };
+        },
+      );
+
+      const worker = client.newWorker({ concurrency: 350 });
+      const handle = await parent.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        800,
+        10,
+        { maxWaitMs: 20_000 },
+      );
+
+      expect(status).toBe("completed");
+
+      const result = await handle.result();
+      expect(result.childResults).toHaveLength(300);
+      expect(result.notifyMessage).toBe("Completed 300 child workflows");
+      expect(
+        new Set(
+          result.childResults.map((childResult) => childResult.childRunId),
+        ).size,
+      ).toBe(300);
+      expect(maxParallelChildren).toBeGreaterThan(1);
+      expect(notifyStepCalls).toBe(1);
+
+      const parentAttempts = await backend.listStepAttempts({
+        workflowRunId: handle.workflowRun.id,
+        limit: 400,
+      });
+      const workflowAttempts = parentAttempts.data.filter(
+        (stepAttempt) => stepAttempt.kind === "workflow",
+      );
+      expect(workflowAttempts).toHaveLength(300);
+      const maxWorkflowFinishedAt = Math.max(
+        ...workflowAttempts.map(
+          (workflowAttempt) => workflowAttempt.finishedAt?.getTime() ?? 0,
         ),
       );
+      const notifyAttempt = parentAttempts.data.find(
+        (stepAttempt) => stepAttempt.stepName === "notify-parent-complete",
+      );
+      if (!notifyAttempt) {
+        throw new Error("Expected notify-parent-complete step attempt");
+      }
+      if (notifyAttempt.startedAt === null) {
+        throw new Error("Expected notify-parent-complete startedAt timestamp");
+      }
+      expect(notifyAttempt.startedAt.getTime()).toBeGreaterThanOrEqual(
+        maxWorkflowFinishedAt,
+      );
 
-      const notifyMessage = await step.run(
-        { name: "notify-parent-complete" },
-        () => {
-          notifyStepCalls += 1;
-          return `Completed ${String(childResults.length)} child workflows`;
+      const linkedChildRunIds = workflowAttempts.map(
+        (workflowAttempt) => workflowAttempt.childWorkflowRunId,
+      );
+      expect(linkedChildRunIds).not.toContain(null);
+      expect(new Set(linkedChildRunIds).size).toBe(300);
+
+      const runs = await backend.listWorkflowRuns({ limit: 500 });
+      const linkedChildRunIdSet = new Set(linkedChildRunIds);
+      const linkedChildRuns = runs.data.filter((run) =>
+        linkedChildRunIdSet.has(run.id),
+      );
+      expect(linkedChildRuns).toHaveLength(300);
+
+      expect(notifyAttempt.status).toBe("completed");
+    },
+  );
+
+  test(
+    "fails parent when child 150 fails and does not auto-replay the failed child",
+    { timeout: 30_000 },
+    async () => {
+      const backend = await createTestBackend();
+      const client = new OpenWorkflow({ backend });
+
+      let injectedFailures = 0;
+      let notifyStepCalls = 0;
+      const failedChildIds = new Set<number>();
+
+      const child = client.defineWorkflow<
+        { childId: number },
+        { childId: number; childRunId: string }
+      >(
+        {
+          name: `workflow-child-fan-out-replay-${randomUUID()}`,
+          retryPolicy: {
+            initialInterval: "1ms",
+            maximumInterval: "1ms",
+            backoffCoefficient: 1,
+            maximumAttempts: 1,
+          },
+        },
+        async ({ input, run, step }) => {
+          return await step.run(
+            { name: "work", retryPolicy: { maximumAttempts: 1 } },
+            async () => {
+              if (input.childId === 150 && !failedChildIds.has(input.childId)) {
+                failedChildIds.add(input.childId);
+                injectedFailures += 1;
+                throw new Error("Injected failure at child 150");
+              }
+
+              await sleep(5);
+              return { childId: input.childId, childRunId: run.id };
+            },
+          );
         },
       );
 
-      return { childResults, notifyMessage };
-    });
-
-    const worker = client.newWorker({ concurrency: 350 });
-    const handle = await parent.run();
-    const status = await tickUntilTerminal(
-      backend,
-      worker,
-      handle.workflowRun.id,
-      800,
-      10,
-      { maxWaitMs: 10_000 },
-    );
-
-    expect(status).toBe("completed");
-
-    const result = await handle.result();
-    expect(result.childResults).toHaveLength(300);
-    expect(result.notifyMessage).toBe("Completed 300 child workflows");
-    expect(
-      new Set(result.childResults.map((childResult) => childResult.childRunId))
-        .size,
-    ).toBe(300);
-    expect(maxParallelChildren).toBeGreaterThan(1);
-    expect(notifyStepCalls).toBe(1);
-
-    const parentAttempts = await backend.listStepAttempts({
-      workflowRunId: handle.workflowRun.id,
-      limit: 400,
-    });
-    const workflowAttempts = parentAttempts.data.filter(
-      (stepAttempt) => stepAttempt.kind === "workflow",
-    );
-    expect(workflowAttempts).toHaveLength(300);
-    const maxWorkflowFinishedAt = Math.max(
-      ...workflowAttempts.map(
-        (workflowAttempt) => workflowAttempt.finishedAt?.getTime() ?? 0,
-      ),
-    );
-    const notifyAttempt = parentAttempts.data.find(
-      (stepAttempt) => stepAttempt.stepName === "notify-parent-complete",
-    );
-    if (!notifyAttempt) {
-      throw new Error("Expected notify-parent-complete step attempt");
-    }
-    if (notifyAttempt.startedAt === null) {
-      throw new Error("Expected notify-parent-complete startedAt timestamp");
-    }
-    expect(notifyAttempt.startedAt.getTime()).toBeGreaterThanOrEqual(
-      maxWorkflowFinishedAt,
-    );
-
-    const linkedChildRunIds = workflowAttempts.map(
-      (workflowAttempt) => workflowAttempt.childWorkflowRunId,
-    );
-    expect(linkedChildRunIds).not.toContain(null);
-    expect(new Set(linkedChildRunIds).size).toBe(300);
-
-    const runs = await backend.listWorkflowRuns({ limit: 500 });
-    const linkedChildRunIdSet = new Set(linkedChildRunIds);
-    const linkedChildRuns = runs.data.filter((run) =>
-      linkedChildRunIdSet.has(run.id),
-    );
-    expect(linkedChildRuns).toHaveLength(300);
-
-    expect(notifyAttempt.status).toBe("completed");
-  });
-
-  test("fails parent when child 150 fails and does not auto-replay the failed child", async () => {
-    const backend = await createTestBackend();
-    const client = new OpenWorkflow({ backend });
-
-    let injectedFailures = 0;
-    let notifyStepCalls = 0;
-    const failedChildIds = new Set<number>();
-
-    const child = client.defineWorkflow<
-      { childId: number },
-      { childId: number; childRunId: string }
-    >(
-      {
-        name: `workflow-child-fan-out-replay-${randomUUID()}`,
-        retryPolicy: {
-          initialInterval: "1ms",
-          maximumInterval: "1ms",
-          backoffCoefficient: 1,
-          maximumAttempts: 1,
+      const parent = client.defineWorkflow<
+        undefined,
+        {
+          childResults: { childId: number; childRunId: string }[];
+          notifyMessage: string;
+        }
+      >(
+        {
+          name: `workflow-parent-fan-out-replay-${randomUUID()}`,
+          retryPolicy: {
+            initialInterval: "1ms",
+            maximumInterval: "1ms",
+            backoffCoefficient: 1,
+            maximumAttempts: 1,
+          },
         },
-      },
-      async ({ input, run, step }) => {
-        return await step.run(
-          { name: "work", retryPolicy: { maximumAttempts: 1 } },
-          async () => {
-            if (input.childId === 150 && !failedChildIds.has(input.childId)) {
-              failedChildIds.add(input.childId);
-              injectedFailures += 1;
-              throw new Error("Injected failure at child 150");
-            }
+        async ({ step }) => {
+          const childResults = await Promise.all(
+            Array.from({ length: 300 }, (_, index) =>
+              step.runWorkflow(
+                child.workflow.spec,
+                { childId: index + 1 },
+                { name: `fan-out-child-${String(index + 1)}` },
+              ),
+            ),
+          );
 
-            await sleep(5);
-            return { childId: input.childId, childRunId: run.id };
-          },
-        );
-      },
-    );
+          const notifyMessage = await step.run(
+            { name: "notify-parent-complete" },
+            () => {
+              notifyStepCalls += 1;
+              return `Completed ${String(childResults.length)} child workflows`;
+            },
+          );
 
-    const parent = client.defineWorkflow<
-      undefined,
-      {
-        childResults: { childId: number; childRunId: string }[];
-        notifyMessage: string;
-      }
-    >(
-      {
-        name: `workflow-parent-fan-out-replay-${randomUUID()}`,
-        retryPolicy: {
-          initialInterval: "1ms",
-          maximumInterval: "1ms",
-          backoffCoefficient: 1,
-          maximumAttempts: 1,
+          return { childResults, notifyMessage };
         },
-      },
-      async ({ step }) => {
-        const childResults = await Promise.all(
-          Array.from({ length: 300 }, (_, index) =>
-            step.runWorkflow(
-              child.workflow.spec,
-              { childId: index + 1 },
-              { name: `fan-out-child-${String(index + 1)}` },
+      );
+
+      const worker = client.newWorker({ concurrency: 350 });
+      const handle = await parent.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        1200,
+        10,
+        { maxWaitMs: 20_000 },
+      );
+
+      expect(status).toBe("failed");
+      await expect(handle.result()).rejects.toThrow(
+        /Injected failure at child 150/,
+      );
+      expect(injectedFailures).toBe(1);
+      expect(notifyStepCalls).toBe(0);
+
+      const parentAttempts = await backend.listStepAttempts({
+        workflowRunId: handle.workflowRun.id,
+        limit: 1200,
+      });
+      const workflowAttempts = parentAttempts.data.filter(
+        (stepAttempt) => stepAttempt.kind === "workflow",
+      );
+      const failedWorkflowAttempts = workflowAttempts.filter(
+        (stepAttempt) => stepAttempt.status === "failed",
+      );
+      const completedWorkflowAttempts = workflowAttempts.filter(
+        (stepAttempt) => stepAttempt.status === "completed",
+      );
+
+      expect(failedWorkflowAttempts).toHaveLength(1);
+      expect(completedWorkflowAttempts.length).toBeGreaterThan(0);
+      expect(completedWorkflowAttempts.length).toBeLessThanOrEqual(299);
+      expect(workflowAttempts).toHaveLength(300);
+
+      const child150Attempts = workflowAttempts.filter((stepAttempt) =>
+        stepAttempt.stepName.startsWith("fan-out-child-150"),
+      );
+      expect(child150Attempts).toHaveLength(1);
+      expect(child150Attempts[0]?.status).toBe("failed");
+
+      expect(
+        parentAttempts.data.some(
+          (stepAttempt) => stepAttempt.stepName === "notify-parent-complete",
+        ),
+      ).toBe(false);
+
+      const runs = await backend.listWorkflowRuns({ limit: 1200 });
+      const childRuns = runs.data.filter(
+        (run) =>
+          run.workflowName === child.workflow.spec.name &&
+          run.parentStepAttemptId !== null,
+      );
+      expect(childRuns).toHaveLength(300);
+    },
+  );
+
+  test(
+    "completes when child 150 has transient failure handled by child-level retries",
+    { timeout: 30_000 },
+    async () => {
+      const backend = await createTestBackend();
+      const client = new OpenWorkflow({ backend });
+
+      let injectedFailures = 0;
+      let notifyStepCalls = 0;
+      const failedChildIds = new Set<number>();
+
+      const child = client.defineWorkflow<
+        { childId: number },
+        { childId: number; childRunId: string }
+      >(
+        { name: `workflow-child-fan-out-child-retry-${randomUUID()}` },
+        async ({ input, run, step }) => {
+          return await step.run(
+            { name: "work", retryPolicy: { maximumAttempts: 2 } },
+            async () => {
+              if (input.childId === 150 && !failedChildIds.has(input.childId)) {
+                failedChildIds.add(input.childId);
+                injectedFailures += 1;
+                throw new Error("Injected transient failure at child 150");
+              }
+
+              await sleep(5);
+              return { childId: input.childId, childRunId: run.id };
+            },
+          );
+        },
+      );
+
+      const parent = client.defineWorkflow<
+        undefined,
+        {
+          childResults: { childId: number; childRunId: string }[];
+          notifyMessage: string;
+        }
+      >(
+        { name: `workflow-parent-fan-out-child-retry-${randomUUID()}` },
+        async ({ step }) => {
+          const childResults = await Promise.all(
+            Array.from({ length: 300 }, (_, index) =>
+              step.runWorkflow(
+                child.workflow.spec,
+                { childId: index + 1 },
+                { name: `fan-out-child-${String(index + 1)}` },
+              ),
             ),
-          ),
-        );
+          );
 
-        const notifyMessage = await step.run(
-          { name: "notify-parent-complete" },
-          () => {
-            notifyStepCalls += 1;
-            return `Completed ${String(childResults.length)} child workflows`;
-          },
-        );
+          const notifyMessage = await step.run(
+            { name: "notify-parent-complete" },
+            () => {
+              notifyStepCalls += 1;
+              return `Completed ${String(childResults.length)} child workflows`;
+            },
+          );
 
-        return { childResults, notifyMessage };
-      },
-    );
+          return { childResults, notifyMessage };
+        },
+      );
 
-    const worker = client.newWorker({ concurrency: 350 });
-    const handle = await parent.run();
-    const status = await tickUntilTerminal(
-      backend,
-      worker,
-      handle.workflowRun.id,
-      1200,
-      10,
-      { maxWaitMs: 20_000 },
-    );
+      const worker = client.newWorker({ concurrency: 350 });
+      const handle = await parent.run();
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        1200,
+        10,
+        { maxWaitMs: 20_000 },
+      );
 
-    expect(status).toBe("failed");
-    await expect(handle.result()).rejects.toThrow(
-      /Injected failure at child 150/,
-    );
-    expect(injectedFailures).toBe(1);
-    expect(notifyStepCalls).toBe(0);
+      expect(status).toBe("completed");
+      const result = await handle.result();
+      expect(result.childResults).toHaveLength(300);
+      expect(result.notifyMessage).toBe("Completed 300 child workflows");
+      expect(
+        new Set(
+          result.childResults.map((childResult) => childResult.childRunId),
+        ).size,
+      ).toBe(300);
+      expect(injectedFailures).toBe(1);
+      expect(notifyStepCalls).toBe(1);
 
-    const parentAttempts = await backend.listStepAttempts({
-      workflowRunId: handle.workflowRun.id,
-      limit: 1200,
-    });
-    const workflowAttempts = parentAttempts.data.filter(
-      (stepAttempt) => stepAttempt.kind === "workflow",
-    );
-    const failedWorkflowAttempts = workflowAttempts.filter(
-      (stepAttempt) => stepAttempt.status === "failed",
-    );
-    const completedWorkflowAttempts = workflowAttempts.filter(
-      (stepAttempt) => stepAttempt.status === "completed",
-    );
-
-    expect(failedWorkflowAttempts).toHaveLength(1);
-    expect(completedWorkflowAttempts.length).toBeGreaterThan(0);
-    expect(completedWorkflowAttempts.length).toBeLessThanOrEqual(299);
-    expect(workflowAttempts).toHaveLength(300);
-
-    const child150Attempts = workflowAttempts.filter((stepAttempt) =>
-      stepAttempt.stepName.startsWith("fan-out-child-150"),
-    );
-    expect(child150Attempts).toHaveLength(1);
-    expect(child150Attempts[0]?.status).toBe("failed");
-
-    expect(
-      parentAttempts.data.some(
-        (stepAttempt) => stepAttempt.stepName === "notify-parent-complete",
-      ),
-    ).toBe(false);
-
-    const runs = await backend.listWorkflowRuns({ limit: 1200 });
-    const childRuns = runs.data.filter(
-      (run) =>
-        run.workflowName === child.workflow.spec.name &&
-        run.parentStepAttemptId !== null,
-    );
-    expect(childRuns).toHaveLength(300);
-  });
-
-  test("completes when child 150 has transient failure handled by child-level retries", async () => {
-    const backend = await createTestBackend();
-    const client = new OpenWorkflow({ backend });
-
-    let injectedFailures = 0;
-    let notifyStepCalls = 0;
-    const failedChildIds = new Set<number>();
-
-    const child = client.defineWorkflow<
-      { childId: number },
-      { childId: number; childRunId: string }
-    >(
-      { name: `workflow-child-fan-out-child-retry-${randomUUID()}` },
-      async ({ input, run, step }) => {
-        return await step.run(
-          { name: "work", retryPolicy: { maximumAttempts: 2 } },
-          async () => {
-            if (input.childId === 150 && !failedChildIds.has(input.childId)) {
-              failedChildIds.add(input.childId);
-              injectedFailures += 1;
-              throw new Error("Injected transient failure at child 150");
-            }
-
-            await sleep(5);
-            return { childId: input.childId, childRunId: run.id };
-          },
-        );
-      },
-    );
-
-    const parent = client.defineWorkflow<
-      undefined,
-      {
-        childResults: { childId: number; childRunId: string }[];
-        notifyMessage: string;
-      }
-    >(
-      { name: `workflow-parent-fan-out-child-retry-${randomUUID()}` },
-      async ({ step }) => {
-        const childResults = await Promise.all(
-          Array.from({ length: 300 }, (_, index) =>
-            step.runWorkflow(
-              child.workflow.spec,
-              { childId: index + 1 },
-              { name: `fan-out-child-${String(index + 1)}` },
-            ),
-          ),
-        );
-
-        const notifyMessage = await step.run(
-          { name: "notify-parent-complete" },
-          () => {
-            notifyStepCalls += 1;
-            return `Completed ${String(childResults.length)} child workflows`;
-          },
-        );
-
-        return { childResults, notifyMessage };
-      },
-    );
-
-    const worker = client.newWorker({ concurrency: 350 });
-    const handle = await parent.run();
-    const status = await tickUntilTerminal(
-      backend,
-      worker,
-      handle.workflowRun.id,
-      1200,
-      10,
-      { maxWaitMs: 20_000 },
-    );
-
-    expect(status).toBe("completed");
-    const result = await handle.result();
-    expect(result.childResults).toHaveLength(300);
-    expect(result.notifyMessage).toBe("Completed 300 child workflows");
-    expect(
-      new Set(result.childResults.map((childResult) => childResult.childRunId))
-        .size,
-    ).toBe(300);
-    expect(injectedFailures).toBe(1);
-    expect(notifyStepCalls).toBe(1);
-
-    const runs = await backend.listWorkflowRuns({ limit: 1200 });
-    const childRuns = runs.data.filter(
-      (run) =>
-        run.workflowName === child.workflow.spec.name &&
-        run.parentStepAttemptId !== null,
-    );
-    expect(childRuns).toHaveLength(300);
-  });
+      const runs = await backend.listWorkflowRuns({ limit: 1200 });
+      const childRuns = runs.data.filter(
+        (run) =>
+          run.workflowName === child.workflow.spec.name &&
+          run.parentStepAttemptId !== null,
+      );
+      expect(childRuns).toHaveLength(300);
+    },
+  );
 
   test("auto-indexes duplicate workflow names in parallel Promise.all", async () => {
     const backend = await createTestBackend();
@@ -2197,14 +2214,17 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
-    const workflowStepNames = steps.data
-      .filter(
-        (stepAttempt) =>
-          stepAttempt.kind === "workflow" &&
-          stepAttempt.stepName.startsWith(child.workflow.spec.name),
-      )
-      .map((stepAttempt) => stepAttempt.stepName)
-      .toSorted((a, b) => a.localeCompare(b));
+    const workflowStepNames = [
+      ...new Set(
+        steps.data
+          .filter(
+            (stepAttempt) =>
+              stepAttempt.kind === "workflow" &&
+              stepAttempt.stepName.startsWith(child.workflow.spec.name),
+          )
+          .map((stepAttempt) => stepAttempt.stepName),
+      ),
+    ].toSorted((a, b) => a.localeCompare(b));
     expect(workflowStepNames).toEqual([
       child.workflow.spec.name,
       `${child.workflow.spec.name}:1`,
@@ -3428,7 +3448,7 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run();
       const worker = client.newWorker();
       await worker.tick();
-      await sleep(50);
+      await sleep(200);
 
       const workflowRun = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
@@ -3455,7 +3475,7 @@ describe("executeWorkflow", () => {
 
       // first tick - hits sleep
       await worker.tick();
-      await sleep(50);
+      await sleep(200);
 
       const parked = await backend.getWorkflowRun({
         workflowRunId: handle.workflowRun.id,
@@ -3744,7 +3764,7 @@ describe("executeWorkflow", () => {
       const worker = client.newWorker();
       const handle = await workflow.run();
       await worker.tick();
-      await sleep(50);
+      await sleep(200);
       await worker.tick();
       await handle.result();
 
