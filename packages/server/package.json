@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/server",
-  "version": "0.1.0",
+  "private": true,
   "description": "HTTP server for OpenWorkflow — exposes the Backend interface as a REST API",
   "type": "module",
   "exports": {
