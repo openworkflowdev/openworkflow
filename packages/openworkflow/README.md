@@ -63,6 +63,7 @@ started.
 - [Core Concepts](https://openworkflow.dev/docs/overview)
 - [Advanced Patterns](https://openworkflow.dev/docs/advanced-patterns)
 - [Production Checklist](https://openworkflow.dev/docs/production)
+- [Releases](https://openworkflow.dev/docs/releases)
 
 ## Architecture
 
