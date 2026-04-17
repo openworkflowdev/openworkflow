@@ -161,7 +161,7 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
     const params: SleepWorkflowRunParams = {
       workflowRunId: id,
       workerId: body.workerId,
-      availableAt: new Date(body.availableAt),
+      availableAt: body.availableAt,
     };
     const run = await backend.sleepWorkflowRun(params);
     return c.json(run);
@@ -180,9 +180,7 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
       error: toSerializedError(body.error),
       retryPolicy: body.retryPolicy as RetryPolicy,
       ...(body.attempts === undefined ? {} : { attempts: body.attempts }),
-      ...(body.deadlineAt === undefined
-        ? {}
-        : { deadlineAt: body.deadlineAt ? new Date(body.deadlineAt) : null }),
+      ...(body.deadlineAt === undefined ? {} : { deadlineAt: body.deadlineAt }),
     };
     const run = await backend.failWorkflowRun(params);
     return c.json(run);
@@ -193,7 +191,7 @@ const WORKFLOW_RUN_VERBS: Readonly<Record<string, VerbHandler>> = {
       workflowRunId: id,
       workerId: body.workerId,
       error: toSerializedError(body.error),
-      availableAt: new Date(body.availableAt),
+      availableAt: body.availableAt,
     };
     const run =
       await backend.rescheduleWorkflowRunAfterFailedStepAttempt(params);
@@ -223,8 +221,8 @@ function registerWorkflowRunRoutes(app: Hono, backend: Backend): void {
       input: body.input,
       parentStepAttemptNamespaceId: body.parentStepAttemptNamespaceId,
       parentStepAttemptId: body.parentStepAttemptId,
-      availableAt: body.availableAt ? new Date(body.availableAt) : null,
-      deadlineAt: body.deadlineAt ? new Date(body.deadlineAt) : null,
+      availableAt: body.availableAt,
+      deadlineAt: body.deadlineAt,
     };
     const run = await backend.createWorkflowRun(params);
     return c.json(run, 201);

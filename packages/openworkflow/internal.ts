@@ -11,6 +11,10 @@ export {
   type SerializedError,
 } from "./core/error.js";
 
+// duration
+export type { DurationString } from "./core/duration.js";
+export { parseDuration } from "./core/duration.js";
+
 // core
 export type { JsonValue } from "./core/json.js";
 export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow-run.js";

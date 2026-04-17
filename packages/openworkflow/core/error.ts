@@ -7,7 +7,13 @@ export interface SerializedError {
   [key: string]: JsonValue;
 }
 
-export type BackendErrorCode = "NOT_FOUND" | "CONFLICT";
+/**
+ * Runtime tuple of backend error codes; {@link BackendErrorCode} is derived
+ * from it.
+ */
+export const BACKEND_ERROR_CODES = ["NOT_FOUND", "CONFLICT"] as const;
+
+export type BackendErrorCode = (typeof BACKEND_ERROR_CODES)[number];
 
 /**
  * Type guard for {@link BackendErrorCode}.
@@ -15,7 +21,7 @@ export type BackendErrorCode = "NOT_FOUND" | "CONFLICT";
  * @returns True if `code` is a known backend error code
  */
 export function isBackendErrorCode(code: string): code is BackendErrorCode {
-  return code === "NOT_FOUND" || code === "CONFLICT";
+  return (BACKEND_ERROR_CODES as readonly string[]).includes(code);
 }
 
 // eslint-disable-next-line functional/no-classes, functional/no-class-inheritance

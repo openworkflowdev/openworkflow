@@ -1,5 +1,9 @@
-import type { JsonValue, StepAttemptContext } from "openworkflow/internal";
-import { STEP_KINDS } from "openworkflow/internal";
+import type {
+  DurationString,
+  JsonValue,
+  StepAttemptContext,
+} from "openworkflow/internal";
+import { parseDuration, STEP_KINDS } from "openworkflow/internal";
 import { z } from "zod/v4";
 
 // Request body schemas. ISO-8601 datetime strings are parsed into Date so
@@ -8,6 +12,12 @@ import { z } from "zod/v4";
 // inference blowing TypeScript's depth limit.
 
 const isoDatetime = z.iso.datetime().transform((s) => new Date(s));
+
+const durationString = z
+  .string()
+  .refine((s) => parseDuration(s as DurationString).ok, {
+    message: "Invalid duration string",
+  });
 
 const jsonValue = z.json() as unknown as z.ZodType<JsonValue>;
 const stepAttemptContext = z.json() as unknown as z.ZodType<StepAttemptContext>;
@@ -33,7 +43,7 @@ export const createWorkflowRunSchema = z.object({
 
 const workerLeaseFields = {
   workerId: z.string(),
-  leaseDurationMs: z.number(),
+  leaseDurationMs: z.number().int().positive(),
 };
 
 export const claimWorkflowRunSchema = z.object(workerLeaseFields);
@@ -54,12 +64,12 @@ export const failWorkflowRunSchema = z.object({
   workerId: z.string(),
   error: errorSchema,
   retryPolicy: z.object({
-    initialInterval: z.string(),
-    backoffCoefficient: z.number(),
-    maximumInterval: z.string(),
-    maximumAttempts: z.number(),
+    initialInterval: durationString,
+    backoffCoefficient: z.number().positive(),
+    maximumInterval: durationString,
+    maximumAttempts: z.number().int().positive(),
   }),
-  attempts: z.number().optional(),
+  attempts: z.number().int().nonnegative().optional(),
   deadlineAt: isoDatetime.nullable().optional(),
 });
 
