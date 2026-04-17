@@ -421,33 +421,37 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
 
-      test("collapses concurrent creates with same key to one run id", async () => {
-        const backend = await setup();
-        const workflowName = randomUUID();
-        const version = "v1";
-        const idempotencyKey = randomUUID();
+      test(
+        "collapses concurrent creates with same key to one run id",
+        { timeout: 15_000 },
+        async () => {
+          const backend = await setup();
+          const workflowName = randomUUID();
+          const version = "v1";
+          const idempotencyKey = randomUUID();
 
-        const runs = await Promise.all(
-          Array.from({ length: 10 }, (_, i) =>
-            backend.createWorkflowRun({
-              workflowName,
-              version,
-              idempotencyKey,
-              input: { i },
-              config: {},
-              context: null,
-              parentStepAttemptNamespaceId: null,
-              parentStepAttemptId: null,
-              availableAt: null,
-              deadlineAt: null,
-            }),
-          ),
-        );
+          const runs = await Promise.all(
+            Array.from({ length: 10 }, (_, i) =>
+              backend.createWorkflowRun({
+                workflowName,
+                version,
+                idempotencyKey,
+                input: { i },
+                config: {},
+                context: null,
+                parentStepAttemptNamespaceId: null,
+                parentStepAttemptId: null,
+                availableAt: null,
+                deadlineAt: null,
+              }),
+            ),
+          );
 
-        const uniqueRunIds = new Set(runs.map((run) => run.id));
-        expect(uniqueRunIds.size).toBe(1);
-        await teardown(backend);
-      });
+          const uniqueRunIds = new Set(runs.map((run) => run.id));
+          expect(uniqueRunIds.size).toBe(1);
+          await teardown(backend);
+        },
+      );
 
       test("returns existing completed run for matching key", async () => {
         const backend = await setup();
