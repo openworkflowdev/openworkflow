@@ -1,0 +1,62 @@
+---
+title: Releases
+description: How we version OpenWorkflow while we're still pre-1.0
+---
+
+OpenWorkflow is pre-1.0. The API is still settling, and we'd rather say that out
+loud than pretend otherwise. This page explains what that means for you in
+practice, and why we've set things up this way.
+
+## The short version
+
+While we're on `0.y.z`, **breaking changes ship in the minor**, not the major.
+Everything else - new features, bug fixes, performance work - ships in the
+patch.
+
+```
+0.9.0 → 0.9.1    safe   bug fix or new feature
+0.9.1 → 0.9.2    safe   bug fix or new feature
+0.9.2 → 0.10.0   break  read the changelog before you upgrade
+```
+
+Each package in the repo (`openworkflow`, `@openworkflow/cli`, the dashboard)
+versions independently. A breaking change in the CLI bumps the CLI's minor; it
+doesn't force a bump elsewhere.
+
+## Upgrading safely
+
+The good news: npm's default behavior already does the right thing. `^0.9.0` in
+your `package.json` resolves to `>=0.9.0 <0.10.0`. You will **not** silently
+pick up a breaking `0.10.0` during a routine `npm install`. You have to opt in.
+
+## Why we do it this way
+
+We want one honest signal in the version number, and we want to stay free to fix
+design mistakes while the project is young. Those two goals pull in opposite
+directions under strict semver - going to 1.0 would lock us in, staying on 0.x
+without a convention would give you no way to tell a safe upgrade from a risky
+one.
+
+The 0.y.z-breaks-in-minor convention is the common compromise for semver. Cargo
+formalizes this exact rule for the Rust ecosystem, and React Native runs the
+same policy and has for years. We're in good company.
+
+Starting at 1.0 instead would be the dishonest option. Projects that do it
+usually end up either cranking through majors (`2.0`, `3.0`, `4.0` in a year,
+which makes the major meaningless) or quietly breaking things inside minors
+(which makes semver meaningless). We'd rather be upfront about where we are.
+
+FWIW this is a solid counter-argument and worth reading if you're making this
+call in your own project: [Jon Skeet on starting at 1.0
+instead](https://codeblog.jonskeet.uk/2019/10/20/why-i-dont-start-versions-at-0-x-any-more/).
+
+## When we'll hit 1.0
+
+1.0 is a gate, not a timeline. We'll ship it when:
+
+- The workflow, step, and worker APIs have stayed shape-stable across two
+  consecutive minor releases.
+- The backend interface is stable enough that you could write your own backend
+  without reading our source.
+
+After 1.0, changes will follow standard semver.
