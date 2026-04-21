@@ -659,54 +659,29 @@ export class BackendPostgres implements Backend {
     );
 
     const workflowRunsTable = this.workflowRunsTable();
-    const stepAttemptsTable = this.stepAttemptsTable();
 
     const [updated] = await this.pg<WorkflowRun[]>`
-      WITH updated AS (
-        UPDATE ${workflowRunsTable}
-        SET
-          "status" = ${failureUpdate.status},
-          "available_at" = ${failureUpdate.availableAt},
-          "finished_at" = ${failureUpdate.finishedAt},
-          "error" = ${this.pg.json(failureUpdate.error)},
-          "worker_id" = NULL,
-          "started_at" = NULL,
-          "updated_at" = NOW()
-        WHERE "namespace_id" = ${this.namespaceId}
-        AND "id" = ${workflowRunId}
-        AND "status" = 'running'
-        AND "worker_id" = ${params.workerId}
-        RETURNING *
-      ),
-      wake_parent AS (
-        UPDATE ${workflowRunsTable} wr
-        SET
-          "available_at" = CASE
-            WHEN wr."available_at" IS NULL OR wr."available_at" > NOW()
-              THEN NOW()
-            ELSE wr."available_at"
-          END,
-          "updated_at" = NOW()
-        FROM updated, ${stepAttemptsTable} sa
-        WHERE updated."status" = 'failed'
-        AND sa."namespace_id" = updated."parent_step_attempt_namespace_id"
-        AND sa."id" = updated."parent_step_attempt_id"
-        AND sa."kind" = 'workflow'
-        AND sa."status" = 'running'
-        AND sa."child_workflow_run_namespace_id" = updated."namespace_id"
-        AND sa."child_workflow_run_id" = updated."id"
-        AND wr."namespace_id" = sa."namespace_id"
-        AND wr."id" = sa."workflow_run_id"
-        AND (
-          wr."status" = 'sleeping'
-          OR (wr."status" = 'running' AND wr."worker_id" IS NULL)
-        )
-      )
-      SELECT *
-      FROM updated
+      UPDATE ${workflowRunsTable}
+      SET
+        "status" = ${failureUpdate.status},
+        "available_at" = ${failureUpdate.availableAt},
+        "finished_at" = ${failureUpdate.finishedAt},
+        "error" = ${this.pg.json(failureUpdate.error)},
+        "worker_id" = NULL,
+        "started_at" = NULL,
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${workflowRunId}
+      AND "status" = 'running'
+      AND "worker_id" = ${params.workerId}
+      RETURNING *
     `;
 
     if (!updated) throw new Error("Failed to mark workflow run failed");
+
+    if (updated.status === "failed") {
+      await this.wakeParentWorkflowRun(updated);
+    }
 
     return updated;
   }
