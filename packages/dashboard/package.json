@@ -23,7 +23,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@openworkflow/cli": "*",
     "@phosphor-icons/react": "^2.1.10",
-    "@tailwindcss/vite": "^4.2.2",
+    "@tailwindcss/vite": "^4.2.3",
     "@tanstack/react-devtools": "^0.10.2",
     "@tanstack/react-router": "^1.168.22",
     "@tanstack/react-router-devtools": "^1.166.13",
