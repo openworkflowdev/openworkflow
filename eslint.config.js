@@ -1,5 +1,4 @@
 // @ts-check
-import cspell from "@cspell/eslint-plugin/configs";
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
 import boundaries from "eslint-plugin-boundaries";
@@ -21,7 +20,6 @@ export default defineConfig(
   sonarjs.configs.recommended,
   unicorn.configs.recommended,
   jsdoc.configs["flat/recommended-typescript-error"],
-  cspell.recommended,
   prettier,
   {
     ignores: [
@@ -62,22 +60,6 @@ export default defineConfig(
   },
   {
     rules: {
-      "@cspell/spellchecker": [
-        "error",
-        {
-          cspell: {
-            flagWords: ["cancellation", "cancelled"], // prefer en-US spelling for consistency
-            ignoreWords: [
-              "arktype",
-              "heartbeating",
-              "idempotently",
-              "openworkflow",
-              "sonarjs",
-              "timestamptz",
-            ],
-          },
-        },
-      ],
       "func-style": ["error", "declaration"],
       // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
       "import/no-extraneous-dependencies": "error",

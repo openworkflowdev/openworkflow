@@ -128,7 +128,7 @@ And for custom backend implementations:
 ## 0.3.0
 
 - Added workflow versioning to help evolve workflows safely over time.
-- Added workflow cancellation so running workflows can now be cancelled safely.
+- Added workflow cancellation so running workflows can now be canceled safely.
 - Improved duration handling and TypeScript type-safety for duration strings.
 - Fix for edge case where finished workflow runs could be slept.
 

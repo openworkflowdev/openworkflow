@@ -320,7 +320,7 @@ Workflow runs can include an optional `deadlineAt` timestamp, specifying the
 time by which the workflow must complete. Steps and retries are skipped if they
 would exceed the deadline, making the run permanently `failed`.
 
-### 4.5. Workflow Cancelation
+### 4.5. Workflow Cancellation
 
 Workflows can be explicitly canceled at any time via the Client API:
 
@@ -329,8 +329,8 @@ const handle = await workflow.run({ "..." });
 await handle.cancel();
 ```
 
-**Handling cancelation during execution**: If a workflow is canceled while a
-worker is actively processing it, the worker will detect the cancelation. The
+**Handling cancellation during execution**: If a workflow is canceled while a
+worker is actively processing it, the worker will detect the cancellation. The
 worker will then stop further execution of the workflow code and mark the
 workflow as `canceled`. This ensures that partial work from the canceled
 workflow is not committed as a successful result.

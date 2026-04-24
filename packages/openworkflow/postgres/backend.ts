@@ -145,12 +145,10 @@ export class BackendPostgres implements Backend {
     };
 
     try {
-      /* eslint-disable @cspell/spellchecker */
       await pgReserved.unsafe(
         "SELECT pg_advisory_lock(hashtextextended($1, 0::bigint))",
         [lockScope],
       );
-      /* eslint-enable @cspell/spellchecker */
 
       try {
         const existing = await this.getWorkflowRunByIdempotencyKey(
@@ -165,7 +163,6 @@ export class BackendPostgres implements Backend {
 
         return await this.insertWorkflowRun(pgReserved, params);
       } finally {
-        /* eslint-disable @cspell/spellchecker */
         await pgReserved
           .unsafe(
             "SELECT pg_advisory_unlock(hashtextextended($1, 0::bigint))",
@@ -174,7 +171,6 @@ export class BackendPostgres implements Backend {
           .catch(() => {
             // best effort unlock; session close also releases session advisory locks
           });
-        /* eslint-enable @cspell/spellchecker */
       }
     } finally {
       pgReserved.release();

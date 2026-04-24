@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+
+  "useGitignore": true,
+  "files": ["**/*.{ts,tsx,js,jsx,cjs,mjs,md,mdx,json,jsonc,yaml,yml}"],
+  "ignorePaths": ["cspell.config.jsonc"],
+
+  "flagWords": [
+    // prefer en-US spellings
+    // https://www.grammarly.com/blog/commonly-confused-words/canceled-vs-cancelled
+    "cancelled", // prefer 'canceled'
+    "cancelation", // prefer 'cancellation'
+    "cancelling", // prefer 'canceling'
+    "cancellable", // prefer 'cancelable'
+    "canceller", // prefer 'canceler'
+    "uncancelled", // prefer 'uncanceled'
+  ],
+  "ignoreWords": [
+    // libraries & packages
+    "arktype",
+    "bullmq",
+    "bunx",
+    "nypm",
+    "openworkflow",
+    "pghero",
+    "posthog",
+    "sonarjs",
+    "trivago",
+
+    // postgres
+    "hashtextextended",
+    "mydb",
+    "sslmode",
+    "timestamptz",
+
+    // project vocabulary
+    "checkin",
+    "checkpointing",
+    "convo",
+    "heartbeating",
+    "idempotently",
+    "llms",
+    "wakeups",
+
+    // usernames & contributor names
+    "mariusflorescu",
+    "Nagpal",
+    "nathancahill",
+    "octoper",
+    "Shobhit",
+    "szokeptr",
+    "thomasjiangcy",
+  ],
+}
