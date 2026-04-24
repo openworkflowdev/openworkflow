@@ -1008,7 +1008,7 @@ export class BackendSqlite implements Backend {
       params.stepName,
       params.kind,
       toJSON(params.config),
-      toJSON(params.context as JsonValue),
+      toJSON(params.context),
       currentTime,
       currentTime,
       currentTime,

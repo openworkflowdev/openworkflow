@@ -1053,7 +1053,7 @@ export async function executeWorkflow(
 
     // execute workflow
     const output = await workflowFn({
-      input: workflowRun.input as unknown,
+      input: workflowRun.input,
       step: executor,
       version: workflowVersion,
       run,

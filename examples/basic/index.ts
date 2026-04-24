@@ -115,7 +115,7 @@ async function main() {
       })
       .catch((error: unknown) => {
         console.error(`❌ Workflow run ${String(idx + 1)} failed:`, error);
-        return { status: "rejected" as const, reason: error } as unknown;
+        return { status: "rejected" as const, reason: error };
       }),
   );
 

@@ -74,7 +74,7 @@ describe("OpenWorkflow", () => {
         );
 
         await expect(
-          workflow.run({ userId: "not-a-uuid", count: 0 } as never),
+          workflow.run({ userId: "not-a-uuid", count: 0 }),
         ).rejects.toThrow();
       });
     });
@@ -182,7 +182,7 @@ describe("OpenWorkflow", () => {
         );
 
         await expect(
-          workflow.run({ name: "Mona", age: -10 } as never),
+          workflow.run({ name: "Mona", age: -10 }),
         ).rejects.toThrow();
       });
     });
