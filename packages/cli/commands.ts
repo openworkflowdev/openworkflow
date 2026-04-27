@@ -82,11 +82,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
       initialValue: false,
     });
 
-    if (!shouldOverride || p.isCancel(shouldOverride)) {
-      p.cancel("Setup canceled.");
-      // eslint-disable-next-line unicorn/no-process-exit
-      process.exit(0);
-    }
+    if (!shouldOverride || p.isCancel(shouldOverride)) cancelSetup();
 
     configFileToDelete = configFile;
   }
@@ -113,11 +109,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     initialValue: "sqlite",
   });
 
-  if (p.isCancel(backendChoice)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
+  if (p.isCancel(backendChoice)) cancelSetup();
 
   const spinner = p.spinner();
 
@@ -148,11 +140,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     initialValue: true,
   });
 
-  if (p.isCancel(shouldSetup)) {
-    p.cancel("Setup canceled.");
-    // eslint-disable-next-line unicorn/no-process-exit
-    process.exit(0);
-  }
+  if (p.isCancel(shouldSetup)) cancelSetup();
 
   if (!shouldSetup) {
     p.outro("Setup skipped.");
@@ -461,6 +449,15 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
 // -----------------------------------------------------------------------------
 
 /**
+ * Show a canceled-setup message and exit the process with status 0.
+ */
+function cancelSetup(): never {
+  p.cancel("Setup canceled.");
+  // eslint-disable-next-line unicorn/no-process-exit
+  process.exit(0);
+}
+
+/**
  * Get workflow directories from config.
  * @param config - The loaded config
  * @returns Array of workflow directory paths
@@ -554,11 +551,8 @@ function warnAboutDuplicateWorkflows(
 ): void {
   const duplicates = findDuplicateWorkflows(workflows);
   for (const duplicate of duplicates) {
-    const versionStr = duplicate.version
-      ? ` (version: ${duplicate.version})`
-      : "";
     consola.warn(
-      `Duplicate workflow detected: "${duplicate.name}"${versionStr}`,
+      `Duplicate workflow detected: ${formatWorkflowIdentity(duplicate.name, duplicate.version)}`,
     );
     consola.warn(
       "Multiple files export a workflow with the same name and version.",
@@ -891,25 +885,46 @@ function createConfigFile(configFileName: string): void {
 }
 
 /**
- * Create hello-world runner file.
- * @param runFileName - The runner filename to write
+ * Write a file under the `openworkflow/` project directory, skipping when a
+ * file with the same name already exists. Progress is surfaced via the clack
+ * spinner using the provided label (e.g. "client file").
+ * @param label - Lowercase label describing the file (used in spinner text)
+ * @param fileName - Filename to write inside `openworkflow/`
+ * @param content - File contents to write when the file does not exist
  */
-function createRunFile(runFileName: string): void {
+function writeWorkflowFileIfMissing(
+  label: string,
+  fileName: string,
+  content: string,
+): void {
   const spinner = p.spinner();
   const workflowsDir = path.join(process.cwd(), "openworkflow");
   if (!existsSync(workflowsDir)) {
     mkdirSync(workflowsDir, { recursive: true });
   }
-  const runDestPath = path.join(workflowsDir, runFileName);
-  if (existsSync(runDestPath)) {
-    spinner.start("Checking hello-world runner...");
-    spinner.stop(`Hello-world runner already exists at ${runDestPath}`);
+  const destPath = path.join(workflowsDir, fileName);
+  if (existsSync(destPath)) {
+    spinner.start(`Checking ${label}...`);
+    const capitalized = label.charAt(0).toUpperCase() + label.slice(1);
+    spinner.stop(`${capitalized} already exists at ${destPath}`);
     return;
   }
 
-  spinner.start("Creating hello-world runner...");
-  writeFileSync(runDestPath, HELLO_WORLD_RUNNER, "utf8");
-  spinner.stop(`Created hello-world runner at ${runDestPath}`);
+  spinner.start(`Creating ${label}...`);
+  writeFileSync(destPath, content, "utf8");
+  spinner.stop(`Created ${label} at ${destPath}`);
+}
+
+/**
+ * Create hello-world runner file.
+ * @param runFileName - The runner filename to write
+ */
+function createRunFile(runFileName: string): void {
+  writeWorkflowFileIfMissing(
+    "hello-world runner",
+    runFileName,
+    HELLO_WORLD_RUNNER,
+  );
 }
 
 /**
@@ -921,22 +936,11 @@ function createClientFile(
   backendChoice: BackendChoice,
   clientFileName: string,
 ): void {
-  const spinner = p.spinner();
-  const workflowsDir = path.join(process.cwd(), "openworkflow");
-  if (!existsSync(workflowsDir)) {
-    mkdirSync(workflowsDir, { recursive: true });
-  }
-  const clientDestPath = path.join(workflowsDir, clientFileName);
-  if (existsSync(clientDestPath)) {
-    spinner.start("Checking client file...");
-    spinner.stop(`Client file already exists at ${clientDestPath}`);
-    return;
-  }
-
-  spinner.start("Creating client file...");
-  const clientTemplate = getClientTemplate(backendChoice);
-  writeFileSync(clientDestPath, clientTemplate, "utf8");
-  spinner.stop(`Created client file at ${clientDestPath}`);
+  writeWorkflowFileIfMissing(
+    "client file",
+    clientFileName,
+    getClientTemplate(backendChoice),
+  );
 }
 
 /**
@@ -944,24 +948,10 @@ function createClientFile(
  * @param exampleWorkflowFileName - The example workflow filename to write
  */
 function createExampleWorkflow(exampleWorkflowFileName: string): void {
-  const spinner = p.spinner();
-  const workflowsDir = path.join(process.cwd(), "openworkflow");
-  if (!existsSync(workflowsDir)) {
-    mkdirSync(workflowsDir, { recursive: true });
-  }
-  const helloWorldDestPath = path.join(workflowsDir, exampleWorkflowFileName);
-  if (existsSync(helloWorldDestPath)) {
-    spinner.start("Checking example (hello-world) workflow...");
-    spinner.stop(
-      `Example (hello-world) workflow already exists at ${helloWorldDestPath}`,
-    );
-    return;
-  }
-
-  spinner.start("Creating example (hello-world) workflow...");
-  writeFileSync(helloWorldDestPath, HELLO_WORLD_WORKFLOW, "utf8");
-  spinner.stop(
-    `Created example (hello-world) workflow at ${helloWorldDestPath}`,
+  writeWorkflowFileIfMissing(
+    "example (hello-world) workflow",
+    exampleWorkflowFileName,
+    HELLO_WORLD_WORKFLOW,
   );
 }
 
@@ -977,12 +967,9 @@ function updateGitignoreForSqlite(): void {
   const gitignorePath = path.join(process.cwd(), ".gitignore");
   const spinner = p.spinner();
   spinner.start("Updating .gitignore...");
-  const result = ensureGitignoreEntry(
-    gitignorePath,
-    "openworkflow/backend.db*",
-  );
+  const added = ensureGitignoreEntry(gitignorePath, "openworkflow/backend.db*");
   spinner.stop(
-    result.added
+    added
       ? "Added openworkflow/backend.db* to .gitignore"
       : "openworkflow/backend.db* already in .gitignore",
   );
@@ -1020,44 +1007,43 @@ function addWorkerScriptToPackageJson(): void {
 }
 
 /**
+ * Append a line to a file if no existing line matches. Creates the file if it
+ * doesn't exist.
+ * @param filePath - Path to the file
+ * @param line - Line to append (without a trailing newline)
+ * @param matchesExisting - Predicate that returns true when an existing line
+ * should be treated as already representing `line`
+ * @returns Whether the line was appended
+ */
+function appendLineIfMissing(
+  filePath: string,
+  line: string,
+  matchesExisting: (existing: string) => boolean,
+): boolean {
+  const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+
+  if (content.split("\n").some((existing) => matchesExisting(existing))) {
+    return false;
+  }
+
+  const separator = content === "" || content.endsWith("\n") ? "" : "\n";
+  writeFileSync(filePath, `${content}${separator}${line}\n`, "utf8");
+  return true;
+}
+
+/**
  * Ensure a specific entry exists in a .gitignore file. Creates the file if it
  * doesn't exist, appends the entry if not present.
  * @param gitignorePath - Path to the .gitignore file
  * @param entry - The entry to add (e.g. "openworkflow/backend.db*")
- * @returns Object indicating whether the entry was added or already existed
+ * @returns Whether the entry was appended
  */
-function ensureGitignoreEntry(
-  gitignorePath: string,
-  entry: string,
-): { added: boolean; created: boolean } {
-  const fileExists = existsSync(gitignorePath);
-  let content = "";
-
-  if (fileExists) {
-    content = readFileSync(gitignorePath, "utf8");
-  }
-
-  // check if entry already exists
-  const lines = content.split("\n");
-  const hasEntry = lines.some((line) => line.trim() === entry);
-
-  if (hasEntry) {
-    return { added: false, created: false };
-  }
-
-  // add entry to .gitignore
-  let newContent: string;
-  if (content === "") {
-    newContent = `${entry}\n`;
-  } else if (content.endsWith("\n")) {
-    newContent = `${content}${entry}\n`;
-  } else {
-    newContent = `${content}\n${entry}\n`;
-  }
-
-  writeFileSync(gitignorePath, newContent, "utf8");
-
-  return { added: true, created: !fileExists };
+function ensureGitignoreEntry(gitignorePath: string, entry: string): boolean {
+  return appendLineIfMissing(
+    gitignorePath,
+    entry,
+    (line) => line.trim() === entry,
+  );
 }
 
 /**
@@ -1067,13 +1053,13 @@ function updateEnvForPostgres(): void {
   const envPath = path.join(process.cwd(), ".env");
   const spinner = p.spinner();
   spinner.start("Updating .env...");
-  const result = ensureEnvEntry(
+  const added = ensureEnvEntry(
     envPath,
     "OPENWORKFLOW_POSTGRES_URL",
     "postgresql://user:password@localhost:5432/openworkflow",
   );
   spinner.stop(
-    result.added
+    added
       ? "Added OPENWORKFLOW_POSTGRES_URL to .env"
       : "OPENWORKFLOW_POSTGRES_URL already in .env",
   );
@@ -1122,6 +1108,20 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
 }
 
 /**
+ * Pick the script file extension for generated files based on whether the
+ * project uses TypeScript.
+ * @param packageJson - Parsed package.json (or null if missing)
+ * @returns ".ts" when TypeScript is a dependency, otherwise ".js"
+ */
+function getScriptExtension(
+  packageJson: Readonly<PackageJsonForDoctor> | null,
+): ".ts" | ".js" {
+  return packageJson && hasDependency(packageJson, "typescript")
+    ? ".ts"
+    : ".js";
+}
+
+/**
  * Determine the config filename to write during init.
  * @param packageJson - Parsed package.json (or null if missing)
  * @returns The config file name to create
@@ -1129,11 +1129,7 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
 export function getConfigFileName(
   packageJson: Readonly<PackageJsonForDoctor> | null,
 ): string {
-  if (packageJson && hasDependency(packageJson, "typescript")) {
-    return "openworkflow.config.ts";
-  }
-
-  return "openworkflow.config.js";
+  return `openworkflow.config${getScriptExtension(packageJson)}`;
 }
 
 /**
@@ -1144,10 +1140,7 @@ export function getConfigFileName(
 export function getExampleWorkflowFileName(
   packageJson: Readonly<PackageJsonForDoctor> | null,
 ): string {
-  const configFileName = getConfigFileName(packageJson);
-  const extension = path.extname(configFileName) || ".js";
-
-  return `hello-world${extension}`;
+  return `hello-world${getScriptExtension(packageJson)}`;
 }
 
 /**
@@ -1158,10 +1151,7 @@ export function getExampleWorkflowFileName(
 export function getRunFileName(
   packageJson: Readonly<PackageJsonForDoctor> | null,
 ): string {
-  const configFileName = getConfigFileName(packageJson);
-  const extension = path.extname(configFileName) || ".js";
-
-  return `hello-world.run${extension}`;
+  return `hello-world.run${getScriptExtension(packageJson)}`;
 }
 
 /**
@@ -1172,10 +1162,7 @@ export function getRunFileName(
 export function getClientFileName(
   packageJson: Readonly<PackageJsonForDoctor> | null,
 ): string {
-  const configFileName = getConfigFileName(packageJson);
-  const extension = path.extname(configFileName) || ".js";
-
-  return `client${extension}`;
+  return `client${getScriptExtension(packageJson)}`;
 }
 
 /**
@@ -1238,50 +1225,18 @@ function warnIfMissingTsconfig(
 }
 
 /**
- * Ensure a specific environment variable exists in a .env file. Creates the file if it
- * doesn't exist, appends the variable if not present.
+ * Ensure a specific environment variable exists in a .env file. Creates the
+ * file if it doesn't exist, appends the variable if not present.
  * @param envPath - Path to the .env file
  * @param key - The environment variable key (e.g. "OPENWORKFLOW_POSTGRES_URL")
  * @param value - The default value for the environment variable
- * @returns Object indicating whether the entry was added or already existed
+ * @returns Whether the entry was appended
  */
-function ensureEnvEntry(
-  envPath: string,
-  key: string,
-  value: string,
-): { added: boolean; created: boolean } {
-  const fileExists = existsSync(envPath);
-  let content = "";
-
-  if (fileExists) {
-    content = readFileSync(envPath, "utf8");
-  }
-
-  // check if key already exists (looking for KEY= at start of line)
-  const lines = content.split("\n");
-  const hasKey = lines.some((line) => {
+function ensureEnvEntry(envPath: string, key: string, value: string): boolean {
+  return appendLineIfMissing(envPath, `${key}=${value}`, (line) => {
     const trimmed = line.trim();
     return trimmed.startsWith(`${key}=`) || trimmed.startsWith(`${key} =`);
   });
-
-  if (hasKey) {
-    return { added: false, created: false };
-  }
-
-  // add entry to .env
-  let newContent: string;
-  const envEntry = `${key}=${value}`;
-  if (content === "") {
-    newContent = `${envEntry}\n`;
-  } else if (content.endsWith("\n")) {
-    newContent = `${content}${envEntry}\n`;
-  } else {
-    newContent = `${content}\n${envEntry}\n`;
-  }
-
-  writeFileSync(envPath, newContent, "utf8");
-
-  return { added: true, created: !fileExists };
 }
 
 /**

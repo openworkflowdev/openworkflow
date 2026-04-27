@@ -25,22 +25,29 @@ import {
   SendSignalResult,
   GetSignalDeliveryParams,
 } from "../core/backend.js";
-import { decodeCursor, encodeCursor, type Cursor } from "../core/cursor.js";
-import { wrapError } from "../core/error.js";
+import {
+  buildPaginatedResponse,
+  DEFAULT_PAGINATION_PAGE_SIZE,
+  decodeListCursor,
+  type Cursor,
+} from "../core/cursor.js";
+import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
-import { WorkflowRun } from "../core/workflow-run.js";
+import {
+  resolveCancelWorkflowRunConflict,
+  WorkflowRun,
+} from "../core/workflow-run.js";
 import {
   newPostgres,
   newPostgresMaxOne,
   Postgres,
+  PostgresFragment,
   migrate,
   DEFAULT_SCHEMA,
   assertValidSchemaName,
 } from "./postgres.js";
-
-const DEFAULT_PAGINATION_PAGE_SIZE = 100;
 
 interface BackendPostgresOptions {
   namespaceId?: string;
@@ -226,7 +233,7 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!workflowRun) throw new Error("Failed to create workflow run");
+    requireRow(workflowRun, "create workflow run");
 
     return workflowRun;
   }
@@ -375,13 +382,7 @@ export class BackendPostgres implements Backend {
   ): Promise<PaginatedResponse<WorkflowRun>> {
     const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
     const { after, before } = params;
-
-    let cursor: Cursor | null = null;
-    if (after) {
-      cursor = decodeCursor(after);
-    } else if (before) {
-      cursor = decodeCursor(before);
-    }
+    const cursor = decodeListCursor(params);
 
     const whereClause = this.buildListWorkflowRunsWhere(params, cursor);
     const order = before
@@ -397,7 +398,7 @@ export class BackendPostgres implements Backend {
       LIMIT ${limit + 1}
     `;
 
-    return this.processPaginationResults(rows, limit, !!after, !!before);
+    return buildPaginatedResponse(rows, limit, !!after, !!before);
   }
 
   private buildListWorkflowRunsWhere(
@@ -414,16 +415,7 @@ export class BackendPostgres implements Backend {
       );
     }
 
-    let whereClause = conditions[0];
-    if (!whereClause) throw new Error("No conditions");
-
-    for (let i = 1; i < conditions.length; i++) {
-      const condition = conditions[i];
-      if (condition) {
-        whereClause = this.pg`${whereClause} AND ${condition}`;
-      }
-    }
-    return whereClause;
+    return this.joinConditionsWithAnd(conditions);
   }
 
   async countWorkflowRuns(): Promise<WorkflowRunCounts> {
@@ -504,14 +496,11 @@ export class BackendPostgres implements Backend {
       SET
         "available_at" = ${this.pg`NOW() + ${params.leaseDurationMs} * INTERVAL '1 millisecond'`},
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${params.workflowRunId}
-      AND "status" = 'running'
-      AND "worker_id" = ${params.workerId}
+      WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to extend lease for workflow run");
+    requireRow(updated, "extend lease for workflow run");
 
     return updated;
   }
@@ -537,7 +526,7 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to sleep workflow run");
+    requireRow(updated, "sleep workflow run");
 
     const reconciled = await this.reconcileWorkflowSleepWakeUp(
       params.workflowRunId,
@@ -618,14 +607,11 @@ export class BackendPostgres implements Backend {
         "available_at" = NULL,
         "finished_at" = NOW(),
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${params.workflowRunId}
-      AND "status" = 'running'
-      AND "worker_id" = ${params.workerId}
+      WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to mark workflow run completed");
+    requireRow(updated, "mark workflow run completed");
 
     await this.wakeParentWorkflowRun(updated);
 
@@ -666,14 +652,11 @@ export class BackendPostgres implements Backend {
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${workflowRunId}
-      AND "status" = 'running'
-      AND "worker_id" = ${params.workerId}
+      WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
       RETURNING *
     `;
 
-    if (!updated) throw new Error("Failed to mark workflow run failed");
+    requireRow(updated, "mark workflow run failed");
 
     if (updated.status === "failed") {
       await this.wakeParentWorkflowRun(updated);
@@ -697,18 +680,11 @@ export class BackendPostgres implements Backend {
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${params.workflowRunId}
-      AND "status" = 'running'
-      AND "worker_id" = ${params.workerId}
+      WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
       RETURNING *
     `;
 
-    if (!updated) {
-      throw new Error(
-        "Failed to reschedule workflow run after failed step attempt",
-      );
-    }
+    requireRow(updated, "reschedule workflow run after failed step attempt");
 
     return updated;
   }
@@ -737,24 +713,7 @@ export class BackendPostgres implements Backend {
       const existing = await this.getWorkflowRun({
         workflowRunId: params.workflowRunId,
       });
-      if (!existing) {
-        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
-      }
-
-      // if already canceled, just return it
-      if (existing.status === "canceled") {
-        return existing;
-      }
-
-      // throw error for completed/failed workflows
-      // 'succeeded' status is deprecated
-      if (["succeeded", "completed", "failed"].includes(existing.status)) {
-        throw new Error(
-          `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
-        );
-      }
-
-      throw new Error("Failed to cancel workflow run");
+      return resolveCancelWorkflowRunConflict(params.workflowRunId, existing);
     }
 
     await this.wakeParentWorkflowRun(updated);
@@ -835,7 +794,7 @@ export class BackendPostgres implements Backend {
       RETURNING *
     `;
 
-    if (!stepAttempt) throw new Error("Failed to create step attempt");
+    requireRow(stepAttempt, "create step attempt");
 
     return stepAttempt;
   }
@@ -853,20 +812,11 @@ export class BackendPostgres implements Backend {
         "child_workflow_run_id" = ${params.childWorkflowRunId},
         "updated_at" = NOW()
       FROM ${workflowRunsTable} wr
-      WHERE sa."namespace_id" = ${this.namespaceId}
-      AND sa."workflow_run_id" = ${params.workflowRunId}
-      AND sa."id" = ${params.stepAttemptId}
-      AND sa."status" = 'running'
-      AND wr."namespace_id" = sa."namespace_id"
-      AND wr."id" = sa."workflow_run_id"
-      AND wr."status" = 'running'
-      AND wr."worker_id" = ${params.workerId}
+      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 
-    if (!updated) {
-      throw new Error("Failed to set step attempt child workflow run");
-    }
+    requireRow(updated, "set step attempt child workflow run");
 
     return updated;
   }
@@ -891,13 +841,7 @@ export class BackendPostgres implements Backend {
   ): Promise<PaginatedResponse<StepAttempt>> {
     const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
     const { after, before } = params;
-
-    let cursor: Cursor | null = null;
-    if (after) {
-      cursor = decodeCursor(after);
-    } else if (before) {
-      cursor = decodeCursor(before);
-    }
+    const cursor = decodeListCursor(params);
 
     const whereClause = this.buildListStepAttemptsWhere(params, cursor);
     const order = before
@@ -913,7 +857,7 @@ export class BackendPostgres implements Backend {
       LIMIT ${limit + 1}
     `;
 
-    return this.processPaginationResults(rows, limit, !!after, !!before);
+    return buildPaginatedResponse(rows, limit, !!after, !!before);
   }
 
   private buildListStepAttemptsWhere(
@@ -933,6 +877,65 @@ export class BackendPostgres implements Backend {
       );
     }
 
+    return this.joinConditionsWithAnd(conditions);
+  }
+
+  /**
+   * Match a running workflow run currently owned by the given worker. Shared
+   * by the workflow-run mutation queries which all fence on this same
+   * condition.
+   * @param params - Identifiers for the workflow run and owning worker
+   * @returns Combined WHERE fragment for the unaliased workflow_runs table
+   */
+  private runningWorkflowRunOwnedByWorkerWhere(
+    params: Readonly<{ workflowRunId: string; workerId: string }>,
+  ): PostgresFragment {
+    return this.pg`
+      "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" = 'running'
+      AND "worker_id" = ${params.workerId}
+    `;
+  }
+
+  /**
+   * Match a running step attempt currently owned by the given worker, joined
+   * against its parent workflow run (also running and held by the same
+   * worker). Shared by the step-attempt mutation queries which all fence on
+   * this same condition.
+   * @param params - Identifiers for the step attempt and owning worker
+   * @returns Combined WHERE fragment using `sa`/`wr` aliases
+   */
+  private runningStepAttemptOwnedByWorkerWhere(
+    params: Readonly<{
+      workflowRunId: string;
+      stepAttemptId: string;
+      workerId: string;
+    }>,
+  ): PostgresFragment {
+    return this.pg`
+      sa."namespace_id" = ${this.namespaceId}
+      AND sa."workflow_run_id" = ${params.workflowRunId}
+      AND sa."id" = ${params.stepAttemptId}
+      AND sa."status" = 'running'
+      AND wr."namespace_id" = sa."namespace_id"
+      AND wr."id" = sa."workflow_run_id"
+      AND wr."status" = 'running'
+      AND wr."worker_id" = ${params.workerId}
+    `;
+  }
+
+  /**
+   * AND-compose a non-empty array of query fragments into a single WHERE
+   * expression. Empty arrays are rejected because the caller's conditions
+   * list is always seeded with at least one predicate.
+   * @param conditions - Query fragments to AND together
+   * @returns Combined WHERE fragment
+   * @throws {Error} When the array is empty
+   */
+  private joinConditionsWithAnd(
+    conditions: PostgresFragment[],
+  ): PostgresFragment {
     let whereClause = conditions[0];
     if (!whereClause) throw new Error("No conditions");
 
@@ -943,47 +946,6 @@ export class BackendPostgres implements Backend {
       }
     }
     return whereClause;
-  }
-
-  private processPaginationResults<T extends Cursor>(
-    rows: T[],
-    limit: number,
-    hasAfter: boolean,
-    hasBefore: boolean,
-  ): PaginatedResponse<T> {
-    const data = rows;
-    let hasNext = false;
-    let hasPrev = false;
-
-    if (hasBefore) {
-      data.reverse();
-      if (data.length > limit) {
-        hasPrev = true;
-        data.shift();
-      }
-      hasNext = true;
-    } else {
-      if (data.length > limit) {
-        hasNext = true;
-        data.pop();
-      }
-      if (hasAfter) {
-        hasPrev = true;
-      }
-    }
-
-    const lastItem = data.at(-1);
-    const nextCursor = hasNext && lastItem ? encodeCursor(lastItem) : null;
-    const firstItem = data[0];
-    const prevCursor = hasPrev && firstItem ? encodeCursor(firstItem) : null;
-
-    return {
-      data,
-      pagination: {
-        next: nextCursor,
-        prev: prevCursor,
-      },
-    };
   }
 
   async completeStepAttempt(
@@ -1001,18 +963,11 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM ${workflowRunsTable} wr
-      WHERE sa."namespace_id" = ${this.namespaceId}
-      AND sa."workflow_run_id" = ${params.workflowRunId}
-      AND sa."id" = ${params.stepAttemptId}
-      AND sa."status" = 'running'
-      AND wr."namespace_id" = sa."namespace_id"
-      AND wr."id" = sa."workflow_run_id"
-      AND wr."status" = 'running'
-      AND wr."worker_id" = ${params.workerId}
+      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 
-    if (!updated) throw new Error("Failed to mark step attempt completed");
+    requireRow(updated, "mark step attempt completed");
 
     return updated;
   }
@@ -1030,18 +985,11 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       FROM ${workflowRunsTable} wr
-      WHERE sa."namespace_id" = ${this.namespaceId}
-      AND sa."workflow_run_id" = ${params.workflowRunId}
-      AND sa."id" = ${params.stepAttemptId}
-      AND sa."status" = 'running'
-      AND wr."namespace_id" = sa."namespace_id"
-      AND wr."id" = sa."workflow_run_id"
-      AND wr."status" = 'running'
-      AND wr."worker_id" = ${params.workerId}
+      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 
-    if (!updated) throw new Error("Failed to mark step attempt failed");
+    requireRow(updated, "mark step attempt failed");
 
     return updated;
   }

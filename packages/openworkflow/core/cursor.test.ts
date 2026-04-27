@@ -1,4 +1,10 @@
-import { decodeCursor, encodeCursor, type Cursor } from "./cursor.js";
+import {
+  buildPaginatedResponse,
+  decodeCursor,
+  decodeListCursor,
+  encodeCursor,
+  type Cursor,
+} from "./cursor.js";
 import { describe, expect, test } from "vitest";
 
 describe("encodeCursor", () => {
@@ -164,5 +170,130 @@ describe("encodeCursor / decodeCursor round-trip", () => {
       expect(decoded.createdAt.getTime()).toBe(original.createdAt.getTime());
       expect(decoded.id).toBe(original.id);
     }
+  });
+});
+
+describe("decodeListCursor", () => {
+  const cursor: Cursor = {
+    createdAt: new Date("2026-01-15T12:34:56.789Z"),
+    id: "abc123",
+  };
+
+  test("returns null when neither after nor before is set", () => {
+    expect(decodeListCursor({})).toBeNull();
+  });
+
+  test("decodes the after cursor when only after is set", () => {
+    const decoded = decodeListCursor({ after: encodeCursor(cursor) });
+    expect(decoded?.id).toBe(cursor.id);
+    expect(decoded?.createdAt.getTime()).toBe(cursor.createdAt.getTime());
+  });
+
+  test("decodes the before cursor when only before is set", () => {
+    const decoded = decodeListCursor({ before: encodeCursor(cursor) });
+    expect(decoded?.id).toBe(cursor.id);
+    expect(decoded?.createdAt.getTime()).toBe(cursor.createdAt.getTime());
+  });
+
+  test("throws when both after and before are set", () => {
+    const afterCursor: Cursor = {
+      createdAt: new Date("2026-02-01T00:00:00.000Z"),
+      id: "after",
+    };
+    const beforeCursor: Cursor = {
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      id: "before",
+    };
+    expect(() =>
+      decodeListCursor({
+        after: encodeCursor(afterCursor),
+        before: encodeCursor(beforeCursor),
+      }),
+    ).toThrow("Cannot specify both 'after' and 'before' cursors");
+  });
+
+  test("ignores empty-string after and before", () => {
+    expect(decodeListCursor({ after: "", before: "" })).toBeNull();
+  });
+});
+
+/**
+ * Build a fixture row satisfying Cursor with a distinguishing `value` so
+ * pagination tests can make strict structural assertions.
+ * @param i - Zero-based row index
+ * @returns Fixture row
+ */
+function makeRow(i: number): Cursor & { value: number } {
+  return {
+    createdAt: new Date(
+      `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`,
+    ),
+    id: `row-${String(i)}`,
+    value: i,
+  };
+}
+
+describe("buildPaginatedResponse", () => {
+  test("returns all rows when under the limit with no cursors", () => {
+    const rows = [makeRow(0), makeRow(1)];
+    const response = buildPaginatedResponse(rows, 10, false, false);
+    expect(response.data).toEqual(rows);
+    expect(response.pagination).toEqual({ next: null, prev: null });
+  });
+
+  test("trims the trailing overflow row and exposes a next cursor", () => {
+    const rows = [makeRow(0), makeRow(1), makeRow(2)];
+    const response = buildPaginatedResponse(rows, 2, false, false);
+    expect(response.data).toEqual([makeRow(0), makeRow(1)]);
+    expect(response.pagination.next).toBe(encodeCursor(makeRow(1)));
+    expect(response.pagination.prev).toBeNull();
+  });
+
+  test("exposes a prev cursor when hasAfter but no overflow", () => {
+    const rows = [makeRow(0), makeRow(1)];
+    const response = buildPaginatedResponse(rows, 5, true, false);
+    expect(response.data).toEqual(rows);
+    expect(response.pagination.next).toBeNull();
+    expect(response.pagination.prev).toBe(encodeCursor(makeRow(0)));
+  });
+
+  test("exposes both cursors on a middle page with overflow and hasAfter", () => {
+    const rows = [makeRow(0), makeRow(1), makeRow(2)];
+    const response = buildPaginatedResponse(rows, 2, true, false);
+    expect(response.data).toEqual([makeRow(0), makeRow(1)]);
+    expect(response.pagination.next).toBe(encodeCursor(makeRow(1)));
+    expect(response.pagination.prev).toBe(encodeCursor(makeRow(0)));
+  });
+
+  test("reverses rows when hasBefore is true and always exposes next", () => {
+    const rows = [makeRow(2), makeRow(1), makeRow(0)];
+    const response = buildPaginatedResponse(rows, 5, false, true);
+    expect(response.data).toEqual([makeRow(0), makeRow(1), makeRow(2)]);
+    expect(response.pagination.next).toBe(encodeCursor(makeRow(2)));
+    expect(response.pagination.prev).toBeNull();
+  });
+
+  test("drops leading overflow row and exposes prev when hasBefore overflows", () => {
+    // Backends over-fetch `limit + 1` rows in reverse order so the extra row
+    // lands at index 0 after reversing. Dropping it yields the page-sized
+    // window, and the next-row's cursor becomes `prev` for a further jump back.
+    const rows = [makeRow(3), makeRow(2), makeRow(1), makeRow(0)];
+    const response = buildPaginatedResponse(rows, 3, false, true);
+    expect(response.data).toEqual([makeRow(1), makeRow(2), makeRow(3)]);
+    expect(response.pagination.next).toBe(encodeCursor(makeRow(3)));
+    expect(response.pagination.prev).toBe(encodeCursor(makeRow(1)));
+  });
+
+  test("returns empty pagination cursors for an empty page", () => {
+    const response = buildPaginatedResponse<Cursor>([], 10, false, false);
+    expect(response.data).toEqual([]);
+    expect(response.pagination).toEqual({ next: null, prev: null });
+  });
+
+  test("does not mutate the input rows array", () => {
+    const rows = [makeRow(0), makeRow(1), makeRow(2)];
+    const snapshot = [...rows];
+    buildPaginatedResponse(rows, 5, false, true);
+    expect(rows).toEqual(snapshot);
   });
 });

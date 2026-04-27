@@ -1,6 +1,10 @@
 import type { StandardSchemaV1 } from "./standard-schema.js";
-import { isTerminalStatus, validateInput } from "./workflow-run.js";
-import type { WorkflowRunStatus } from "./workflow-run.js";
+import {
+  isTerminalStatus,
+  resolveCancelWorkflowRunConflict,
+  validateInput,
+} from "./workflow-run.js";
+import type { WorkflowRun, WorkflowRunStatus } from "./workflow-run.js";
 import { describe, expect, test } from "vitest";
 
 describe("isTerminalStatus", () => {
@@ -141,6 +145,63 @@ describe("validateInput", () => {
       expect(result.value).toBeUndefined();
     }
   });
+});
+
+describe("resolveCancelWorkflowRunConflict", () => {
+  function makeWorkflowRun(status: WorkflowRunStatus): WorkflowRun {
+    return {
+      namespaceId: "ns",
+      id: "wr-1",
+      workflowName: "wf",
+      version: null,
+      status,
+      idempotencyKey: null,
+      config: {},
+      context: null,
+      input: null,
+      output: null,
+      error: null,
+      attempts: 0,
+      parentStepAttemptNamespaceId: null,
+      parentStepAttemptId: null,
+      workerId: null,
+      availableAt: null,
+      deadlineAt: null,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    };
+  }
+
+  test("throws when existing run is null", () => {
+    expect(() => resolveCancelWorkflowRunConflict("wr-1", null)).toThrow(
+      "Workflow run wr-1 does not exist",
+    );
+  });
+
+  test("returns the existing run when already canceled", () => {
+    const run = makeWorkflowRun("canceled");
+    expect(resolveCancelWorkflowRunConflict("wr-1", run)).toBe(run);
+  });
+
+  test.each<WorkflowRunStatus>(["succeeded", "completed", "failed"])(
+    "throws when existing status is terminal non-canceled (%s)",
+    (status) => {
+      expect(() =>
+        resolveCancelWorkflowRunConflict("wr-1", makeWorkflowRun(status)),
+      ).toThrow(`Cannot cancel workflow run wr-1 with status ${status}`);
+    },
+  );
+
+  test.each<WorkflowRunStatus>(["pending", "running", "sleeping"])(
+    "throws generic failure when existing status is non-terminal (%s)",
+    (status) => {
+      expect(() =>
+        resolveCancelWorkflowRunConflict("wr-1", makeWorkflowRun(status)),
+      ).toThrow("Failed to cancel workflow run");
+    },
+  );
 });
 
 function createMockSchema<I, O = I>(options: {

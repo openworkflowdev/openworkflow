@@ -7,7 +7,11 @@ import {
 } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
-import type { StepAttempt } from "../core/step-attempt.js";
+import type {
+  StepAttempt,
+  StepAttemptContext,
+  StepKind,
+} from "../core/step-attempt.js";
 import {
   normalizeStepOutput,
   calculateDateFromDuration,
@@ -375,6 +379,53 @@ class StepExecutor implements StepApi {
     this.executionFence.assertActive();
   }
 
+  /**
+   * Persist a new step attempt after asserting the execution fence and step
+   * budget, and record it on the history.
+   * @param stepName - Resolved step name
+   * @param kind - Step kind
+   * @param context - Step attempt context, or null when not applicable
+   * @returns The newly created step attempt
+   */
+  private async createNewStepAttempt(
+    stepName: string,
+    kind: StepKind,
+    context: StepAttemptContext | null,
+  ): Promise<StepAttempt> {
+    this.assertExecutionActive();
+    this.history.ensureCanRecordNewAttempt();
+    const attempt = await this.backend.createStepAttempt({
+      workflowRunId: this.workflowRunId,
+      workerId: this.workerId,
+      stepName,
+      kind,
+      config: {},
+      context,
+    });
+    this.history.recordNewAttempt(attempt);
+    return attempt;
+  }
+
+  /**
+   * Persist completion for a step attempt and record it on the history.
+   * @param stepAttemptId - Step attempt id to complete
+   * @param output - Step output payload (or null)
+   * @returns The completed step attempt
+   */
+  private async completeStepAttemptAndRecord(
+    stepAttemptId: string,
+    output: JsonValue | null,
+  ): Promise<StepAttempt> {
+    const completed = await this.backend.completeStepAttempt({
+      workflowRunId: this.workflowRunId,
+      stepAttemptId,
+      workerId: this.workerId,
+      output,
+    });
+    this.history.recordCompletion(completed);
+    return completed;
+  }
+
   // ---- step.run -----------------------------------------------------------
 
   async run<Output>(
@@ -389,28 +440,14 @@ class StepExecutor implements StepApi {
       return existingAttempt.output as Output;
     }
 
-    this.assertExecutionActive();
-    this.history.ensureCanRecordNewAttempt();
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
-      stepName,
-      kind: "function",
-      config: {},
-      context: null,
-    });
-    this.history.recordNewAttempt(attempt);
+    const attempt = await this.createNewStepAttempt(stepName, "function", null);
 
     try {
       const result = await fn();
-      const output = normalizeStepOutput(result);
-      const savedAttempt = await this.backend.completeStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: attempt.id,
-        workerId: this.workerId,
-        output,
-      });
-      this.history.recordCompletion(savedAttempt);
+      const savedAttempt = await this.completeStepAttemptAndRecord(
+        attempt.id,
+        normalizeStepOutput(result),
+      );
       return savedAttempt.output as Output;
     } catch (error) {
       return this.failStepWithError(
@@ -434,19 +471,12 @@ class StepExecutor implements StepApi {
       throw result.error;
     }
     const resumeAt = result.value;
-    const context = createSleepContext(resumeAt);
 
-    this.assertExecutionActive();
-    this.history.ensureCanRecordNewAttempt();
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
+    await this.createNewStepAttempt(
       stepName,
-      kind: "sleep",
-      config: {},
-      context,
-    });
-    this.history.recordNewAttempt(attempt);
+      "sleep",
+      createSleepContext(resumeAt),
+    );
 
     // Sleep attempts are not marked completed here — that happens when the
     // workflow resumes.
@@ -508,17 +538,11 @@ class StepExecutor implements StepApi {
 
     // First encounter — create the workflow step and child workflow run
     const timeoutAt = resolveWaitTimeoutAt(request.timeout);
-    this.assertExecutionActive();
-    this.history.ensureCanRecordNewAttempt();
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
+    const attempt = await this.createNewStepAttempt(
       stepName,
-      kind: "workflow",
-      config: {},
-      context: createWorkflowContext(timeoutAt),
-    });
-    this.history.recordNewAttempt(attempt);
+      "workflow",
+      createWorkflowContext(timeoutAt),
+    );
 
     const linkedAttempt = await this.linkChildWorkflowRun(
       attempt,
@@ -589,13 +613,10 @@ class StepExecutor implements StepApi {
 
     // Child completed successfully — propagate result
     if (childRun.status === "completed" || childRun.status === "succeeded") {
-      const completed = await this.backend.completeStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: workflowAttempt.id,
-        workerId: this.workerId,
-        output: childRun.output,
-      });
-      this.history.recordCompletion(completed);
+      const completed = await this.completeStepAttemptAndRecord(
+        workflowAttempt.id,
+        childRun.output,
+      );
       return completed.output as Output;
     }
 
@@ -690,9 +711,7 @@ class StepExecutor implements StepApi {
     error: unknown,
     retryPolicy: RetryPolicy,
   ): Promise<never> {
-    if (!this.executionFence.isActive()) {
-      throw new StaleExecutionBranchError();
-    }
+    this.assertExecutionActive();
 
     let failedAttempt: StepAttempt;
     try {
@@ -703,9 +722,7 @@ class StepExecutor implements StepApi {
         error: serializeError(error),
       });
     } catch (stepFailError) {
-      if (!this.executionFence.isActive()) {
-        throw new StaleExecutionBranchError();
-      }
+      this.assertExecutionActive();
       throw stepFailError;
     }
 
@@ -728,9 +745,7 @@ class StepExecutor implements StepApi {
       throw error;
     }
 
-    if (!this.executionFence.isActive()) {
-      throw new StaleExecutionBranchError();
-    }
+    this.assertExecutionActive();
 
     return await this.failStepWithError(
       stepName,
@@ -763,17 +778,11 @@ class StepExecutor implements StepApi {
       return await this.resolveSignalSend(stepName, runningAttempt, options);
     }
 
-    this.assertExecutionActive();
-    this.history.ensureCanRecordNewAttempt();
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
+    const attempt = await this.createNewStepAttempt(
       stepName,
-      kind: "signal-send",
-      config: {},
-      context: null,
-    });
-    this.history.recordNewAttempt(attempt);
+      "signal-send",
+      null,
+    );
 
     return await this.resolveSignalSend(stepName, attempt, options);
   }
@@ -790,13 +799,9 @@ class StepExecutor implements StepApi {
         idempotencyKey: buildSignalIdempotencyKey(this.workflowRunId, stepName),
       });
 
-      const completed = await this.backend.completeStepAttempt({
-        workflowRunId: this.workflowRunId,
-        stepAttemptId: attempt.id,
-        workerId: this.workerId,
-        output: { ...result },
+      const completed = await this.completeStepAttemptAndRecord(attempt.id, {
+        ...result,
       });
-      this.history.recordCompletion(completed);
       return completed.output as { workflowRunIds: string[] };
     } catch (error) {
       return await this.failStepWithError(
@@ -847,17 +852,11 @@ class StepExecutor implements StepApi {
     }
 
     const timeoutAt = resolveWaitTimeoutAt(options.timeout);
-    this.assertExecutionActive();
-    this.history.ensureCanRecordNewAttempt();
-    const attempt = await this.backend.createStepAttempt({
-      workflowRunId: this.workflowRunId,
-      workerId: this.workerId,
+    const attempt = await this.createNewStepAttempt(
       stepName,
-      kind: "signal-wait",
-      config: {},
-      context: createSignalWaitContext(options.signal, timeoutAt),
-    });
-    this.history.recordNewAttempt(attempt);
+      "signal-wait",
+      createSignalWaitContext(options.signal, timeoutAt),
+    );
 
     return await this.resolveSignalWait<Output>(stepName, attempt, options);
   }
@@ -920,13 +919,10 @@ class StepExecutor implements StepApi {
     attempt: Readonly<StepAttempt>,
     output: { data: Output } | null,
   ): Promise<{ data: Output } | null> {
-    const completed = await this.backend.completeStepAttempt({
-      workflowRunId: this.workflowRunId,
-      stepAttemptId: attempt.id,
-      workerId: this.workerId,
-      output: output as JsonValue | null,
-    });
-    this.history.recordCompletion(completed);
+    const completed = await this.completeStepAttemptAndRecord(
+      attempt.id,
+      output as JsonValue | null,
+    );
     return completed.output as { data: Output } | null;
   }
 }
@@ -1012,6 +1008,30 @@ export async function executeWorkflow(
     });
   }
 
+  /**
+   * Fail the workflow run with the given error and retry policy. Shared by the
+   * step-limit, step-error, and catch-all failure branches, which only differ
+   * in the error payload and retry policy.
+   * @param error - Serialized error payload
+   * @param retryPolicy - Retry policy to evaluate
+   * @returns Promise resolved when the transition completes
+   */
+  function failRun(
+    error: SerializedError,
+    retryPolicy: RetryPolicy,
+  ): Promise<void> {
+    return runTransition(() =>
+      backend.failWorkflowRun({
+        workflowRunId: workflowRun.id,
+        workerId,
+        error,
+        retryPolicy,
+        attempts: workflowRun.attempts,
+        deadlineAt: workflowRun.deadlineAt,
+      }),
+    );
+  }
+
   try {
     // load all pages of step history
     const attempts = await listAllStepAttemptsForWorkflowRun(
@@ -1084,15 +1104,9 @@ export async function executeWorkflow(
     }
 
     if (error instanceof StepLimitExceededError) {
-      await runTransition(() =>
-        backend.failWorkflowRun({
-          workflowRunId: workflowRun.id,
-          workerId,
-          error: serializeStepLimitExceededError(error),
-          retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
-          attempts: workflowRun.attempts,
-          deadlineAt: workflowRun.deadlineAt,
-        }),
+      await failRun(
+        serializeStepLimitExceededError(error),
+        DEFAULT_WORKFLOW_RETRY_POLICY,
       );
       return;
     }
@@ -1109,16 +1123,7 @@ export async function executeWorkflow(
       );
 
       if (retryDecision.status === "failed") {
-        await runTransition(() =>
-          backend.failWorkflowRun({
-            workflowRunId: workflowRun.id,
-            workerId,
-            error: serializedError,
-            retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
-            attempts: workflowRun.attempts,
-            deadlineAt: workflowRun.deadlineAt,
-          }),
-        );
+        await failRun(serializedError, DEFAULT_WORKFLOW_RETRY_POLICY);
         return;
       }
 
@@ -1149,15 +1154,6 @@ export async function executeWorkflow(
     }
 
     // mark failure
-    await runTransition(() =>
-      backend.failWorkflowRun({
-        workflowRunId: workflowRun.id,
-        workerId,
-        error: serializeError(error),
-        retryPolicy: params.retryPolicy,
-        attempts: workflowRun.attempts,
-        deadlineAt: workflowRun.deadlineAt,
-      }),
-    );
+    await failRun(serializeError(error), params.retryPolicy);
   }
 }
