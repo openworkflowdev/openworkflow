@@ -885,7 +885,7 @@ export class BackendPostgres implements Backend {
    * by the workflow-run mutation queries which all fence on this same
    * condition.
    * @param params - Identifiers for the workflow run and owning worker
-   * @returns Combined WHERE fragment for the workflow_runs table (no alias)
+   * @returns Combined WHERE fragment for the unaliased workflow_runs table
    */
   private runningWorkflowRunOwnedByWorkerWhere(
     params: Readonly<{ workflowRunId: string; workerId: string }>,
