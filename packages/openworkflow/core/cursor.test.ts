@@ -195,7 +195,7 @@ describe("decodeListCursor", () => {
     expect(decoded?.createdAt.getTime()).toBe(cursor.createdAt.getTime());
   });
 
-  test("prefers after when both after and before are set", () => {
+  test("throws when both after and before are set", () => {
     const afterCursor: Cursor = {
       createdAt: new Date("2026-02-01T00:00:00.000Z"),
       id: "after",
@@ -204,11 +204,12 @@ describe("decodeListCursor", () => {
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       id: "before",
     };
-    const decoded = decodeListCursor({
-      after: encodeCursor(afterCursor),
-      before: encodeCursor(beforeCursor),
-    });
-    expect(decoded?.id).toBe("after");
+    expect(() =>
+      decodeListCursor({
+        after: encodeCursor(afterCursor),
+        before: encodeCursor(beforeCursor),
+      }),
+    ).toThrow("Cannot specify both 'after' and 'before' cursors");
   });
 
   test("ignores empty-string after and before", () => {

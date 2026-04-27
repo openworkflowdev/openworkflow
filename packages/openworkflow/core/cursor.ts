@@ -42,14 +42,20 @@ export function decodeCursor(cursor: string): Cursor {
 }
 
 /**
- * Decode the active cursor from list pagination params. Prefers `after` when
- * both are present, matching how backends build their queries.
+ * Decode the active cursor from list pagination params. Backends derive sort
+ * direction from the raw `before`/`after` flags, so passing both would mix the
+ * decoded cursor with an inverted ordering — reject that combination instead.
  * @param params - Pagination params
  * @returns Decoded cursor, or null when neither side is set
+ * @throws {Error} When both `after` and `before` are set
  */
 export function decodeListCursor(
   params: Readonly<{ after?: string; before?: string }>,
 ): Cursor | null {
+  if (params.after && params.before) {
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error("Cannot specify both 'after' and 'before' cursors");
+  }
   if (params.after) return decodeCursor(params.after);
   if (params.before) return decodeCursor(params.before);
   return null;
