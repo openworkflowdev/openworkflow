@@ -9,5 +9,10 @@
 7. `npx @changesets/cli publish` to publish the new version to npm, which also
    creates git tags
 8. `git push && git push --tags`
-9. `git checkout docs && git merge main && git push && git checkout main` to
-   update the docs
+9. For each new tag, `gh release create <tag>` to create a GitHub release, then
+   paste the version's section from the package's `CHANGELOG.md` as the body.
+   If a new `openworkflow` core version was published, run
+   `gh release edit openworkflow@<version> --latest` to mark it as the
+   repository's Latest release
+10. `git checkout docs && git merge main && git push && git checkout main` to
+    update the docs
