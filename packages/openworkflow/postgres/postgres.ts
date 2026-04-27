@@ -8,6 +8,7 @@ export const DEFAULT_SCHEMA = "openworkflow";
 
 export type Postgres = ReturnType<typeof postgres>;
 export type PostgresOptions = Parameters<typeof postgres>[1];
+export type PostgresFragment = postgres.Fragment;
 
 const SCHEMA_NAME_PATTERN = /^[a-zA-Z_]\w*$/;
 const MAX_POSTGRES_IDENTIFIER_BYTES = 63;

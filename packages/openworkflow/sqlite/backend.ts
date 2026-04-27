@@ -25,12 +25,20 @@ import {
   GetSignalDeliveryParams,
   toWorkflowRunCounts,
 } from "../core/backend.js";
-import { decodeCursor, encodeCursor, type Cursor } from "../core/cursor.js";
-import { wrapError } from "../core/error.js";
+import {
+  buildPaginatedResponse,
+  Cursor,
+  DEFAULT_PAGINATION_PAGE_SIZE,
+  decodeListCursor,
+} from "../core/cursor.js";
+import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
-import { WorkflowRun } from "../core/workflow-run.js";
+import {
+  resolveCancelWorkflowRunConflict,
+  WorkflowRun,
+} from "../core/workflow-run.js";
 import {
   newDatabase,
   Database,
@@ -44,12 +52,44 @@ import {
   fromISO,
 } from "./sqlite.js";
 
-const DEFAULT_PAGINATION_PAGE_SIZE = 100;
-
 interface BackendSqliteOptions {
   namespaceId?: string;
   runMigrations?: boolean;
 }
+
+/**
+ * WHERE fragment matching a running workflow run currently owned by the given
+ * worker. Consumes 3 positional placeholders: `namespace_id`, `id`,
+ * `worker_id`. Pair with {@link BackendSqlite#runningWorkflowRunOwnedParams}
+ * to keep the placeholders aligned.
+ */
+const RUNNING_WORKFLOW_RUN_OWNED_WHERE = `
+      "namespace_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+      AND "worker_id" = ?`;
+
+/**
+ * WHERE fragment matching a running step attempt whose parent workflow run is
+ * also running and held by the given worker. Consumes 6 positional
+ * placeholders: step attempt's namespace, workflow_run_id, id, then the
+ * parent workflow run's namespace, id, worker_id. Pair with
+ * {@link BackendSqlite#runningStepAttemptOwnedParams} to keep the
+ * placeholders aligned.
+ */
+const RUNNING_STEP_ATTEMPT_OWNED_WHERE = `
+      "namespace_id" = ?
+      AND "workflow_run_id" = ?
+      AND "id" = ?
+      AND "status" = 'running'
+      AND EXISTS (
+        SELECT 1
+        FROM "workflow_runs" wr
+        WHERE wr."namespace_id" = ?
+        AND wr."id" = ?
+        AND wr."status" = 'running'
+        AND wr."worker_id" = ?
+      )`;
 
 /**
  * Manages a connection to a SQLite database for workflow operations.
@@ -195,7 +235,7 @@ export class BackendSqlite implements Backend {
     `,
       )
       .get(this.namespaceId, id) as WorkflowRunRow | undefined;
-    if (!row) throw new Error("Failed to create workflow run");
+    requireRow(row, "create workflow run");
 
     return rowToWorkflowRun(row);
   }
@@ -467,21 +507,16 @@ export class BackendSqlite implements Backend {
       SET
         "available_at" = ?,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
+      WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
     `);
 
     const row = stmt.get(
       newAvailableAt,
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningWorkflowRunOwnedParams(params),
     ) as WorkflowRunRow | undefined;
-    if (!row) throw new Error("Failed to extend lease for workflow run");
+    requireRow(row, "extend lease for workflow run");
 
     return await Promise.resolve(rowToWorkflowRun(row));
   }
@@ -541,7 +576,7 @@ export class BackendSqlite implements Backend {
       params.workflowRunId,
       params.workerId,
     ) as WorkflowRunRow | undefined;
-    if (!row) throw new Error("Failed to sleep workflow run");
+    requireRow(row, "sleep workflow run");
 
     return await Promise.resolve(rowToWorkflowRun(row));
   }
@@ -561,10 +596,7 @@ export class BackendSqlite implements Backend {
         "available_at" = NULL,
         "finished_at" = ?,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
+      WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -573,11 +605,9 @@ export class BackendSqlite implements Backend {
       params.workerId,
       currentTime,
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningWorkflowRunOwnedParams(params),
     ) as WorkflowRunRow | undefined;
-    if (!row) throw new Error("Failed to mark workflow run completed");
+    requireRow(row, "mark workflow run completed");
 
     const updated = rowToWorkflowRun(row);
     this.wakeParentWorkflowRun(updated);
@@ -617,10 +647,7 @@ export class BackendSqlite implements Backend {
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
+      WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -630,11 +657,9 @@ export class BackendSqlite implements Backend {
       failureUpdate.finishedAt?.toISOString() ?? null,
       toJSON(failureUpdate.error),
       currentTimeIso,
-      this.namespaceId,
-      workflowRunId,
-      params.workerId,
+      ...this.runningWorkflowRunOwnedParams(params),
     ) as WorkflowRunRow | undefined;
-    if (!row) throw new Error("Failed to mark workflow run failed");
+    requireRow(row, "mark workflow run failed");
     const updated = rowToWorkflowRun(row);
     if (updated.status === "failed") {
       this.wakeParentWorkflowRun(updated);
@@ -657,10 +682,7 @@ export class BackendSqlite implements Backend {
         "worker_id" = NULL,
         "started_at" = NULL,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND "worker_id" = ?
+      WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -668,9 +690,7 @@ export class BackendSqlite implements Backend {
       toISO(params.availableAt),
       toJSON(params.error),
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningWorkflowRunOwnedParams(params),
     ) as WorkflowRunRow | undefined;
     if (!row) {
       return Promise.reject(
@@ -713,33 +733,52 @@ export class BackendSqlite implements Backend {
       const existing = await this.getWorkflowRun({
         workflowRunId: params.workflowRunId,
       });
-      if (!existing) {
-        throw new Error(`Workflow run ${params.workflowRunId} does not exist`);
-      }
-
-      // if already canceled, just return it
-      if (existing.status === "canceled") {
-        return existing;
-      }
-
-      // 'succeeded' status is deprecated
-      if (["succeeded", "completed", "failed"].includes(existing.status)) {
-        throw new Error(
-          `Cannot cancel workflow run ${params.workflowRunId} with status ${existing.status}`,
-        );
-      }
-
-      throw new Error("Failed to cancel workflow run");
+      return resolveCancelWorkflowRunConflict(params.workflowRunId, existing);
     }
 
     const updated = await this.getWorkflowRun({
       workflowRunId: params.workflowRunId,
     });
-    if (!updated) throw new Error("Failed to cancel workflow run");
+    requireRow(updated, "cancel workflow run");
 
     this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  /**
+   * Return positional placeholders for {@link RUNNING_WORKFLOW_RUN_OWNED_WHERE}
+   * in the order the fragment expects: namespace, run id, worker id.
+   * @param params - Workflow run identity params
+   * @returns Tuple of placeholder values
+   */
+  private runningWorkflowRunOwnedParams(
+    params: Readonly<{ workflowRunId: string; workerId: string }>,
+  ): [string, string, string] {
+    return [this.namespaceId, params.workflowRunId, params.workerId];
+  }
+
+  /**
+   * Return positional placeholders for {@link RUNNING_STEP_ATTEMPT_OWNED_WHERE}
+   * in the order the fragment expects.
+   * @param params - Step attempt identity params
+   * @returns Tuple of placeholder values
+   */
+  private runningStepAttemptOwnedParams(
+    params: Readonly<{
+      workflowRunId: string;
+      stepAttemptId: string;
+      workerId: string;
+    }>,
+  ): [string, string, string, string, string, string] {
+    return [
+      this.namespaceId,
+      params.workflowRunId,
+      params.stepAttemptId,
+      this.namespaceId,
+      params.workflowRunId,
+      params.workerId,
+    ];
   }
 
   private wakeParentWorkflowRun(childWorkflowRun: Readonly<WorkflowRun>): void {
@@ -808,173 +847,82 @@ export class BackendSqlite implements Backend {
   listWorkflowRuns(
     params: ListWorkflowRunsParams,
   ): Promise<PaginatedResponse<WorkflowRun>> {
-    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
-    const { after, before } = params;
-
-    let cursor: Cursor | null = null;
-    if (after) {
-      cursor = decodeCursor(after);
-    } else if (before) {
-      cursor = decodeCursor(before);
-    }
-
-    const order = before
-      ? `ORDER BY "created_at" ASC, "id" ASC`
-      : `ORDER BY "created_at" DESC, "id" DESC`;
-
-    let query: string;
-    let queryParams: (string | number)[];
-
-    if (cursor) {
-      const op = after ? "<" : ">";
-      query = `
-        SELECT *
-        FROM "workflow_runs"
-        WHERE "namespace_id" = ?
-          AND ("created_at", "id") ${op} (?, ?)
-        ${order}
-        LIMIT ?
-      `;
-      queryParams = [
-        this.namespaceId,
-        cursor.createdAt.toISOString(),
-        cursor.id,
-        limit + 1,
-      ];
-    } else {
-      query = `
-        SELECT *
-        FROM "workflow_runs"
-        WHERE "namespace_id" = ?
-        ${order}
-        LIMIT ?
-      `;
-      queryParams = [this.namespaceId, limit + 1];
-    }
-
-    const stmt = this.db.prepare(query);
-    const rawRows = stmt.all(...queryParams);
-
-    if (!Array.isArray(rawRows)) {
-      return Promise.resolve({
-        data: [],
-        pagination: { next: null, prev: null },
-      });
-    }
-
-    const rows = rawRows.map((row) => rowToWorkflowRun(row as WorkflowRunRow));
-
-    return Promise.resolve(
-      this.processPaginationResults(rows, limit, !!after, !!before),
-    );
+    return this.listPaginated(params, {
+      table: "workflow_runs",
+      naturalOrder: "DESC",
+      baseWhere: `"namespace_id" = ?`,
+      baseParams: [this.namespaceId],
+      mapRow: (row) => rowToWorkflowRun(row as WorkflowRunRow),
+    });
   }
 
   listStepAttempts(
     params: ListStepAttemptsParams,
   ): Promise<PaginatedResponse<StepAttempt>> {
-    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
-    const { after, before } = params;
-
-    let cursor: Cursor | null = null;
-    if (after) {
-      cursor = decodeCursor(after);
-    } else if (before) {
-      cursor = decodeCursor(before);
-    }
-
-    const order = before
-      ? `ORDER BY "created_at" DESC, "id" DESC`
-      : `ORDER BY "created_at" ASC, "id" ASC`;
-
-    let query: string;
-    let queryParams: (string | number)[];
-
-    if (cursor) {
-      const op = after ? ">" : "<";
-      query = `
-        SELECT *
-        FROM "step_attempts"
-        WHERE "namespace_id" = ?
-          AND "workflow_run_id" = ?
-          AND ("created_at", "id") ${op} (?, ?)
-        ${order}
-        LIMIT ?
-      `;
-      queryParams = [
-        this.namespaceId,
-        params.workflowRunId,
-        cursor.createdAt.toISOString(),
-        cursor.id,
-        limit + 1,
-      ];
-    } else {
-      query = `
-        SELECT *
-        FROM "step_attempts"
-        WHERE "namespace_id" = ?
-          AND "workflow_run_id" = ?
-        ${order}
-        LIMIT ?
-      `;
-      queryParams = [this.namespaceId, params.workflowRunId, limit + 1];
-    }
-
-    const stmt = this.db.prepare(query);
-    const rawRows = stmt.all(...queryParams);
-
-    if (!Array.isArray(rawRows)) {
-      return Promise.resolve({
-        data: [],
-        pagination: { next: null, prev: null },
-      });
-    }
-
-    const rows = rawRows.map((row) => rowToStepAttempt(row as StepAttemptRow));
-
-    return Promise.resolve(
-      this.processPaginationResults(rows, limit, !!after, !!before),
-    );
+    return this.listPaginated(params, {
+      table: "step_attempts",
+      naturalOrder: "ASC",
+      baseWhere: `"namespace_id" = ? AND "workflow_run_id" = ?`,
+      baseParams: [this.namespaceId, params.workflowRunId],
+      mapRow: (row) => rowToStepAttempt(row as StepAttemptRow),
+    });
   }
 
-  private processPaginationResults<T extends Cursor>(
-    rows: T[],
-    limit: number,
-    hasAfter: boolean,
-    hasBefore: boolean,
-  ): PaginatedResponse<T> {
-    const data = rows;
-    let hasNext = false;
-    let hasPrev = false;
+  /**
+   * Execute a cursor-paginated SELECT against a namespace-scoped table.
+   * `before` reverses the table's natural order, and the cursor comparison
+   * operator follows the effective direction so over-fetched rows line up
+   * with {@link buildPaginatedResponse}'s expectations.
+   * @param params - Pagination params (limit/after/before)
+   * @param options - Query shape
+   * @param options.table - Table name to select from
+   * @param options.naturalOrder - Default sort direction for this table
+   * @param options.baseWhere - WHERE fragment with `?` placeholders
+   * @param options.baseParams - Values for the placeholders in `baseWhere`
+   * @param options.mapRow - Convert a raw row to the domain type
+   * @returns Paginated response
+   */
+  private listPaginated<T extends Cursor>(
+    params: Readonly<{ after?: string; before?: string; limit?: number }>,
+    options: {
+      readonly table: string;
+      readonly naturalOrder: "ASC" | "DESC";
+      readonly baseWhere: string;
+      readonly baseParams: readonly unknown[];
+      readonly mapRow: (row: unknown) => T;
+    },
+  ): Promise<PaginatedResponse<T>> {
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+    const cursor = decodeListCursor(params);
 
-    if (hasBefore) {
-      data.reverse();
-      if (data.length > limit) {
-        hasPrev = true;
-        data.shift();
-      }
-      hasNext = true;
-    } else {
-      if (data.length > limit) {
-        hasNext = true;
-        data.pop();
-      }
-      if (hasAfter) {
-        hasPrev = true;
-      }
-    }
+    const reversedOrder = options.naturalOrder === "ASC" ? "DESC" : "ASC";
+    const effectiveOrder = before ? reversedOrder : options.naturalOrder;
+    const cursorOp = effectiveOrder === "ASC" ? ">" : "<";
 
-    const lastItem = data.at(-1);
-    const nextCursor = hasNext && lastItem ? encodeCursor(lastItem) : null;
-    const firstItem = data[0];
-    const prevCursor = hasPrev && firstItem ? encodeCursor(firstItem) : null;
+    const whereClause = cursor
+      ? `${options.baseWhere} AND ("created_at", "id") ${cursorOp} (?, ?)`
+      : options.baseWhere;
+    const queryParams: unknown[] = [
+      ...options.baseParams,
+      ...(cursor ? [cursor.createdAt.toISOString(), cursor.id] : []),
+      limit + 1,
+    ];
 
-    return {
-      data,
-      pagination: {
-        next: nextCursor,
-        prev: prevCursor,
-      },
-    };
+    const query = `
+      SELECT *
+      FROM "${options.table}"
+      WHERE ${whereClause}
+      ORDER BY "created_at" ${effectiveOrder}, "id" ${effectiveOrder}
+      LIMIT ?
+    `;
+
+    const rawRows = this.db.prepare(query).all(...queryParams);
+    const rows = rawRows.map((row) => options.mapRow(row));
+
+    return Promise.resolve(
+      buildPaginatedResponse(rows, limit, !!after, !!before),
+    );
   }
 
   async createStepAttempt(
@@ -1013,7 +961,7 @@ export class BackendSqlite implements Backend {
       currentTime,
       currentTime,
     ) as StepAttemptRow | undefined;
-    if (!row) throw new Error("Failed to create step attempt");
+    requireRow(row, "create step attempt");
 
     return await Promise.resolve(rowToStepAttempt(row));
   }
@@ -1029,18 +977,7 @@ export class BackendSqlite implements Backend {
         "child_workflow_run_namespace_id" = ?,
         "child_workflow_run_id" = ?,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "workflow_run_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND EXISTS (
-        SELECT 1
-        FROM "workflow_runs" wr
-        WHERE wr."namespace_id" = ?
-        AND wr."id" = ?
-        AND wr."status" = 'running'
-        AND wr."worker_id" = ?
-      )
+      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -1048,14 +985,9 @@ export class BackendSqlite implements Backend {
       params.childWorkflowRunNamespaceId,
       params.childWorkflowRunId,
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.stepAttemptId,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningStepAttemptOwnedParams(params),
     ) as StepAttemptRow | undefined;
-    if (!row) throw new Error("Failed to set step attempt child workflow run");
+    requireRow(row, "set step attempt child workflow run");
 
     return await Promise.resolve(rowToStepAttempt(row));
   }
@@ -1088,18 +1020,7 @@ export class BackendSqlite implements Backend {
         "error" = NULL,
         "finished_at" = ?,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "workflow_run_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND EXISTS (
-        SELECT 1
-        FROM "workflow_runs" wr
-        WHERE wr."namespace_id" = ?
-        AND wr."id" = ?
-        AND wr."status" = 'running'
-        AND wr."worker_id" = ?
-      )
+      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -1107,14 +1028,9 @@ export class BackendSqlite implements Backend {
       toJSON(params.output),
       currentTime,
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.stepAttemptId,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningStepAttemptOwnedParams(params),
     ) as StepAttemptRow | undefined;
-    if (!row) throw new Error("Failed to mark step attempt completed");
+    requireRow(row, "mark step attempt completed");
 
     return await Promise.resolve(rowToStepAttempt(row));
   }
@@ -1130,18 +1046,7 @@ export class BackendSqlite implements Backend {
         "error" = ?,
         "finished_at" = ?,
         "updated_at" = ?
-      WHERE "namespace_id" = ?
-      AND "workflow_run_id" = ?
-      AND "id" = ?
-      AND "status" = 'running'
-      AND EXISTS (
-        SELECT 1
-        FROM "workflow_runs" wr
-        WHERE wr."namespace_id" = ?
-        AND wr."id" = ?
-        AND wr."status" = 'running'
-        AND wr."worker_id" = ?
-      )
+      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -1149,14 +1054,9 @@ export class BackendSqlite implements Backend {
       toJSON(params.error),
       currentTime,
       currentTime,
-      this.namespaceId,
-      params.workflowRunId,
-      params.stepAttemptId,
-      this.namespaceId,
-      params.workflowRunId,
-      params.workerId,
+      ...this.runningStepAttemptOwnedParams(params),
     ) as StepAttemptRow | undefined;
-    if (!row) throw new Error("Failed to mark step attempt failed");
+    requireRow(row, "mark step attempt failed");
 
     return await Promise.resolve(rowToStepAttempt(row));
   }
@@ -1208,12 +1108,15 @@ interface StepAttemptRow {
 
 // Conversion functions
 /**
- * Convert a database row to a WorkflowRun.
- * @param row - Workflow run row
- * @returns Workflow run
- * @throws {Error} If required fields are missing
+ * Parse and validate the `created_at`, `updated_at`, and `config` fields
+ * shared by workflow run and step attempt rows.
+ * @param row - Row with timestamp and config columns
+ * @returns Parsed createdAt/updatedAt dates and decoded config
+ * @throws {Error} If any required field is missing
  */
-function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
+function parseRequiredRowFields(
+  row: Readonly<{ created_at: string; updated_at: string; config: string }>,
+): { createdAt: Date; updatedAt: Date; config: unknown } {
   const createdAt = fromISO(row.created_at);
   const updatedAt = fromISO(row.updated_at);
   const config = fromJSON(row.config);
@@ -1221,6 +1124,18 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
   if (!createdAt) throw new Error("createdAt is required");
   if (!updatedAt) throw new Error("updatedAt is required");
   if (config === null) throw new Error("config is required");
+
+  return { createdAt, updatedAt, config };
+}
+
+/**
+ * Convert a database row to a WorkflowRun.
+ * @param row - Workflow run row
+ * @returns Workflow run
+ * @throws {Error} If required fields are missing
+ */
+function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
+  const { createdAt, updatedAt, config } = parseRequiredRowFields(row);
 
   return {
     namespaceId: row.namespace_id,
@@ -1254,13 +1169,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
  * @throws {Error} If required fields are missing
  */
 function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
-  const createdAt = fromISO(row.created_at);
-  const updatedAt = fromISO(row.updated_at);
-  const config = fromJSON(row.config);
-
-  if (!createdAt) throw new Error("createdAt is required");
-  if (!updatedAt) throw new Error("updatedAt is required");
-  if (config === null) throw new Error("config is required");
+  const { createdAt, updatedAt, config } = parseRequiredRowFields(row);
 
   return {
     namespaceId: row.namespace_id,

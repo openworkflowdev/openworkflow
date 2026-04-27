@@ -55,3 +55,16 @@ export function wrapError(message: string, error: unknown): Error {
   const { message: wrappedMessage } = serializeError(error);
   return new Error(`${message}: ${wrappedMessage}`, { cause: error });
 }
+
+/**
+ * Assert a backend mutation returned a row, throwing `Failed to ${operation}`
+ * otherwise.
+ * @param row - The row returned by the backend (or undefined/null if none matched)
+ * @param operation - Suffix describing the attempted mutation
+ */
+export function requireRow<T>(
+  row: T,
+  operation: string,
+): asserts row is NonNullable<T> {
+  if (!row) throw new Error(`Failed to ${operation}`);
+}

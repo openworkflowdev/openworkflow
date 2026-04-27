@@ -166,37 +166,31 @@ export function computeFailedWorkflowRunUpdate(
   error: Readonly<SerializedError>,
   now: Readonly<Date>,
 ): FailedWorkflowRunUpdate {
+  const failed = (
+    finalError: Readonly<SerializedError>,
+  ): FailedWorkflowRunUpdate => ({
+    status: "failed",
+    availableAt: null,
+    finishedAt: now,
+    error: finalError,
+  });
+
   if (deadlineAt && now >= deadlineAt) {
-    return {
-      status: "failed",
-      availableAt: null,
-      finishedAt: now,
-      error: { message: "Workflow run deadline exceeded" },
-    };
+    return failed({ message: "Workflow run deadline exceeded" });
   }
 
   if (
     retryPolicy.maximumAttempts > 0 && // 0 = unlimited attempts
     attempts >= retryPolicy.maximumAttempts
   ) {
-    return {
-      status: "failed",
-      availableAt: null,
-      finishedAt: now,
-      error,
-    };
+    return failed(error);
   }
 
   const retryDelayMs = computeBackoffDelayMs(retryPolicy, attempts);
   const nextRetryAt = new Date(now.getTime() + retryDelayMs);
 
   if (deadlineAt && nextRetryAt >= deadlineAt) {
-    return {
-      status: "failed",
-      availableAt: null,
-      finishedAt: now,
-      error,
-    };
+    return failed(error);
   }
 
   return {

@@ -29,6 +29,41 @@ export function isTerminalStatus(status: WorkflowRunStatus): boolean {
 }
 
 /**
+ * Resolve the outcome when a cancelWorkflowRun UPDATE affected no rows.
+ * Returns the existing run if already canceled (idempotent), otherwise throws
+ * an error describing why cancellation is impossible.
+ * @param workflowRunId - ID of the workflow run (used in error messages)
+ * @param existing - Current workflow run, or null if not found
+ * @returns The existing workflow run when already canceled
+ * @throws {Error} If the run does not exist, is in a non-canceled terminal
+ * state, or cannot be canceled for an unknown reason
+ */
+export function resolveCancelWorkflowRunConflict(
+  workflowRunId: string,
+  existing: Readonly<WorkflowRun> | null,
+): WorkflowRun {
+  if (!existing) {
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error(`Workflow run ${workflowRunId} does not exist`);
+  }
+
+  if (existing.status === "canceled") {
+    return existing;
+  }
+
+  // 'succeeded' status is deprecated
+  if (["succeeded", "completed", "failed"].includes(existing.status)) {
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error(
+      `Cannot cancel workflow run ${workflowRunId} with status ${existing.status}`,
+    );
+  }
+
+  // eslint-disable-next-line functional/no-throw-statements
+  throw new Error("Failed to cancel workflow run");
+}
+
+/**
  * WorkflowRun represents a single execution instance of a workflow.
  */
 export interface WorkflowRun {
