@@ -61,10 +61,12 @@ export function wrapError(message: string, error: unknown): Error {
  * otherwise.
  * @param row - The row returned by the backend (or undefined/null if none matched)
  * @param operation - Suffix describing the attempted mutation
+ * @throws {Error} When the row is null or undefined
  */
 export function requireRow<T>(
   row: T,
   operation: string,
 ): asserts row is NonNullable<T> {
+  // eslint-disable-next-line functional/no-throw-statements
   if (!row) throw new Error(`Failed to ${operation}`);
 }

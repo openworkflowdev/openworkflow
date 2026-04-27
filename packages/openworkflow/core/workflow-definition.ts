@@ -166,14 +166,21 @@ export function computeFailedWorkflowRunUpdate(
   error: Readonly<SerializedError>,
   now: Readonly<Date>,
 ): FailedWorkflowRunUpdate {
-  const failed = (
+  /**
+   * Build the terminal "failed" update payload using the captured `now`.
+   * @param finalError - Error to record on the run
+   * @returns Failed run update payload
+   */
+  function failed(
     finalError: Readonly<SerializedError>,
-  ): FailedWorkflowRunUpdate => ({
-    status: "failed",
-    availableAt: null,
-    finishedAt: now,
-    error: finalError,
-  });
+  ): FailedWorkflowRunUpdate {
+    return {
+      status: "failed",
+      availableAt: null,
+      finishedAt: now,
+      error: finalError,
+    };
+  }
 
   if (deadlineAt && now >= deadlineAt) {
     return failed({ message: "Workflow run deadline exceeded" });
