@@ -27,7 +27,7 @@ import {
 } from "../core/backend.js";
 import {
   buildPaginatedResponse,
-  Cursor,
+  type Cursor,
   DEFAULT_PAGINATION_PAGE_SIZE,
   decodeListCursor,
 } from "../core/cursor.js";
