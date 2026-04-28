@@ -21,3 +21,10 @@ why it belongs in OpenWorkflow. The core team will help confirm direction before
 any PRs start.
 
 PRs that skip these steps may be closed.
+
+## Development environment
+
+This repo uses [mise](https://mise.jdx.dev/) to pin Node and Bun versions. Once
+you have mise installed, run `mise install` from the repo root to get the same
+toolchain CI uses. Tool versions live in `mise.toml`; the GitHub Actions
+workflows install them via `jdx/mise-action`.
