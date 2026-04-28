@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx index.ts",
-    "worker": "tsx ../../packages/cli/cli.ts worker start"
+    "worker": "tsx ../../apps/cli/cli.ts worker start"
   },
   "dependencies": {
     "openworkflow": "*"

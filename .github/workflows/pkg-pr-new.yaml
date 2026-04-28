@@ -19,5 +19,5 @@ jobs:
       - run: >
           npx pkg-pr-new publish
           ./packages/openworkflow
-          ./packages/cli
-          ./packages/dashboard
+          ./apps/cli
+          ./apps/dashboard

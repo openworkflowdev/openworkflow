@@ -25,8 +25,8 @@ export default defineConfig(
     ignores: [
       "**/dist",
       "examples/workflow-discovery/openworkflow.config.js",
-      "packages/dashboard/.output",
-      "packages/dashboard/src/routeTree.gen.ts",
+      "apps/dashboard/.output",
+      "apps/dashboard/src/routeTree.gen.ts",
       "commitlint.config.js",
       "coverage",
       "eslint.config.js",
@@ -87,7 +87,7 @@ export default defineConfig(
   // cli
   // ===========================================================================
   {
-    files: ["packages/cli/templates/**/*.ts"],
+    files: ["apps/cli/templates/**/*.ts"],
     rules: {
       "import/no-extraneous-dependencies": "off",
     },
@@ -96,29 +96,26 @@ export default defineConfig(
   // dashboard
   // ===========================================================================
   {
-    files: ["packages/dashboard/**/*.{ts,tsx,js,jsx}"],
+    files: ["apps/dashboard/**/*.{ts,tsx,js,jsx}"],
     rules: {
       "jsdoc/require-jsdoc": "off",
       "sonarjs/prefer-read-only-props": "off",
     },
   },
   {
-    files: [
-      "packages/dashboard/**/*.test.ts",
-      "packages/dashboard/**/*.test.tsx",
-    ],
+    files: ["apps/dashboard/**/*.test.ts", "apps/dashboard/**/*.test.tsx"],
     rules: {
       "import/no-extraneous-dependencies": [
         "error",
         {
           devDependencies: true,
-          packageDir: [".", "packages/dashboard"],
+          packageDir: [".", "apps/dashboard"],
         },
       ],
     },
   },
   {
-    files: ["packages/dashboard/src/routes/runs/$runId.tsx"],
+    files: ["apps/dashboard/src/routes/runs/$runId.tsx"],
     rules: {
       "unicorn/filename-case": "off",
     },

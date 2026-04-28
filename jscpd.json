@@ -5,7 +5,7 @@
   "gitignore": true,
   "ignore": [
     "**/*.test.ts",
-    "packages/dashboard/.output",
+    "apps/dashboard/.output",
     "packages/openworkflow/postgres/backend.ts",
     "packages/openworkflow/sqlite/backend.ts"
   ]

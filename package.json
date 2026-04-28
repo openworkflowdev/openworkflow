@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "workspaces": [
+    "apps/*",
     "benchmarks/*",
     "examples/*",
     "packages/*"
@@ -17,10 +18,10 @@
     "format:fix": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "knip": "knip",
     "lint": "eslint .",
-    "lint:duplication": "jscpd --config jscpd.json packages",
+    "lint:duplication": "jscpd --config jscpd.json apps packages",
     "lint:fix": "eslint . --fix",
     "lint:spell": "cspell",
-    "openworkflow": "tsx ./packages/cli/cli.ts",
+    "openworkflow": "tsx ./apps/cli/cli.ts",
     "pghero": "sh ./packages/openworkflow/postgres/scripts/pghero.sh",
     "prepare": "husky",
     "squawk": "tsx ./packages/openworkflow/postgres/scripts/squawk.ts",

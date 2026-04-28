@@ -5,14 +5,14 @@ export default defineConfig({
     globalSetup: ["packages/openworkflow/postgres/vitest.global-setup.ts"],
     exclude: ["**/dist", "benchmarks", "coverage", "examples", "node_modules"],
     coverage: {
-      include: ["packages/**/*.ts"],
+      include: ["apps/**/*.ts", "packages/**/*.ts"],
       exclude: [
         "**/*.testsuite.ts",
         "**/dist/**",
         "**/scripts/*.ts",
         "vitest.global-setup.ts",
-        "packages/cli/**",
-        "packages/dashboard/**",
+        "apps/cli/**",
+        "apps/dashboard/**",
       ],
       thresholds: {
         statements: 90,
