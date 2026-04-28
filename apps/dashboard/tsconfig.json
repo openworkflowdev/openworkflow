@@ -11,7 +11,10 @@
       "@/*": ["./src/*"]
     }
   },
-  "references": [{ "path": "../cli" }, { "path": "../openworkflow" }],
+  "references": [
+    { "path": "../cli" },
+    { "path": "../../packages/openworkflow" }
+  ],
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["dist"]
 }

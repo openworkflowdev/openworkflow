@@ -440,5 +440,6 @@ graceful shutdown:
 - `packages/openworkflow` contains the SDK (client, worker, registry) and
   backend implementations via `openworkflow/postgres` and `openworkflow/sqlite`
   subpath exports.
-- `packages/cli` is the CLI.
-- `packages/dashboard` is the web UI for monitoring workflow runs.
+- `apps/cli` is the CLI.
+- `apps/dashboard` is the web UI for monitoring workflow runs.
+- `apps/docs` is the Mintlify documentation site.

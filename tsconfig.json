@@ -8,8 +8,8 @@
     { "path": "./examples/with-schema-validation" },
     { "path": "./examples/workflow-discovery" },
     { "path": "./packages/openworkflow" },
-    { "path": "./packages/cli" },
-    { "path": "./packages/dashboard" }
+    { "path": "./apps/cli" },
+    { "path": "./apps/dashboard" }
   ],
 
   // project-wide settings for configs, workflows, etc.

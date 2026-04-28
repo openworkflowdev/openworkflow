@@ -18,11 +18,11 @@
   "ignoreFiles": [
     "**/openworkflow.config.*",
     "openworkflow/**/*.ts",
-    "packages/dashboard/src/components/ui/*.tsx",
-    "packages/docs/style.css"
+    "apps/dashboard/src/components/ui/*.tsx",
+    "apps/docs/style.css"
   ],
   "ignoreIssues": {
-    "packages/dashboard/src/components/ui/*.tsx": ["exports"],
+    "apps/dashboard/src/components/ui/*.tsx": ["exports"],
     "packages/openworkflow/core/workflow-definition.ts": ["duplicates"]
   }
 }
