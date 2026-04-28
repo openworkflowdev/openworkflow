@@ -1,3 +1,7 @@
+# other ignores:
+# - eslint.config.js
+# - tsconfig.json
+# - vitest.config.ts
 .output
 .turbo
 coverage
