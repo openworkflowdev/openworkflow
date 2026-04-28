@@ -25,6 +25,7 @@ PRs that skip these steps may be closed.
 ## Development environment
 
 This repo uses [mise](https://mise.jdx.dev/) to manage the Node and Bun versions
-used for development. Once you have mise installed, run `mise install` from the
-repo root to install the versions configured in `mise.toml`. The GitHub Actions
-workflows install those versions via `jdx/mise-action`.
+used for development. Once you have mise installed, run `mise trust` followed by
+`mise install` from the repo root to install the versions configured in
+`mise.toml`. The GitHub Actions workflows install those versions via
+`jdx/mise-action`.
