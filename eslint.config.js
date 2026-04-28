@@ -146,22 +146,22 @@ export default defineConfig(
       ],
     },
     rules: {
-      "boundaries/element-types": [
+      "boundaries/dependencies": [
         "error",
         {
           default: "disallow",
           rules: [
             {
-              from: "core",
-              disallow: ["*"],
+              from: { type: "core" },
+              disallow: [{ to: { type: "*" } }],
             },
             {
-              from: "app",
-              allow: ["app", "core"],
+              from: { type: "app" },
+              allow: [{ to: { type: ["app", "core"] } }],
             },
             {
-              from: "infra",
-              allow: ["app", "core", "infra"],
+              from: { type: "infra" },
+              allow: [{ to: { type: ["app", "core", "infra"] } }],
             },
           ],
         },
