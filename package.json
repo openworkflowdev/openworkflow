@@ -37,9 +37,9 @@
     "openworkflow": "^0.8.1"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.3",
-    "@commitlint/config-conventional": "^20.5.3",
-    "@commitlint/config-workspace-scopes": "^20.4.3",
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
+    "@commitlint/config-workspace-scopes": "^21.0.0",
     "@eslint/js": "^9.39.2",
     "@openworkflow/cli": "^0.4.3",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
