@@ -408,6 +408,10 @@ export class BackendPostgres implements Backend {
     const { after } = params;
     const conditions = [this.pg`"namespace_id" = ${this.namespaceId}`];
 
+    if (params.status) {
+      conditions.push(this.pg`"status" = ${params.status}`);
+    }
+
     if (cursor) {
       const op = after ? this.pg`<` : this.pg`>`;
       conditions.push(

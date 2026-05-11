@@ -705,6 +705,108 @@ export function testBackend(options: TestBackendOptions): void {
 
         await teardown(backend);
       });
+
+      test("filters workflow runs by status", async () => {
+        const backend = await setup();
+
+        const pendingRun = await createPendingWorkflowRun(backend);
+
+        const completedRun = await createClaimedWorkflowRun(backend);
+        const completedWorkerId = completedRun.workerId;
+        if (!completedWorkerId) throw new Error("Expected workerId");
+        await backend.completeWorkflowRun({
+          workflowRunId: completedRun.id,
+          workerId: completedWorkerId,
+          output: null,
+        });
+
+        const failedRun = await createClaimedWorkflowRun(backend);
+        const failedWorkerId = failedRun.workerId;
+        if (!failedWorkerId) throw new Error("Expected workerId");
+        await backend.failWorkflowRun({
+          workflowRunId: failedRun.id,
+          workerId: failedWorkerId,
+          error: { message: "failed run" },
+          retryPolicy: {
+            ...DEFAULT_WORKFLOW_RETRY_POLICY,
+            maximumAttempts: 1,
+          },
+        });
+
+        const pendingList = await backend.listWorkflowRuns({
+          status: "pending",
+        });
+        expect(pendingList.data.map((r: WorkflowRun) => r.id)).toEqual([
+          pendingRun.id,
+        ]);
+
+        const completedList = await backend.listWorkflowRuns({
+          status: "completed",
+        });
+        expect(completedList.data.map((r: WorkflowRun) => r.id)).toEqual([
+          completedRun.id,
+        ]);
+
+        const failedList = await backend.listWorkflowRuns({
+          status: "failed",
+        });
+        expect(failedList.data.map((r: WorkflowRun) => r.id)).toEqual([
+          failedRun.id,
+        ]);
+
+        const canceledList = await backend.listWorkflowRuns({
+          status: "canceled",
+        });
+        expect(canceledList.data).toHaveLength(0);
+
+        await teardown(backend);
+      });
+
+      test("paginates workflow runs with a status filter", async () => {
+        const backend = await setup();
+
+        const failedRuns: WorkflowRun[] = [];
+        for (let i = 0; i < 3; i++) {
+          const claimed = await createClaimedWorkflowRun(backend);
+          const workerId = claimed.workerId;
+          if (!workerId) throw new Error("Expected workerId");
+          const failed = await backend.failWorkflowRun({
+            workflowRunId: claimed.id,
+            workerId,
+            error: { message: "failed run" },
+            retryPolicy: {
+              ...DEFAULT_WORKFLOW_RETRY_POLICY,
+              maximumAttempts: 1,
+            },
+          });
+          failedRuns.push(failed);
+          await sleep(10); // ensure timestamp difference
+        }
+
+        await createPendingWorkflowRun(backend);
+        await sleep(10);
+        await createPendingWorkflowRun(backend);
+
+        const page1 = await backend.listWorkflowRuns({
+          status: "failed",
+          limit: 2,
+        });
+        expect(page1.data).toHaveLength(2);
+        expect(page1.data[0]?.id).toBe(failedRuns[2]?.id);
+        expect(page1.data[1]?.id).toBe(failedRuns[1]?.id);
+        expect(page1.pagination.next).not.toBeNull();
+
+        const page2 = await backend.listWorkflowRuns({
+          status: "failed",
+          limit: 2,
+          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        });
+        expect(page2.data).toHaveLength(1);
+        expect(page2.data[0]?.id).toBe(failedRuns[0]?.id);
+        expect(page2.pagination.next).toBeNull();
+
+        await teardown(backend);
+      });
     });
 
     describe("countWorkflowRuns()", () => {
