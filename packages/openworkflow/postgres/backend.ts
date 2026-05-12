@@ -412,6 +412,10 @@ export class BackendPostgres implements Backend {
       conditions.push(this.pg`"status" = ${params.status}`);
     }
 
+    if (params.workflowName) {
+      conditions.push(this.pg`"workflow_name" = ${params.workflowName}`);
+    }
+
     if (cursor) {
       const op = after ? this.pg`<` : this.pg`>`;
       conditions.push(

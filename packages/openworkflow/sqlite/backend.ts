@@ -847,18 +847,23 @@ export class BackendSqlite implements Backend {
   listWorkflowRuns(
     params: ListWorkflowRunsParams,
   ): Promise<PaginatedResponse<WorkflowRun>> {
-    const baseWhere = params.status
-      ? `"namespace_id" = ? AND "status" = ?`
-      : `"namespace_id" = ?`;
-    const baseParams: readonly unknown[] = params.status
-      ? [this.namespaceId, params.status]
-      : [this.namespaceId];
+    const conditions: string[] = [`"namespace_id" = ?`];
+    const values: unknown[] = [this.namespaceId];
+
+    if (params.status) {
+      conditions.push(`"status" = ?`);
+      values.push(params.status);
+    }
+    if (params.workflowName) {
+      conditions.push(`"workflow_name" = ?`);
+      values.push(params.workflowName);
+    }
 
     return this.listPaginated(params, {
       table: "workflow_runs",
       naturalOrder: "DESC",
-      baseWhere,
-      baseParams,
+      baseWhere: conditions.join(" AND "),
+      baseParams: values,
       mapRow: (row) => rowToWorkflowRun(row as WorkflowRunRow),
     });
   }
