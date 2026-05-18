@@ -181,15 +181,15 @@ export class OpenWorkflow {
    * from history without re-executing; failed step attempts are discarded so
    * the failing step starts with a fresh retry budget.
    * @param workflowRunId - The ID of the failed workflow run to resume
-   * @returns Promise<void>
+   * @returns The updated workflow run
    * @throws {Error} If the run does not exist or is not in `failed` status
    * @example
    * ```ts
    * await ow.resumeWorkflowRun("123");
    * ```
    */
-  async resumeWorkflowRun(workflowRunId: string): Promise<void> {
-    await this.backend.resumeWorkflowRun({ workflowRunId });
+  async resumeWorkflowRun(workflowRunId: string): Promise<WorkflowRun> {
+    return await this.backend.resumeWorkflowRun({ workflowRunId });
   }
 
   /**
