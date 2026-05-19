@@ -95,7 +95,10 @@ export interface GetWorkflowRunParams {
   workflowRunId: string;
 }
 
-export type ListWorkflowRunsParams = PaginationOptions;
+export interface ListWorkflowRunsParams extends PaginationOptions {
+  status?: WorkflowRunStatus;
+  workflowName?: string;
+}
 
 export interface ClaimWorkflowRunParams {
   workerId: string;
