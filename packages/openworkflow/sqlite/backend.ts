@@ -4,6 +4,7 @@ import {
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   CancelWorkflowRunParams,
+  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -37,6 +38,7 @@ import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
+  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -743,6 +745,71 @@ export class BackendSqlite implements Backend {
 
     this.wakeParentWorkflowRun(updated);
 
+    return updated;
+  }
+
+  async resumeWorkflowRun(
+    params: ResumeWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const currentTime = now();
+
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+
+      const updateStmt = this.db.prepare(`
+        UPDATE "workflow_runs"
+        SET
+          "status" = 'pending',
+          "worker_id" = NULL,
+          "error" = NULL,
+          "finished_at" = NULL,
+          "available_at" = ?,
+          "updated_at" = ?
+        WHERE "namespace_id" = ?
+        AND "id" = ?
+        AND "status" = 'failed'
+      `);
+
+      const updateResult = updateStmt.run(
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        params.workflowRunId,
+      );
+
+      if (updateResult.changes === 0) {
+        this.db.exec("ROLLBACK");
+        const existing = await this.getWorkflowRun({
+          workflowRunId: params.workflowRunId,
+        });
+        resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
+      }
+
+      this.db
+        .prepare(
+          `
+          DELETE FROM "step_attempts"
+          WHERE "namespace_id" = ?
+          AND "workflow_run_id" = ?
+          AND "status" = 'failed'
+        `,
+        )
+        .run(this.namespaceId, params.workflowRunId);
+
+      this.db.exec("COMMIT");
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // ignore
+      }
+      throw error;
+    }
+
+    const updated = await this.getWorkflowRun({
+      workflowRunId: params.workflowRunId,
+    });
+    requireRow(updated, "resume workflow run");
     return updated;
   }
 

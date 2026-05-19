@@ -176,6 +176,23 @@ export class OpenWorkflow {
   }
 
   /**
+   * Resume a failed workflow run. The run's status flips back to `pending`
+   * so the next worker tick picks it up. Already-completed steps are served
+   * from history without re-executing; failed step attempts are discarded so
+   * the failing step starts with a fresh retry budget.
+   * @param workflowRunId - The ID of the failed workflow run to resume
+   * @returns The updated workflow run
+   * @throws {Error} If the run does not exist or is not in `failed` status
+   * @example
+   * ```ts
+   * await ow.resumeWorkflowRun("123");
+   * ```
+   */
+  async resumeWorkflowRun(workflowRunId: string): Promise<WorkflowRun> {
+    return await this.backend.resumeWorkflowRun({ workflowRunId });
+  }
+
+  /**
    * Send a signal to all workflows currently waiting on the given signal
    * string. If no workflow is waiting, the signal is silently dropped.
    * @param options - Signal options
