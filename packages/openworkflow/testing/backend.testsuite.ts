@@ -776,6 +776,39 @@ export function testBackend(options: TestBackendOptions): void {
         await teardown(backend);
       });
 
+      test("returns counts grouped by workflow name and status", async () => {
+        const backend = await setup();
+
+        await createPendingWorkflowRun(backend, "send-email");
+        await createPendingWorkflowRun(backend, "charge-card");
+        await createPendingWorkflowRun(backend, "charge-card");
+
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 60_000,
+        });
+        if (!claimed) throw new Error("Expected claimed workflow run");
+
+        expect(await backend.countWorkflowRunsByWorkflowName()).toEqual({
+          "send-email": {
+            pending: 0,
+            running: 1,
+            completed: 0,
+            failed: 0,
+            canceled: 0,
+          },
+          "charge-card": {
+            pending: 2,
+            running: 0,
+            completed: 0,
+            failed: 0,
+            canceled: 0,
+          },
+        });
+
+        await teardown(backend);
+      });
+
       test("updates counts when workflow runs transition statuses", async () => {
         const backend = await setup();
 
@@ -2574,11 +2607,15 @@ export function testBackend(options: TestBackendOptions): void {
 /**
  * Create a pending workflow run for tests.
  * @param b - Backend
+ * @param workflowName - Workflow name
  * @returns Created workflow run
  */
-async function createPendingWorkflowRun(b: Backend) {
+async function createPendingWorkflowRun(
+  b: Backend,
+  workflowName: string = randomUUID(),
+) {
   return await b.createWorkflowRun({
-    workflowName: randomUUID(),
+    workflowName,
     version: null,
     idempotencyKey: null,
     input: null,

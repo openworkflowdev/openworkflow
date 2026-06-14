@@ -1,4 +1,7 @@
-import { toWorkflowRunCounts } from "./backend.js";
+import {
+  toWorkflowRunCounts,
+  toWorkflowRunCountsByWorkflowName,
+} from "./backend.js";
 import { describe, expect, test } from "vitest";
 
 describe("toWorkflowRunCounts", () => {
@@ -46,6 +49,34 @@ describe("toWorkflowRunCounts", () => {
       completed: 0,
       failed: 0,
       canceled: 0,
+    });
+  });
+});
+
+describe("toWorkflowRunCountsByWorkflowName", () => {
+  test("returns normalized counts grouped by workflow name", () => {
+    const counts = toWorkflowRunCountsByWorkflowName([
+      { workflowName: "send-email", status: "pending", count: 2 },
+      { workflowName: "send-email", status: "sleeping", count: 1 },
+      { workflowName: "charge-card", status: "succeeded", count: 3 },
+      { workflowName: "charge-card", status: "completed", count: 4 },
+    ]);
+
+    expect(counts).toEqual({
+      "send-email": {
+        pending: 2,
+        running: 1,
+        completed: 0,
+        failed: 0,
+        canceled: 0,
+      },
+      "charge-card": {
+        pending: 0,
+        running: 0,
+        completed: 7,
+        failed: 0,
+        canceled: 0,
+      },
     });
   });
 });

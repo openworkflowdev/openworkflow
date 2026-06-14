@@ -1,5 +1,8 @@
 import { getBackend } from "./backend";
-import type { WorkflowRunCounts } from "openworkflow/internal";
+import type {
+  WorkflowRunCounts,
+  WorkflowRunCountsByWorkflowName,
+} from "openworkflow/internal";
 import { Gauge, Registry } from "prom-client";
 
 /**
@@ -9,7 +12,7 @@ import { Gauge, Registry } from "prom-client";
 export async function getMetricsResponse(): Promise<Response> {
   try {
     const backend = await getBackend();
-    const workflowRunCounts = await backend.countWorkflowRuns();
+    const workflowRunCounts = await backend.countWorkflowRunsByWorkflowName();
 
     const registry = new Registry();
     registerWorkflowRunCounts(registry, workflowRunCounts);
@@ -40,18 +43,24 @@ const PROMETHEUS_WORKFLOW_RUN_STATUSES = [
 
 function registerWorkflowRunCounts(
   registry: Registry,
-  workflowRunCounts: WorkflowRunCounts,
+  workflowRunCounts: WorkflowRunCountsByWorkflowName,
 ) {
-  const prometheusCounts = toPrometheusWorkflowRunCounts(workflowRunCounts);
   const workflowRunsGauge = new Gauge({
     name: "openworkflow_workflow_runs",
     help: "Current count of workflow runs in each status.",
-    labelNames: ["status"] as const,
+    labelNames: ["workflow_name", "status"] as const,
     registers: [registry],
   });
 
-  for (const status of PROMETHEUS_WORKFLOW_RUN_STATUSES) {
-    workflowRunsGauge.set({ status }, prometheusCounts[status]);
+  for (const [workflowName, counts] of Object.entries(workflowRunCounts)) {
+    const prometheusCounts = toPrometheusWorkflowRunCounts(counts);
+
+    for (const status of PROMETHEUS_WORKFLOW_RUN_STATUSES) {
+      workflowRunsGauge.set(
+        { workflow_name: workflowName, status },
+        prometheusCounts[status],
+      );
+    }
   }
 }
 
