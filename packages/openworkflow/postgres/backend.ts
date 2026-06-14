@@ -5,6 +5,7 @@ import {
   Backend,
   WorkflowRunCounts,
   CancelWorkflowRunParams,
+  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -37,6 +38,7 @@ import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
+  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -719,6 +721,50 @@ export class BackendPostgres implements Backend {
     await this.wakeParentWorkflowRun(updated);
 
     return updated;
+  }
+
+  async resumeWorkflowRun(
+    params: ResumeWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    return await this.pg.begin(async (sql): Promise<WorkflowRun> => {
+      const tx = sql as unknown as Postgres;
+      const workflowRunsTable = this.workflowRunsTable(tx);
+      const stepAttemptsTable = this.stepAttemptsTable(tx);
+
+      const [updated] = await tx<WorkflowRun[]>`
+        UPDATE ${workflowRunsTable}
+        SET
+          "status" = 'pending',
+          "worker_id" = NULL,
+          "error" = NULL,
+          "finished_at" = NULL,
+          "available_at" = NOW(),
+          "updated_at" = NOW()
+        WHERE "namespace_id" = ${this.namespaceId}
+        AND "id" = ${params.workflowRunId}
+        AND "status" = 'failed'
+        RETURNING *
+      `;
+
+      if (!updated) {
+        const existing = await this.getWorkflowRun({
+          workflowRunId: params.workflowRunId,
+        });
+        resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
+      }
+
+      // Drop the prior failed attempts so the next worker pass starts the
+      // failed step with a fresh retry budget and the existing completed
+      // attempts remain in cache (replay skips re-execution).
+      await tx`
+        DELETE FROM ${stepAttemptsTable}
+        WHERE "namespace_id" = ${this.namespaceId}
+        AND "workflow_run_id" = ${params.workflowRunId}
+        AND "status" = 'failed'
+      `;
+
+      return updated;
+    });
   }
 
   private async wakeParentWorkflowRun(
