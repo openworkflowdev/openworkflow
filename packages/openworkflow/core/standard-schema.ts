@@ -70,6 +70,5 @@ export declare namespace StandardSchemaV1 {
   >["output"];
 
   // biome-ignore lint/complexity/noUselessEmptyExport: needed for granular visibility control of TS namespace
-  // eslint-disable-next-line unicorn/require-module-specifiers
   export {};
 }

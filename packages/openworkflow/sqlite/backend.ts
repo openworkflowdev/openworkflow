@@ -395,7 +395,6 @@ export class BackendSqlite implements Backend {
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
       { data: string | null } | undefined;
 
-    // eslint-disable-next-line unicorn/no-useless-undefined
     if (!row) return Promise.resolve<JsonValue | undefined>(undefined);
     return Promise.resolve(
       (fromJSON(row.data) as JsonValue | undefined) ?? null,

@@ -20,12 +20,7 @@ export type WorkflowRunStatus =
  * @returns True when status is terminal
  */
 export function isTerminalStatus(status: WorkflowRunStatus): boolean {
-  return (
-    status === "completed" ||
-    status === "succeeded" ||
-    status === "failed" ||
-    status === "canceled"
-  );
+  return ["completed", "succeeded", "failed", "canceled"].includes(status);
 }
 
 /**
