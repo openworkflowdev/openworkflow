@@ -6,6 +6,8 @@
   "ignore": [
     "**/*.test.ts",
     "apps/dashboard/.output",
+    "apps/dashboard/src/styles.css",
+    "packages/openworkflow/testing/backend.testsuite.ts",
     "packages/openworkflow/postgres/backend.ts",
     "packages/openworkflow/sqlite/backend.ts"
   ]
