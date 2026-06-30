@@ -23,9 +23,10 @@ export default defineConfig(
   prettier,
   {
     ignores: [
+      "**/.output",
+      "**/.turbo",
       "**/dist",
       "examples/workflow-discovery/openworkflow.config.js",
-      "apps/dashboard/.output",
       "apps/dashboard/src/routeTree.gen.ts",
       "commitlint.config.js",
       "coverage",
