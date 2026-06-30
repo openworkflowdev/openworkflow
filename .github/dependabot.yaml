@@ -21,6 +21,12 @@ updates:
         patterns:
           - "@eslint/js"
           - "eslint"
+      react:
+        patterns:
+          - "@types/react"
+          - "@types/react-dom"
+          - "react"
+          - "react-dom"
       tanstack:
         patterns:
           - "*tanstack*"
