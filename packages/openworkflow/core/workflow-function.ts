@@ -30,9 +30,7 @@ export interface StepFunctionConfig {
  * null.
  */
 export type StepFunction<Output> = () =>
-  | Promise<Output | undefined>
-  | Output
-  | undefined;
+  Promise<Output | undefined> | Output | undefined;
 
 /**
  * Options for an individual step defined with `step.runWorkflow()`.
