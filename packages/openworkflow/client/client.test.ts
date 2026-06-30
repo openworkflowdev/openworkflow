@@ -57,11 +57,13 @@ describe("OpenWorkflow", () => {
           noopFn,
         );
 
-        const handle = await workflow.run({
+        const input = {
           userId: randomUUID(),
           count: 3,
-        });
+        };
+        const handle = await workflow.run(input);
 
+        expect(handle.workflowRun.input).toEqual(input);
         await handle.cancel();
       });
 
@@ -93,11 +95,13 @@ describe("OpenWorkflow", () => {
           noopFn,
         );
 
-        const handle = await workflow.run({
+        const input = {
           name: "Riley",
           platform: "android",
-        });
+        } as const;
+        const handle = await workflow.run(input);
 
+        expect(handle.workflowRun.input).toEqual(input);
         await handle.cancel();
       });
 
@@ -129,11 +133,13 @@ describe("OpenWorkflow", () => {
           noopFn,
         );
 
-        const handle = await workflow.run({
+        const input = {
           key1: "value",
           key2: 42,
-        });
+        };
+        const handle = await workflow.run(input);
 
+        expect(handle.workflowRun.input).toEqual(input);
         await handle.cancel();
       });
 
@@ -165,11 +171,13 @@ describe("OpenWorkflow", () => {
           noopFn,
         );
 
-        const handle = await workflow.run({
+        const input = {
           name: "Mona",
           age: 32,
-        });
+        };
+        const handle = await workflow.run(input);
 
+        expect(handle.workflowRun.input).toEqual(input);
         await handle.cancel();
       });
 
@@ -573,9 +581,16 @@ describe("OpenWorkflow", () => {
         version: "v2",
       });
 
-      // no throwing...
       client.implementWorkflow(specV1, noopFn);
       client.implementWorkflow(specV2, noopFn);
+
+      const handleV1 = await client.runWorkflow(specV1);
+      const handleV2 = await client.runWorkflow(specV2);
+      expect(handleV1.workflowRun.version).toBe("v1");
+      expect(handleV2.workflowRun.version).toBe("v2");
+
+      await handleV1.cancel();
+      await handleV2.cancel();
     });
 
     test("implementWorkflow throws for same name+version combination", async () => {

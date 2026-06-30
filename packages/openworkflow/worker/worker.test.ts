@@ -190,6 +190,9 @@ describe("Worker", () => {
     client.defineWorkflow({ name: "noop" }, () => null);
     const worker = client.newWorker();
     await worker.tick(); // no runs queued
+
+    const workflowRuns = await backend.listWorkflowRuns({});
+    expect(workflowRuns.data).toHaveLength(0);
   });
 
   test("handles step functions that return undefined", async () => {
@@ -841,7 +844,7 @@ describe("Worker", () => {
     const finalAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(finalAttempts.data.length).toBe(5); // 3 regular steps + 2 sleeps
+    expect(finalAttempts.data).toHaveLength(5); // 3 regular steps + 2 sleeps
     expect(finalAttempts.data.every((a) => a.status === "completed")).toBe(
       true,
     );

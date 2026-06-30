@@ -59,7 +59,14 @@ describe("sqlite", () => {
     try {
       globals.require = undefined;
       const tempDb = newDatabase(":memory:");
-      tempDb.close();
+      try {
+        const result = tempDb.prepare("SELECT 1 AS value;").get() as {
+          value: number;
+        };
+        expect(result.value).toBe(1);
+      } finally {
+        tempDb.close();
+      }
     } finally {
       if (originalRequire === undefined) {
         delete globals.require;
@@ -222,7 +229,7 @@ describe("sqlite", () => {
       const allMigrations = migrations();
       const expectedLatestVersion = allMigrations.length - 1;
 
-      expect(versions.length).toBe(expectedLatestVersion + 1);
+      expect(versions).toHaveLength(expectedLatestVersion + 1);
       for (let i = 0; i <= expectedLatestVersion; i++) {
         const version = versions[i];
         expect(version).toBeDefined();

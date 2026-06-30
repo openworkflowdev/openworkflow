@@ -6,12 +6,11 @@ import {
   dropSchema,
   newPostgresMaxOne,
 } from "./postgres.js";
-import assert from "node:assert";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
-  assert.ok(true);
+  expect(testBackend).toBeTypeOf("function");
 });
 
 testBackend({

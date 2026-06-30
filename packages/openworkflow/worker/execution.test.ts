@@ -3768,7 +3768,7 @@ describe("executeWorkflow", () => {
       await worker.tick();
       await handle.result();
 
-      expect(snapshots.length).toBe(2);
+      expect(snapshots).toHaveLength(2);
       expect(snapshots[0]).toEqual(snapshots[1]);
     });
   });

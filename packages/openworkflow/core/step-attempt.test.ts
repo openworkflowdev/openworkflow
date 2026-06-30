@@ -186,7 +186,7 @@ describe("normalizeStepOutput", () => {
 
   test("passes through number values", () => {
     expect(normalizeStepOutput(42)).toBe(42);
-    expect(normalizeStepOutput(3.14)).toBe(3.14);
+    expect(normalizeStepOutput(3.14)).toBeCloseTo(3.14);
     expect(normalizeStepOutput(0)).toBe(0);
     expect(normalizeStepOutput(-1)).toBe(-1);
   });

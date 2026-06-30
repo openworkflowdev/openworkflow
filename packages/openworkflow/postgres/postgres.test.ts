@@ -54,6 +54,11 @@ describe("postgres", () => {
       await dropSchema(pg, schema);
       await migrate(pg, schema);
       await migrate(pg, schema);
+
+      const versions = await pg.unsafe<{ version: number }[]>(
+        `SELECT "version" FROM "${schema}"."openworkflow_migrations" ORDER BY "version";`,
+      );
+      expect(versions).toHaveLength(migrations(schema).length);
     });
 
     test("applies all migrations when migrations table has no version rows", async () => {
@@ -75,7 +80,7 @@ describe("postgres", () => {
 
       await migrate(fakePg, schema);
 
-      expect(executedMigrations.length).toBe(migrations(schema).length);
+      expect(executedMigrations).toHaveLength(migrations(schema).length);
     });
   });
 
@@ -85,6 +90,17 @@ describe("postgres", () => {
       await migrate(pg, testSchema);
       await dropSchema(pg, testSchema);
       await dropSchema(pg, testSchema);
+
+      const schemaExists = await pg.unsafe<{ exists: boolean }[]>(
+        `
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.schemata
+          WHERE schema_name = $1
+        )`,
+        [testSchema],
+      );
+      expect(schemaExists[0]?.exists).toBe(false);
     });
   });
 });
