@@ -1,5 +1,6 @@
 import { AppLayout } from "@/components/app-layout";
 import { CreateRunForm } from "@/components/create-run-form";
+import { CursorPaginationControls } from "@/components/cursor-pagination-controls";
 import { RunList, type ChildRunRelation } from "@/components/run-list";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,13 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { WorkflowStats } from "@/components/workflow-stats";
 import {
   getStepAttemptServerFn,
@@ -130,13 +124,8 @@ function HomePage() {
     });
   }
 
-  function handlePageSizeChange(value: string) {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isNaN(parsed)) {
-      return;
-    }
-
-    const limit = resolveRunsPageSize(parsed);
+  function handlePageSizeChange(nextPageSize: number) {
+    const limit = resolveRunsPageSize(nextPageSize);
     updateRunsSearch({
       limit,
       after: undefined,
@@ -199,51 +188,17 @@ function HomePage() {
             />
 
             {showRunsPagination && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-muted-foreground text-xs">
-                  Showing {runs.length} run{runs.length === 1 ? "" : "s"}
-                </p>
-                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                  <div className="flex items-center gap-2 sm:mr-1">
-                    <p className="text-muted-foreground text-xs">Page size</p>
-                    <Select
-                      value={String(pageSize)}
-                      onValueChange={handlePageSizeChange}
-                    >
-                      <SelectTrigger className="h-8 w-20">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RUNS_PAGE_SIZE_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={String(option)}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    type="button"
-                    onClick={goToPreviousPage}
-                    disabled={!pagination.prev}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    type="button"
-                    onClick={goToNextPage}
-                    disabled={!pagination.next}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <CursorPaginationControls
+                hasNextPage={!!pagination.next}
+                hasPreviousPage={!!pagination.prev}
+                itemCount={runs.length}
+                itemName="run"
+                onNextPage={goToNextPage}
+                onPageSizeChange={handlePageSizeChange}
+                onPreviousPage={goToPreviousPage}
+                pageSize={pageSize}
+                pageSizeOptions={RUNS_PAGE_SIZE_OPTIONS}
+              />
             )}
           </div>
         </div>
