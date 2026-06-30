@@ -109,8 +109,7 @@ export type SchemaOutput<TSchema, Fallback> = TSchema extends StandardSchemaV1
  * error message.
  */
 export type ValidationResult<T> =
-  | { success: true; value: T }
-  | { success: false; error: string };
+  { success: true; value: T } | { success: false; error: string };
 
 /**
  * Validate input against a Standard Schema. Pure async function that validates

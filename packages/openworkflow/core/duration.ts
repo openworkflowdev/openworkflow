@@ -10,19 +10,10 @@ type Minutes = "minutes" | "minute" | "mins" | "min" | "m";
 type Seconds = "seconds" | "second" | "secs" | "sec" | "s";
 type Milliseconds = "milliseconds" | "millisecond" | "msecs" | "msec" | "ms";
 type Unit =
-  | Years
-  | Months
-  | Weeks
-  | Days
-  | Hours
-  | Minutes
-  | Seconds
-  | Milliseconds;
+  Years | Months | Weeks | Days | Hours | Minutes | Seconds | Milliseconds;
 type UnitAnyCase = Capitalize<Unit> | Uppercase<Unit> | Lowercase<Unit>;
 export type DurationString =
-  | `${number}`
-  | `${number}${UnitAnyCase}`
-  | `${number} ${UnitAnyCase}`;
+  `${number}` | `${number}${UnitAnyCase}` | `${number} ${UnitAnyCase}`;
 
 const SECOND_MS = 1000;
 const MINUTE_MS = 60 * SECOND_MS;
