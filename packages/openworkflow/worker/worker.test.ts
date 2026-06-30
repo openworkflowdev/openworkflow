@@ -1806,7 +1806,7 @@ describe("Worker", () => {
     if (!run.availableAt) throw new Error("Expected availableAt");
     const firstDelayMs = retryDelayMs(run, beforeFirst);
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
-    expect(firstDelayMs).toBeLessThan(5000);
+    expect(firstDelayMs).toBeLessThan(350);
 
     await sleepUntilAfter(run.availableAt);
     let previousAvailableAtMs = run.availableAt.getTime();
@@ -1824,7 +1824,7 @@ describe("Worker", () => {
     if (!run.availableAt) throw new Error("Expected availableAt");
     const secondDelayMs = retryDelayMs(run, beforeSecond);
     expect(secondDelayMs).toBeGreaterThanOrEqual(180);
-    expect(secondDelayMs).toBeLessThan(5000);
+    expect(secondDelayMs).toBeLessThan(350);
 
     await sleepUntilAfter(run.availableAt);
     previousAvailableAtMs = run.availableAt.getTime();
@@ -1842,7 +1842,7 @@ describe("Worker", () => {
     if (!run.availableAt) throw new Error("Expected availableAt");
     const thirdDelayMs = retryDelayMs(run, beforeThird);
     expect(thirdDelayMs).toBeGreaterThanOrEqual(80);
-    expect(thirdDelayMs).toBeLessThan(5000);
+    expect(thirdDelayMs).toBeLessThan(350);
 
     await sleepUntilAfter(run.availableAt);
     await worker.tick();
@@ -1926,7 +1926,7 @@ describe("Worker", () => {
     if (!run.availableAt) throw new Error("Expected availableAt");
     const firstDelayMs = retryDelayMs(run, beforeFirstFail);
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
-    expect(firstDelayMs).toBeLessThan(5000);
+    expect(firstDelayMs).toBeLessThan(350);
 
     await sleepUntilAfter(run.availableAt);
     const previousAvailableAtMs = run.availableAt.getTime();
@@ -1946,7 +1946,7 @@ describe("Worker", () => {
     if (!run.availableAt) throw new Error("Expected availableAt");
     const secondDelayMs = retryDelayMs(run, beforeSecondFail);
     expect(secondDelayMs).toBeGreaterThanOrEqual(180);
-    expect(secondDelayMs).toBeLessThan(5000);
+    expect(secondDelayMs).toBeLessThan(350);
 
     await sleepUntilAfter(run.availableAt);
     await worker.tick();
