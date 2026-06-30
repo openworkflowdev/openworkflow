@@ -1386,11 +1386,12 @@ describe("StepExecutor", () => {
       },
     );
 
+    const timeoutAt = new Date(Date.now() + 2000);
     const parent = client.defineWorkflow(
       { name: `workflow-parent-timeout-order-${randomUUID()}` },
       async ({ step }) => {
         return await step.runWorkflow(child.workflow.spec, undefined, {
-          timeout: "100ms",
+          timeout: timeoutAt,
         });
       },
     );
@@ -1433,7 +1434,7 @@ describe("StepExecutor", () => {
     expect(parentAfterFirstPass?.status).toBe("running");
     expect(parentAfterFirstPass?.workerId).toBeNull();
 
-    await sleep(150);
+    await sleepUntilAfter(timeoutAt);
 
     const claimedChild = await backend.claimWorkflowRun({
       workerId: randomUUID(),
@@ -3917,6 +3918,13 @@ describe("createStepExecutionStateFromAttempts", () => {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sleepUntilAfter(date: Date): Promise<void> {
+  const delayMs = date.getTime() - Date.now() + 25;
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
 }
 
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "canceled"]);

@@ -261,22 +261,34 @@ describe("Worker", () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
-    const executionTimes: Record<string, number> = {};
+    const startedSteps = new Set<string>();
+    let resolveAllStepsStarted: (() => void) | null = null;
+    const allStepsStarted = new Promise<void>((resolve) => {
+      resolveAllStepsStarted = resolve;
+    });
+
+    async function waitForParallelStepStart(stepName: string): Promise<void> {
+      startedSteps.add(stepName);
+      if (startedSteps.size === 3) {
+        resolveAllStepsStarted?.();
+      }
+      await allStepsStarted;
+    }
+
     const workflow = client.defineWorkflow(
       { name: "parallel" },
       async ({ step }) => {
-        const start = Date.now();
         const [a, b, c] = await Promise.all([
-          step.run({ name: "step-a" }, () => {
-            executionTimes["step-a"] = Date.now() - start;
+          step.run({ name: "step-a" }, async () => {
+            await waitForParallelStepStart("step-a");
             return "a";
           }),
-          step.run({ name: "step-b" }, () => {
-            executionTimes["step-b"] = Date.now() - start;
+          step.run({ name: "step-b" }, async () => {
+            await waitForParallelStepStart("step-b");
             return "b";
           }),
-          step.run({ name: "step-c" }, () => {
-            executionTimes["step-c"] = Date.now() - start;
+          step.run({ name: "step-c" }, async () => {
+            await waitForParallelStepStart("step-c");
             return "c";
           }),
         ]);
@@ -291,12 +303,7 @@ describe("Worker", () => {
 
     const result = await handle.result();
     expect(result).toEqual({ a: "a", b: "b", c: "c" });
-
-    // steps should execute at roughly the same time (within 100ms)
-    const times = Object.values(executionTimes);
-    const maxTime = Math.max(...times);
-    const minTime = Math.min(...times);
-    expect(maxTime - minTime).toBeLessThan(100);
+    expect(startedSteps).toEqual(new Set(["step-a", "step-b", "step-c"]));
   });
 
   test("respects worker concurrency limit", { timeout: 15_000 }, async () => {
