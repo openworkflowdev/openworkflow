@@ -28,7 +28,7 @@ jobs:
       - uses: jdx/mise-action@v4
       - run: npm ci
       - run: npm run ci
-      - uses: codecov/codecov-action@v6
+      - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
   ci-bun:
