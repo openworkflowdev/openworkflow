@@ -47,7 +47,7 @@
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.9",
-    "cspell": "^10.0.0",
+    "cspell": "^10.0.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
