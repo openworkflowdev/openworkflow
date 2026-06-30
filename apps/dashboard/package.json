@@ -52,7 +52,7 @@
     "@tsconfig/vite-react": "^8.0.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^29.0.2",
     "vite": "^8.0.16",
     "web-vitals": "^5.2.0"
