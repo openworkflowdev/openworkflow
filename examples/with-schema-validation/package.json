@@ -9,7 +9,7 @@
     "zod": "tsx zod.ts"
   },
   "dependencies": {
-    "arktype": "^2.2.1",
+    "arktype": "^2.2.2",
     "openworkflow": "*",
     "postgres": "^3.4.9",
     "valibot": "^1.4.2",
