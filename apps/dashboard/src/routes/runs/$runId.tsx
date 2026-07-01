@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/app-layout";
 import { CursorPaginationControls } from "@/components/cursor-pagination-controls";
 import { RunCancelAction } from "@/components/run-cancel-action";
+import { RunResumeAction } from "@/components/run-resume-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -292,7 +293,14 @@ function RunDetailsPage() {
               />
             )}
           </div>
-          <div className="sm:shrink-0">
+          <div className="flex gap-2 sm:shrink-0">
+            <RunResumeAction
+              runId={run.id}
+              status={run.status}
+              onResumed={async () => {
+                await router.invalidate();
+              }}
+            />
             <RunCancelAction
               runId={run.id}
               status={run.status}

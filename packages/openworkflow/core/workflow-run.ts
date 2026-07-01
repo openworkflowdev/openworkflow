@@ -59,6 +59,30 @@ export function resolveCancelWorkflowRunConflict(
 }
 
 /**
+ * Resolve the outcome when a resumeWorkflowRun UPDATE affected no rows. The
+ * UPDATE is gated on `status = 'failed'`, so a zero-row outcome means either
+ * the run doesn't exist or it isn't in a resumable state.
+ * @param workflowRunId - ID of the workflow run (used in error messages)
+ * @param existing - Current workflow run, or null if not found
+ * @returns Never; always throws describing why the resume is impossible
+ * @throws {Error} If the run does not exist or is not in `failed` status
+ */
+export function resolveResumeWorkflowRunConflict(
+  workflowRunId: string,
+  existing: Readonly<WorkflowRun> | null,
+): never {
+  if (!existing) {
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error(`Workflow run ${workflowRunId} does not exist`);
+  }
+
+  // eslint-disable-next-line functional/no-throw-statements
+  throw new Error(
+    `Cannot resume workflow run ${workflowRunId} with status ${existing.status}; only failed runs can be resumed`,
+  );
+}
+
+/**
  * WorkflowRun represents a single execution instance of a workflow.
  */
 export interface WorkflowRun {
