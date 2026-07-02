@@ -15,6 +15,11 @@
           "href": "https://github.com/openworkflowdev/openworkflow"
         },
         {
+          "anchor": "OpenWorkflow Cloud",
+          "icon": "cloud",
+          "href": "https://cloud.openworkflow.dev"
+        },
+        {
           "anchor": "Join Discord 🆕",
           "icon": "discord",
           "href": "https://discord.openworkflow.dev"
