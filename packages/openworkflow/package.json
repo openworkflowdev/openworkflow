@@ -56,7 +56,7 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
-    "arktype": "^2.2.1",
+    "arktype": "^2.2.2",
     "valibot": "^1.4.2",
     "vitest": "^4.0.18",
     "yup": "^1.7.1",
