@@ -56,7 +56,7 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "^63.0.10",
     "eslint-plugin-sonarjs": "^4.1.0",
-    "eslint-plugin-unicorn": "^65.0.1",
+    "eslint-plugin-unicorn": "^72.0.0",
     "husky": "^9.1.7",
     "jscpd": "^5.0.12",
     "knip": "^6.24.0",
