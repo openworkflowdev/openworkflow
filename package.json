@@ -62,7 +62,7 @@
     "knip": "^6.24.0",
     "prettier": "^3.9.4",
     "prettier-plugin-packagejson": "^3.0.2",
-    "prettier-plugin-tailwindcss": "^0.8.0",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.0",
     "turbo": "^2.10.3",
     "typescript": "^6.0.3",
