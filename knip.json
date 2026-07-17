@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "treatConfigHintsAsErrors": true,
 
-  "ignoreBinaries": ["open"],
   "ignoreDependencies": [
     "@openworkflow/cli",
     "@tanstack/react-router-ssr-query",
@@ -18,8 +17,7 @@
   "ignoreFiles": [
     "**/openworkflow.config.*",
     "openworkflow/**/*.ts",
-    "apps/dashboard/src/components/ui/*.tsx",
-    "apps/docs/style.css"
+    "apps/dashboard/src/components/ui/*.tsx"
   ],
   "ignoreIssues": {
     "apps/dashboard/src/components/ui/*.tsx": ["exports"],
