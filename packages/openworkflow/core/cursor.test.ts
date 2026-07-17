@@ -77,34 +77,18 @@ describe("encodeCursor", () => {
     expect(parsed["extra"]).toBeUndefined();
   });
 
-  test("handles empty id", () => {
+  test.each<[string, string]>([
+    ["empty id", ""],
+    ["ids with special characters", 'weird/"\\id\n\t'],
+    ["unicode ids", "🚀-café-漢字"],
+  ])("handles %s", (_name, id) => {
     const cursor: Cursor = {
       createdAt: new Date("2026-01-15T12:34:56.789Z"),
-      id: "",
+      id,
     };
     const encoded = encodeCursor(cursor);
     const decoded = decodeCursor(encoded);
-    expect(decoded.id).toBe("");
-  });
-
-  test("handles ids with special characters", () => {
-    const cursor: Cursor = {
-      createdAt: new Date("2026-01-15T12:34:56.789Z"),
-      id: 'weird/"\\id\n\t',
-    };
-    const encoded = encodeCursor(cursor);
-    const decoded = decodeCursor(encoded);
-    expect(decoded.id).toBe('weird/"\\id\n\t');
-  });
-
-  test("handles unicode ids", () => {
-    const cursor: Cursor = {
-      createdAt: new Date("2026-01-15T12:34:56.789Z"),
-      id: "🚀-café-漢字",
-    };
-    const encoded = encodeCursor(cursor);
-    const decoded = decodeCursor(encoded);
-    expect(decoded.id).toBe("🚀-café-漢字");
+    expect(decoded.id).toBe(id);
   });
 });
 

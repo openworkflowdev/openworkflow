@@ -17,53 +17,52 @@ describe("computeDuration", () => {
     expect(result).toBe("-");
   });
 
-  it("returns '< 1ms' for negative duration (clock skew)", () => {
-    const startedAt = new Date("2024-01-01T00:00:01.000Z");
-    const finishedAt = new Date("2024-01-01T00:00:00.000Z");
+  it.each<[string, Date, Date, string]>([
+    [
+      "returns '< 1ms' for negative duration (clock skew)",
+      new Date("2024-01-01T00:00:01.000Z"),
+      new Date("2024-01-01T00:00:00.000Z"),
+      "< 1ms",
+    ],
+    [
+      "returns milliseconds for durations under 1 second",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:00:00.500Z"),
+      "500ms",
+    ],
+    [
+      "returns seconds with one decimal for durations under 1 minute",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:00:05.500Z"),
+      "5.5s",
+    ],
+    [
+      "returns minutes only when seconds are 0",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:02:00.000Z"),
+      "2m",
+    ],
+    [
+      "returns minutes and seconds for durations over 1 minute",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:02:30.000Z"),
+      "2m 30s",
+    ],
+    [
+      "rounds seconds when formatting minutes and seconds",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:02:30.600Z"),
+      "2m 31s",
+    ],
+    [
+      "handles 0ms duration",
+      new Date("2024-01-01T00:00:00.000Z"),
+      new Date("2024-01-01T00:00:00.000Z"),
+      "0ms",
+    ],
+  ])("%s", (_name, startedAt, finishedAt, expected) => {
     const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("< 1ms");
-  });
-
-  it("returns milliseconds for durations under 1 second", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:00:00.500Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("500ms");
-  });
-
-  it("returns seconds with one decimal for durations under 1 minute", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:00:05.500Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("5.5s");
-  });
-
-  it("returns minutes only when seconds are 0", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:02:00.000Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("2m");
-  });
-
-  it("returns minutes and seconds for durations over 1 minute", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:02:30.000Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("2m 30s");
-  });
-
-  it("rounds seconds when formatting minutes and seconds", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:02:30.600Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("2m 31s");
-  });
-
-  it("handles 0ms duration", () => {
-    const startedAt = new Date("2024-01-01T00:00:00.000Z");
-    const finishedAt = new Date("2024-01-01T00:00:00.000Z");
-    const result = computeDuration(startedAt, finishedAt);
-    expect(result).toBe("0ms");
+    expect(result).toBe(expected);
   });
 });
 

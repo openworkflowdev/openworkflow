@@ -70,6 +70,5 @@ export declare namespace StandardSchemaV1 {
   >["output"];
 
   // needed for granular visibility control of the Standard Schema namespace.
-  // eslint-disable-next-line unicorn/require-module-specifiers
   export {};
 }
