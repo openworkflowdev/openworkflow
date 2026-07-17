@@ -1,16 +1,10 @@
 import { AppLayout } from "@/components/app-layout";
+import { CursorPaginationControls } from "@/components/cursor-pagination-controls";
 import { RunCancelAction } from "@/components/run-cancel-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MonacoJsonEditor } from "@/components/ui/monaco-json-editor";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -155,13 +149,8 @@ function RunDetailsPage() {
     });
   }
 
-  function handleStepPageSizeChange(value: string) {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isNaN(parsed)) {
-      return;
-    }
-
-    const limit = resolveStepAttemptsPageSize(parsed);
+  function handleStepPageSizeChange(nextPageSize: number) {
+    const limit = resolveStepAttemptsPageSize(nextPageSize);
     updateStepSearch({
       limit,
       after: undefined,
@@ -477,51 +466,18 @@ function RunDetailsPage() {
             )}
 
             {showStepPagination && (
-              <div className="border-border bg-muted/20 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-6">
-                <p className="text-muted-foreground text-xs">
-                  Showing {steps.length} step{steps.length === 1 ? "" : "s"}
-                </p>
-                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                  <div className="flex items-center gap-2 sm:mr-1">
-                    <p className="text-muted-foreground text-xs">Page size</p>
-                    <Select
-                      value={String(stepPageSize)}
-                      onValueChange={handleStepPageSizeChange}
-                    >
-                      <SelectTrigger className="h-8 w-20">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STEP_ATTEMPTS_PAGE_SIZE_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={String(option)}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    type="button"
-                    onClick={goToPreviousStepPage}
-                    disabled={!pagination.prev}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 sm:flex-none"
-                    type="button"
-                    onClick={goToNextStepPage}
-                    disabled={!pagination.next}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <CursorPaginationControls
+                className="border-border bg-muted/20 border-t px-4 py-3 sm:px-6"
+                hasNextPage={!!pagination.next}
+                hasPreviousPage={!!pagination.prev}
+                itemCount={steps.length}
+                itemName="step"
+                onNextPage={goToNextStepPage}
+                onPageSizeChange={handleStepPageSizeChange}
+                onPreviousPage={goToPreviousStepPage}
+                pageSize={stepPageSize}
+                pageSizeOptions={STEP_ATTEMPTS_PAGE_SIZE_OPTIONS}
+              />
             )}
           </Card>
 

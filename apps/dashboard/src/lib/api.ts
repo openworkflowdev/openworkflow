@@ -50,7 +50,7 @@ function parseOptionalDate(
  * List workflow runs from the backend with optional pagination.
  */
 export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
-  .inputValidator(z.object(paginationInputShape))
+  .validator(z.object(paginationInputShape))
   .handler(async ({ data }): Promise<PaginatedResponse<WorkflowRun>> => {
     const backend = await getBackend();
     const result = await backend.listWorkflowRuns(getPaginationOptions(data));
@@ -71,7 +71,7 @@ export const getWorkflowRunCountsServerFn = createServerFn({
  * Get a single workflow run by ID.
  */
 export const getWorkflowRunServerFn = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ workflowRunId: z.string() }))
+  .validator(z.object({ workflowRunId: z.string() }))
   .handler(async ({ data }): Promise<WorkflowRun | null> => {
     const backend = await getBackend();
     const run = await backend.getWorkflowRun({
@@ -84,7 +84,7 @@ export const getWorkflowRunServerFn = createServerFn({ method: "GET" })
  * Cancel a workflow run by ID.
  */
 export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ workflowRunId: z.string() }))
+  .validator(z.object({ workflowRunId: z.string() }))
   .handler(async ({ data }): Promise<WorkflowRun> => {
     const backend = await getBackend();
     return backend.cancelWorkflowRun({ workflowRunId: data.workflowRunId });
@@ -94,7 +94,7 @@ export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
  * List step attempts for a workflow run.
  */
 export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
-  .inputValidator(
+  .validator(
     z.object({
       workflowRunId: z.string(),
       ...paginationInputShape,
@@ -115,7 +115,7 @@ export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
  * Get a single step attempt by ID.
  */
 export const getStepAttemptServerFn = createServerFn({ method: "GET" })
-  .inputValidator(z.object({ stepAttemptId: z.string() }))
+  .validator(z.object({ stepAttemptId: z.string() }))
   .handler(async ({ data }): Promise<StepAttempt | null> => {
     const backend = await getBackend();
     const stepAttempt = await backend.getStepAttempt({
@@ -128,7 +128,7 @@ export const getStepAttemptServerFn = createServerFn({ method: "GET" })
  * Create a new workflow run.
  */
 export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
-  .inputValidator(
+  .validator(
     z.object({
       workflowName: z.string().trim().min(1),
       version: z.string().nullable().optional(),

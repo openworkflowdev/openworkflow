@@ -85,6 +85,7 @@ before submitting a pull request.
 
 ## Community
 
+- [OpenWorkflow Cloud](https://cloud.openworkflow.dev)
 - [Discord](https://discord.openworkflow.dev)
 - [GitHub Issues](https://github.com/openworkflowdev/openworkflow/issues) -
   Report bugs and request features

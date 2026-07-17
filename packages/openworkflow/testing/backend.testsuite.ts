@@ -1027,14 +1027,14 @@ export function testBackend(options: TestBackendOptions): void {
       test("claims workflow runs and respects leases, reclaiming if lease expires", async () => {
         const backend = await setup();
 
-        await createPendingWorkflowRun(backend);
+        const blockedRun = await createPendingWorkflowRun(backend);
 
-        const firstLeaseMs = 30;
         const firstWorker = randomUUID();
         const claimed = await backend.claimWorkflowRun({
           workerId: firstWorker,
-          leaseDurationMs: firstLeaseMs,
+          leaseDurationMs: 60_000,
         });
+        expect(claimed?.id).toBe(blockedRun.id);
         expect(claimed?.status).toBe("running");
         expect(claimed?.workerId).toBe(firstWorker);
         expect(claimed?.attempts).toBe(1);
@@ -1047,17 +1047,31 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(blocked).toBeNull();
 
-        await sleep(firstLeaseMs + 5); // small buffer for timing variability
+        await backend.completeWorkflowRun({
+          workflowRunId: blockedRun.id,
+          workerId: firstWorker,
+          output: null,
+        });
+
+        const expiringRun = await createPendingWorkflowRun(backend);
+        const expiringClaim = await backend.claimWorkflowRun({
+          workerId: firstWorker,
+          leaseDurationMs: 50,
+        });
+        expect(expiringClaim?.id).toBe(expiringRun.id);
+        expect(expiringClaim?.availableAt).not.toBeNull();
+
+        await sleepUntilAfter(expiringClaim?.availableAt);
 
         const reclaimed = await backend.claimWorkflowRun({
           workerId: secondWorker,
           leaseDurationMs: 10,
         });
-        expect(reclaimed?.id).toBe(claimed?.id);
+        expect(reclaimed?.id).toBe(expiringRun.id);
         expect(reclaimed?.attempts).toBe(2);
         expect(reclaimed?.workerId).toBe(secondWorker);
         expect(reclaimed?.startedAt?.getTime()).toBe(
-          claimed?.startedAt?.getTime(),
+          expiringClaim?.startedAt?.getTime(),
         );
 
         await teardown(backend);
@@ -1069,12 +1083,12 @@ export function testBackend(options: TestBackendOptions): void {
         const running = await createPendingWorkflowRun(backend);
         const runningClaim = await backend.claimWorkflowRun({
           workerId: "worker-running",
-          leaseDurationMs: 5,
+          leaseDurationMs: 50,
         });
         if (!runningClaim) throw new Error("expected claim");
         expect(runningClaim.id).toBe(running.id);
 
-        await sleep(10); // wait for running's lease to expire
+        await sleepUntilAfter(runningClaim.availableAt);
 
         // pending claimed first, even though running expired
         const pending = await createPendingWorkflowRun(backend);
@@ -2850,6 +2864,19 @@ async function claimAndFailNextPendingRun(b: Backend): Promise<string> {
 function deltaSeconds(date: Date | null | undefined): number {
   if (!date) return Infinity;
   return Math.abs((Date.now() - date.getTime()) / 1000);
+}
+
+/**
+ * Wait until a timestamp has passed with a small scheduler buffer.
+ * @param date - Timestamp to wait past
+ */
+async function sleepUntilAfter(date: Date | null | undefined): Promise<void> {
+  if (!date) throw new Error("Expected lease expiration timestamp");
+
+  const delayMs = date.getTime() - Date.now() + 50;
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
 }
 
 /**

@@ -1,9 +1,11 @@
 import { OpenWorkflow } from "../client/client.js";
 import type { Backend } from "../core/backend.js";
+import type { StepAttempt } from "../core/step-attempt.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   defineWorkflowSpec,
 } from "../core/workflow-definition.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import { Worker, resolveRetryPolicy } from "./worker.js";
 import { randomUUID } from "node:crypto";
@@ -173,14 +175,16 @@ describe("Worker", () => {
     const handle = await workflow.run();
 
     await worker.tick();
-    await sleep(100);
 
+    const failed = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "workflow to fail",
+    );
+    expect(failed.status).toBe("failed");
+    expect(failed.availableAt).toBeNull();
     expect(attemptCount).toBe(1);
-    const failed = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(failed?.status).toBe("failed");
-    expect(failed?.availableAt).toBeNull();
   });
 
   test("tick is a no-op when no work is available", async () => {
@@ -190,6 +194,9 @@ describe("Worker", () => {
     client.defineWorkflow({ name: "noop" }, () => null);
     const worker = client.newWorker();
     await worker.tick(); // no runs queued
+
+    const workflowRuns = await backend.listWorkflowRuns({});
+    expect(workflowRuns.data).toHaveLength(0);
   });
 
   test("handles step functions that return undefined", async () => {
@@ -254,22 +261,34 @@ describe("Worker", () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
-    const executionTimes: Record<string, number> = {};
+    const startedSteps = new Set<string>();
+    let resolveAllStepsStarted: (() => void) | null = null;
+    const allStepsStarted = new Promise<void>((resolve) => {
+      resolveAllStepsStarted = resolve;
+    });
+
+    async function waitForParallelStepStart(stepName: string): Promise<void> {
+      startedSteps.add(stepName);
+      if (startedSteps.size === 3) {
+        resolveAllStepsStarted?.();
+      }
+      await allStepsStarted;
+    }
+
     const workflow = client.defineWorkflow(
       { name: "parallel" },
       async ({ step }) => {
-        const start = Date.now();
         const [a, b, c] = await Promise.all([
-          step.run({ name: "step-a" }, () => {
-            executionTimes["step-a"] = Date.now() - start;
+          step.run({ name: "step-a" }, async () => {
+            await waitForParallelStepStart("step-a");
             return "a";
           }),
-          step.run({ name: "step-b" }, () => {
-            executionTimes["step-b"] = Date.now() - start;
+          step.run({ name: "step-b" }, async () => {
+            await waitForParallelStepStart("step-b");
             return "b";
           }),
-          step.run({ name: "step-c" }, () => {
-            executionTimes["step-c"] = Date.now() - start;
+          step.run({ name: "step-c" }, async () => {
+            await waitForParallelStepStart("step-c");
             return "c";
           }),
         ]);
@@ -284,12 +303,7 @@ describe("Worker", () => {
 
     const result = await handle.result();
     expect(result).toEqual({ a: "a", b: "b", c: "c" });
-
-    // steps should execute at roughly the same time (within 100ms)
-    const times = Object.values(executionTimes);
-    const maxTime = Math.max(...times);
-    const minTime = Math.min(...times);
-    expect(maxTime - minTime).toBeLessThan(100);
+    expect(startedSteps).toEqual(new Set(["step-a", "step-b", "step-c"]));
   });
 
   test("respects worker concurrency limit", { timeout: 15_000 }, async () => {
@@ -312,8 +326,14 @@ describe("Worker", () => {
       workflow.run(),
     ]);
 
-    await worker.tick();
-    await sleep(200);
+    const claimedCount = await worker.tick();
+    expect(claimedCount).toBe(2);
+
+    await waitForCompletedWorkflowRunCount(
+      backend,
+      handles.map((handle) => handle.workflowRun.id),
+      2,
+    );
 
     let completed = 0;
     for (const handle of handles) {
@@ -377,15 +397,19 @@ describe("Worker", () => {
 
     // first attempt will fail
     await worker.tick();
-    await sleep(100);
+    const failedAttempt = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "pending",
+      "workflow to be rescheduled after simulated crash",
+    );
     expect(attemptCount).toBe(1);
 
     // wait for backoff
-    await sleep(1100);
+    await sleepUntilAfter(failedAttempt.availableAt);
 
     // second attempt should succeed
     await worker.tick();
-    await sleep(100);
 
     const result = await handle.result();
     expect(result).toEqual({ a: "a", b: "b", attempts: 2 });
@@ -651,17 +675,22 @@ describe("Worker", () => {
 
       // first execution - runs before-sleep, then sleeps
       await worker.tick();
-      await sleep(200); // wait for processing
+      const slept = await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) =>
+          run.status === "running" &&
+          run.workerId === null &&
+          run.availableAt !== null,
+        "workflow to park on sleep",
+      );
       expect(stepCount).toBe(1);
 
       // verify workflow was postponed while remaining in running status
-      const slept = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(slept?.status).toBe("running");
-      expect(slept?.workerId).toBeNull(); // released during sleep
-      expect(slept?.availableAt).not.toBeNull();
-      if (!slept?.availableAt) throw new Error("availableAt should be set");
+      expect(slept.status).toBe("running");
+      expect(slept.workerId).toBeNull(); // released during sleep
+      expect(slept.availableAt).not.toBeNull();
+      if (!slept.availableAt) throw new Error("availableAt should be set");
       const delayMs = slept.availableAt.getTime() - Date.now();
       expect(delayMs).toBeGreaterThan(0);
       expect(delayMs).toBeLessThan(550); // should be ~500ms
@@ -674,11 +703,16 @@ describe("Worker", () => {
       expect(sleepStep?.status).toBe("running");
 
       // wait for sleep duration
-      await sleep(400);
+      await sleepUntilAfter(slept.availableAt);
 
       // second execution (after sleep)
       await worker.tick();
-      await sleep(200); // wait for processing
+      await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) => run.status === "completed",
+        "workflow to complete after sleep",
+      );
       expect(stepCount).toBe(2);
 
       // verify sleep step is now "completed"
@@ -726,15 +760,28 @@ describe("Worker", () => {
 
     // first attempt: execute step-1, then sleep (step-2 not executed)
     await worker.tick();
-    await sleep(200);
+    const parked = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) =>
+        run.status === "running" &&
+        run.workerId === null &&
+        run.availableAt !== null,
+      "workflow to park on cached sleep",
+    );
     expect(step1Count).toBe(1);
     expect(step2Count).toBe(0);
 
-    await sleep(200); // wait for sleep to complete
+    await sleepUntilAfter(parked.availableAt);
 
     // second attempt: step-1 is cached (not re-executed), sleep is cached, step-2 executes
     await worker.tick();
-    await sleep(200);
+    await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "completed",
+      "workflow to complete after cached sleep",
+    );
     expect(step1Count).toBe(1); // still 1, was cached
     expect(step2Count).toBe(1); // now 1, executed after sleep
 
@@ -796,23 +843,41 @@ describe("Worker", () => {
 
     // first execution: step-1, then sleep-1
     await worker.tick();
-    await sleep(200);
+    const firstParked = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) =>
+        run.status === "running" &&
+        run.workerId === null &&
+        run.availableAt !== null,
+      "workflow to park on first sleep",
+    );
     expect(executionCount).toBe(1);
 
     // verify first sleep is running
-    const attempts1 = await backend.listStepAttempts({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(attempts1.data.find((a) => a.stepName === "sleep-1")?.status).toBe(
-      "running",
+    const sleep1 = await waitForStepAttempt(
+      backend,
+      handle.workflowRun.id,
+      (attempt) =>
+        attempt.stepName === "sleep-1" && attempt.status === "running",
+      "first sleep attempt to be running",
     );
+    expect(sleep1.status).toBe("running");
 
     // wait for first sleep
-    await sleep(200);
+    await sleepUntilAfter(firstParked.availableAt);
 
     // second execution: sleep-1 completed, step-2, then sleep-2
     await worker.tick();
-    await sleep(200);
+    const secondParked = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) =>
+        run.status === "running" &&
+        run.workerId === null &&
+        run.availableAt !== null,
+      "workflow to park on second sleep",
+    );
     expect(executionCount).toBe(2);
 
     // verify second sleep is running
@@ -827,11 +892,16 @@ describe("Worker", () => {
     );
 
     // wait for second sleep
-    await sleep(200);
+    await sleepUntilAfter(secondParked.availableAt);
 
     // third execution: sleep-2 completed, step-3, complete
     await worker.tick();
-    await sleep(200);
+    await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "completed",
+      "workflow to complete after sequential sleeps",
+    );
     expect(executionCount).toBe(3);
 
     const result = await handle.result();
@@ -841,7 +911,7 @@ describe("Worker", () => {
     const finalAttempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
     });
-    expect(finalAttempts.data.length).toBe(5); // 3 regular steps + 2 sleeps
+    expect(finalAttempts.data).toHaveLength(5); // 3 regular steps + 2 sleeps
     expect(finalAttempts.data.every((a) => a.status === "completed")).toBe(
       true,
     );
@@ -1726,45 +1796,56 @@ describe("Worker", () => {
 
     const beforeFirst = Date.now();
     await worker.tick();
-    await sleep(100);
-    let run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("pending");
-    if (!run?.availableAt) throw new Error("Expected availableAt");
-    const firstDelayMs = run.availableAt.getTime() - beforeFirst;
+    let run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) => workflowRun.status === "pending",
+      "first step failure to reschedule",
+    );
+    expect(run.status).toBe("pending");
+    if (!run.availableAt) throw new Error("Expected availableAt");
+    const firstDelayMs = retryDelayMs(run, beforeFirst);
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
     expect(firstDelayMs).toBeLessThan(350);
 
-    await sleep(180);
+    await sleepUntilAfter(run.availableAt);
+    let previousAvailableAtMs = run.availableAt.getTime();
     const beforeSecond = Date.now();
     await worker.tick();
-    await sleep(100);
-    run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("pending");
-    if (!run?.availableAt) throw new Error("Expected availableAt");
-    const secondDelayMs = run.availableAt.getTime() - beforeSecond;
+    run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) =>
+        workflowRun.status === "pending" &&
+        workflowRun.availableAt?.getTime() !== previousAvailableAtMs,
+      "second step-a failure to reschedule",
+    );
+    expect(run.status).toBe("pending");
+    if (!run.availableAt) throw new Error("Expected availableAt");
+    const secondDelayMs = retryDelayMs(run, beforeSecond);
     expect(secondDelayMs).toBeGreaterThanOrEqual(180);
     expect(secondDelayMs).toBeLessThan(350);
 
-    await sleep(260);
+    await sleepUntilAfter(run.availableAt);
+    previousAvailableAtMs = run.availableAt.getTime();
     const beforeThird = Date.now();
     await worker.tick();
-    await sleep(100);
-    run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("pending");
-    if (!run?.availableAt) throw new Error("Expected availableAt");
-    const thirdDelayMs = run.availableAt.getTime() - beforeThird;
+    run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) =>
+        workflowRun.status === "pending" &&
+        workflowRun.availableAt?.getTime() !== previousAvailableAtMs,
+      "first step-b failure to reschedule",
+    );
+    expect(run.status).toBe("pending");
+    if (!run.availableAt) throw new Error("Expected availableAt");
+    const thirdDelayMs = retryDelayMs(run, beforeThird);
     expect(thirdDelayMs).toBeGreaterThanOrEqual(80);
     expect(thirdDelayMs).toBeLessThan(350);
 
-    await sleep(180);
+    await sleepUntilAfter(run.availableAt);
     await worker.tick();
-    await sleep(100);
 
     const result = await handle.result();
     expect(result).toEqual({ a: "a", b: "b" });
@@ -1812,52 +1893,63 @@ describe("Worker", () => {
       leaseDurationMs: 30,
     });
     expect(staleClaim?.id).toBe(handle.workflowRun.id);
-    await sleep(60); // wait for lease expiration
+    await sleepUntilAfter(staleClaim?.availableAt);
 
     const worker = client.newWorker();
 
     // first worker tick: enter sleep
     await worker.tick();
-    await sleep(100);
-    let run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("running");
-    expect(run?.workerId).toBeNull();
+    let run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) =>
+        workflowRun.status === "running" &&
+        workflowRun.workerId === null &&
+        workflowRun.availableAt !== null,
+      "workflow to park before retry budget test",
+    );
+    expect(run.status).toBe("running");
+    expect(run.workerId).toBeNull();
 
-    await sleep(80); // wait for sleep step to elapse
+    await sleepUntilAfter(run.availableAt);
 
     // first failed step attempt should still use attempt 1 backoff (100ms)
     const beforeFirstFail = Date.now();
     await worker.tick();
-    await sleep(200);
-    run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("pending");
-    if (!run?.availableAt) throw new Error("Expected availableAt");
-    const firstDelayMs = run.availableAt.getTime() - beforeFirstFail;
+    run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) => workflowRun.status === "pending",
+      "first flaky step failure to reschedule",
+    );
+    expect(run.status).toBe("pending");
+    if (!run.availableAt) throw new Error("Expected availableAt");
+    const firstDelayMs = retryDelayMs(run, beforeFirstFail);
     expect(firstDelayMs).toBeGreaterThanOrEqual(80);
     expect(firstDelayMs).toBeLessThan(350);
 
-    await sleep(220);
+    await sleepUntilAfter(run.availableAt);
+    const previousAvailableAtMs = run.availableAt.getTime();
 
     // second failed step attempt should use attempt 2 backoff (200ms)
     const beforeSecondFail = Date.now();
     await worker.tick();
-    await sleep(100);
-    run = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(run?.status).toBe("pending");
-    if (!run?.availableAt) throw new Error("Expected availableAt");
-    const secondDelayMs = run.availableAt.getTime() - beforeSecondFail;
+    run = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (workflowRun) =>
+        workflowRun.status === "pending" &&
+        workflowRun.availableAt?.getTime() !== previousAvailableAtMs,
+      "second flaky step failure to reschedule",
+    );
+    expect(run.status).toBe("pending");
+    if (!run.availableAt) throw new Error("Expected availableAt");
+    const secondDelayMs = retryDelayMs(run, beforeSecondFail);
     expect(secondDelayMs).toBeGreaterThanOrEqual(180);
-    expect(secondDelayMs).toBeLessThan(360);
+    expect(secondDelayMs).toBeLessThan(350);
 
-    await sleep(280);
+    await sleepUntilAfter(run.availableAt);
     await worker.tick();
-    await sleep(100);
 
     const result = await handle.result();
     expect(result).toBe("ok");
@@ -1907,6 +1999,99 @@ describe("resolveRetryPolicy", () => {
     expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
   });
 });
+
+async function waitForWorkflowRun(
+  backend: Backend,
+  workflowRunId: string,
+  predicate: (run: WorkflowRun) => boolean,
+  description: string,
+): Promise<WorkflowRun> {
+  return await waitFor(
+    async () => await backend.getWorkflowRun({ workflowRunId }),
+    (run): run is WorkflowRun => run !== null && predicate(run),
+    description,
+  );
+}
+
+async function waitForStepAttempt(
+  backend: Backend,
+  workflowRunId: string,
+  predicate: (attempt: StepAttempt) => boolean,
+  description: string,
+): Promise<StepAttempt> {
+  return await waitFor(
+    async () => {
+      const attempts = await backend.listStepAttempts({
+        workflowRunId,
+        limit: 100,
+      });
+      return attempts.data.find((attempt) => predicate(attempt)) ?? null;
+    },
+    (attempt): attempt is StepAttempt => attempt !== null,
+    description,
+  );
+}
+
+async function waitForCompletedWorkflowRunCount(
+  backend: Backend,
+  workflowRunIds: readonly string[],
+  expectedCompleted: number,
+): Promise<void> {
+  await waitFor(
+    async () => {
+      let completed = 0;
+      for (const workflowRunId of workflowRunIds) {
+        const run = await backend.getWorkflowRun({ workflowRunId });
+        if (run?.status === "completed") completed++;
+      }
+      return completed;
+    },
+    (completed) => completed === expectedCompleted,
+    `${String(expectedCompleted)} completed workflow runs`,
+  );
+}
+
+async function waitFor<Value, Narrowed extends Value>(
+  read: () => Promise<Value>,
+  predicate: (value: Value) => value is Narrowed,
+  description: string,
+): Promise<Narrowed>;
+async function waitFor<Value>(
+  read: () => Promise<Value>,
+  predicate: (value: Value) => boolean,
+  description: string,
+): Promise<Value>;
+async function waitFor<Value>(
+  read: () => Promise<Value>,
+  predicate: (value: Value) => boolean,
+  description: string,
+): Promise<Value> {
+  const startedAt = Date.now();
+  let latest: Value;
+
+  do {
+    latest = await read();
+    if (predicate(latest)) return latest;
+    await sleep(10);
+  } while (Date.now() - startedAt < 3000);
+
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
+async function sleepUntilAfter(date: Date | null | undefined): Promise<void> {
+  if (!date) throw new Error("Expected availableAt timestamp");
+
+  const delayMs = date.getTime() - Date.now() + 25;
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
+}
+
+function retryDelayMs(run: WorkflowRun, fallbackStartMs: number): number {
+  if (!run.availableAt) throw new Error("Expected availableAt timestamp");
+
+  return run.availableAt.getTime() - fallbackStartMs;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
