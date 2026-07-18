@@ -72,13 +72,7 @@
       },
       {
         "group": "Resources",
-        "pages": [
-          "docs/migration-v6",
-          "docs/roadmap",
-          "docs/llms",
-          "npm",
-          "github"
-        ]
+        "pages": ["docs/roadmap", "docs/llms", "npm", "github"]
       }
     ]
   },
