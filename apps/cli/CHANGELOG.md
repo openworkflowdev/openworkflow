@@ -1,5 +1,10 @@
 # @openworkflow/cli
 
+## 0.4.5
+
+- Fix OpenWorkflow config loading under Bun by disabling native Jiti import
+  attempts.
+
 ## 0.4.4
 
 - Add support for `openworkflow` v0.9.0

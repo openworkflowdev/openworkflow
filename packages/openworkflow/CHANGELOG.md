@@ -1,5 +1,12 @@
 # openworkflow
 
+## 0.9.1
+
+- Add optional `status` and `workflowName` filters to `listWorkflowRuns` (#518)
+  (thanks @cfelegy!)
+- Use transaction-scoped PostgreSQL advisory locks for idempotent workflow
+  creation (#609)
+
 ## 0.9.0
 
 - Add name-addressed workflow signals: `step.waitForSignal()`,
