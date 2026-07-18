@@ -82,12 +82,12 @@
       "destination": "/"
     },
     {
-      "source": "/docs/core-concepts",
-      "destination": "/docs/overview"
-    },
-    {
       "source": "/docs/advanced-patterns",
       "destination": "/docs/parallel-steps"
+    },
+    {
+      "source": "/docs/core-concepts",
+      "destination": "/docs/overview"
     }
   ],
   "integrations": {

@@ -60,7 +60,7 @@ started.
 
 - [Documentation](https://openworkflow.dev/docs)
 - [Quick Start Guide](https://openworkflow.dev/docs/quickstart)
-- [Core Concepts](https://openworkflow.dev/docs/overview)
+- [Core Concepts](https://openworkflow.dev/docs/core-concepts)
 - [Advanced Patterns](https://openworkflow.dev/docs/advanced-patterns)
 - [Production Checklist](https://openworkflow.dev/docs/production)
 
