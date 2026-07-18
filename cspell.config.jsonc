@@ -33,6 +33,7 @@
     "mydb",
     "sslmode",
     "timestamptz",
+    "xact",
 
     // project vocabulary
     "checkin",

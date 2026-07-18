@@ -147,19 +147,18 @@ export class BackendPostgres implements Backend {
       idempotencyKey,
     });
 
-    const pgReserved = (await this.pg.reserve()) as unknown as Postgres & {
-      release: () => void;
-    };
+    return await this.pg.begin(
+      "isolation level read committed",
+      async (sql): Promise<WorkflowRun> => {
+        const tx = sql as unknown as Postgres;
 
-    try {
-      await pgReserved.unsafe(
-        "SELECT pg_advisory_lock(hashtextextended($1, 0::bigint))",
-        [lockScope],
-      );
+        await tx.unsafe(
+          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+          [lockScope],
+        );
 
-      try {
         const existing = await this.getWorkflowRunByIdempotencyKey(
-          pgReserved,
+          tx,
           workflowName,
           idempotencyKey,
           new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
@@ -168,20 +167,9 @@ export class BackendPostgres implements Backend {
           return existing;
         }
 
-        return await this.insertWorkflowRun(pgReserved, params);
-      } finally {
-        await pgReserved
-          .unsafe(
-            "SELECT pg_advisory_unlock(hashtextextended($1, 0::bigint))",
-            [lockScope],
-          )
-          .catch(() => {
-            // best effort unlock; session close also releases session advisory locks
-          });
-      }
-    } finally {
-      pgReserved.release();
-    }
+        return await this.insertWorkflowRun(tx, params);
+      },
+    );
   }
 
   private async insertWorkflowRun(

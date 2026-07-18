@@ -120,6 +120,45 @@ describe("BackendPostgres.fromPool", () => {
   });
 });
 
+describe("BackendPostgres idempotency advisory locks", () => {
+  test("uses a transaction-scoped advisory lock", async () => {
+    const queries: string[] = [];
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL, {
+      debug: (_connection, query) => {
+        queries.push(query);
+      },
+    });
+    const backend = BackendPostgres.fromPool(pg, {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      await backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: randomUUID(),
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+
+      expect(queries).toContain("begin isolation level read committed");
+      expect(
+        queries.some((query) => query.includes("pg_advisory_xact_lock")),
+      ).toBe(true);
+      expect(
+        queries.some((query) => query.includes("pg_advisory_unlock")),
+      ).toBe(false);
+    } finally {
+      await pg.end();
+    }
+  });
+});
+
 describe("BackendPostgres schema option", () => {
   test("stores workflow data in the configured schema", async () => {
     const schema = `test_schema_${randomUUID().replaceAll("-", "_")}`;
