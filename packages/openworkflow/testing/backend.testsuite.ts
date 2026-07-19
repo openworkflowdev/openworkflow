@@ -1694,6 +1694,54 @@ export function testBackend(options: TestBackendOptions): void {
         expected.updatedAt = created.updatedAt;
         expect(created).toEqual(expected);
       });
+
+      test("fails when the worker does not own the workflow run", async () => {
+        const workflowRun = await createClaimedWorkflowRun(backend);
+
+        await expect(
+          backend.createStepAttempt({
+            workflowRunId: workflowRun.id,
+            workerId: randomUUID(),
+            stepName: randomUUID(),
+            kind: "function",
+            config: {},
+            context: null,
+          }),
+        ).rejects.toThrow("Failed to create step attempt");
+
+        const attempts = await backend.listStepAttempts({
+          workflowRunId: workflowRun.id,
+        });
+        expect(attempts.data).toHaveLength(0);
+      });
+
+      test("fails after the workflow run has been parked", async () => {
+        const workflowRun = await createClaimedWorkflowRun(backend);
+        const workerId = workflowRun.workerId;
+        if (!workerId) throw new Error("Expected claimed workflow worker ID");
+
+        await backend.sleepWorkflowRun({
+          workflowRunId: workflowRun.id,
+          workerId,
+          availableAt: newDateInOneYear(),
+        });
+
+        await expect(
+          backend.createStepAttempt({
+            workflowRunId: workflowRun.id,
+            workerId,
+            stepName: randomUUID(),
+            kind: "function",
+            config: {},
+            context: null,
+          }),
+        ).rejects.toThrow("Failed to create step attempt");
+
+        const attempts = await backend.listStepAttempts({
+          workflowRunId: workflowRun.id,
+        });
+        expect(attempts.data).toHaveLength(0);
+      });
     });
 
     describe("getStepAttempt()", () => {
@@ -1992,6 +2040,14 @@ export function testBackend(options: TestBackendOptions): void {
         expect(completed.error).toBeNull();
         expect(completed.finishedAt).not.toBeNull();
 
+        const completedAgain = await backend.completeStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: created.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          output,
+        });
+        expect(completedAgain).toEqual(completed);
+
         const fetched = await backend.getStepAttempt({
           stepAttemptId: created.id,
         });
@@ -2083,6 +2139,14 @@ export function testBackend(options: TestBackendOptions): void {
         expect(failed.error).toEqual(error);
         expect(failed.output).toBeNull();
         expect(failed.finishedAt).not.toBeNull();
+
+        const failedAgain = await backend.failStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: created.id,
+          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          error,
+        });
+        expect(failedAgain).toEqual(failed);
 
         const fetched = await backend.getStepAttempt({
           stepAttemptId: created.id,

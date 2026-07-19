@@ -759,8 +759,15 @@ export class BackendPostgres implements Backend {
     params: CreateStepAttemptParams,
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
+    const workflowRunsTable = this.workflowRunsTable();
 
     const [stepAttempt] = await this.pg<StepAttempt[]>`
+      WITH owned_workflow_run AS (
+        SELECT 1
+        FROM ${workflowRunsTable}
+        WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
+        FOR NO KEY UPDATE
+      )
       INSERT INTO ${stepAttemptsTable} (
         "namespace_id",
         "id",
@@ -774,7 +781,7 @@ export class BackendPostgres implements Backend {
         "created_at",
         "updated_at"
       )
-      VALUES (
+      SELECT
         ${this.namespaceId},
         gen_random_uuid(),
         ${params.workflowRunId},
@@ -786,7 +793,7 @@ export class BackendPostgres implements Backend {
         NOW(),
         date_trunc('milliseconds', NOW()),
         NOW()
-      )
+      FROM owned_workflow_run
       RETURNING *
     `;
 
@@ -808,7 +815,8 @@ export class BackendPostgres implements Backend {
         "child_workflow_run_id" = ${params.childWorkflowRunId},
         "updated_at" = NOW()
       FROM ${workflowRunsTable} wr
-      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
+      WHERE sa."status" = 'running'
+      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 
@@ -895,14 +903,13 @@ export class BackendPostgres implements Backend {
   }
 
   /**
-   * Match a running step attempt currently owned by the given worker, joined
-   * against its parent workflow run (also running and held by the same
-   * worker). Shared by the step-attempt mutation queries which all fence on
-   * this same condition.
+   * Match a step attempt whose running parent workflow is currently owned by
+   * the given worker. Shared by step-attempt mutations, which add their own
+   * allowed step statuses.
    * @param params - Identifiers for the step attempt and owning worker
    * @returns Combined WHERE fragment using `sa`/`wr` aliases
    */
-  private runningStepAttemptOwnedByWorkerWhere(
+  private stepAttemptOwnedByWorkerWhere(
     params: Readonly<{
       workflowRunId: string;
       stepAttemptId: string;
@@ -913,7 +920,6 @@ export class BackendPostgres implements Backend {
       sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
-      AND sa."status" = 'running'
       AND wr."namespace_id" = sa."namespace_id"
       AND wr."id" = sa."workflow_run_id"
       AND wr."status" = 'running'
@@ -954,12 +960,19 @@ export class BackendPostgres implements Backend {
       UPDATE ${stepAttemptsTable} sa
       SET
         "status" = 'completed',
-        "output" = ${this.pg.json(params.output)},
+        "output" = CASE
+          WHEN sa."status" = 'running' THEN ${this.pg.json(params.output)}
+          ELSE sa."output"
+        END,
         "error" = NULL,
-        "finished_at" = NOW(),
-        "updated_at" = NOW()
+        "finished_at" = COALESCE(sa."finished_at", NOW()),
+        "updated_at" = CASE
+          WHEN sa."status" = 'running' THEN NOW()
+          ELSE sa."updated_at"
+        END
       FROM ${workflowRunsTable} wr
-      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
+      WHERE sa."status" IN ('running', 'completed')
+      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 
@@ -977,11 +990,18 @@ export class BackendPostgres implements Backend {
       SET
         "status" = 'failed',
         "output" = NULL,
-        "error" = ${this.pg.json(params.error)},
-        "finished_at" = NOW(),
-        "updated_at" = NOW()
+        "error" = CASE
+          WHEN sa."status" = 'running' THEN ${this.pg.json(params.error)}
+          ELSE sa."error"
+        END,
+        "finished_at" = COALESCE(sa."finished_at", NOW()),
+        "updated_at" = CASE
+          WHEN sa."status" = 'running' THEN NOW()
+          ELSE sa."updated_at"
+        END
       FROM ${workflowRunsTable} wr
-      WHERE ${this.runningStepAttemptOwnedByWorkerWhere(params)}
+      WHERE sa."status" IN ('running', 'failed')
+      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
       RETURNING sa.*
     `;
 

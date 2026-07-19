@@ -70,18 +70,17 @@ const RUNNING_WORKFLOW_RUN_OWNED_WHERE = `
       AND "worker_id" = ?`;
 
 /**
- * WHERE fragment matching a running step attempt whose parent workflow run is
- * also running and held by the given worker. Consumes 6 positional
+ * WHERE fragment matching a step attempt whose parent workflow run is running
+ * and held by the given worker. Consumes 6 positional
  * placeholders: step attempt's namespace, workflow_run_id, id, then the
  * parent workflow run's namespace, id, worker_id. Pair with
  * {@link BackendSqlite#runningStepAttemptOwnedParams} to keep the
  * placeholders aligned.
  */
-const RUNNING_STEP_ATTEMPT_OWNED_WHERE = `
+const STEP_ATTEMPT_OWNED_WHERE = `
       "namespace_id" = ?
       AND "workflow_run_id" = ?
       AND "id" = ?
-      AND "status" = 'running'
       AND EXISTS (
         SELECT 1
         FROM "workflow_runs" wr
@@ -756,7 +755,7 @@ export class BackendSqlite implements Backend {
   }
 
   /**
-   * Return positional placeholders for {@link RUNNING_STEP_ATTEMPT_OWNED_WHERE}
+   * Return positional placeholders for {@link STEP_ATTEMPT_OWNED_WHERE}
    * in the order the fragment expects.
    * @param params - Step attempt identity params
    * @returns Tuple of placeholder values
@@ -954,7 +953,9 @@ export class BackendSqlite implements Backend {
         "created_at",
         "updated_at"
       )
-      VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?
+      FROM "workflow_runs"
+      WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -969,6 +970,7 @@ export class BackendSqlite implements Backend {
       currentTime,
       currentTime,
       currentTime,
+      ...this.runningWorkflowRunOwnedParams(params),
     ) as StepAttemptRow | undefined;
     requireRow(row, "create step attempt");
 
@@ -986,7 +988,8 @@ export class BackendSqlite implements Backend {
         "child_workflow_run_namespace_id" = ?,
         "child_workflow_run_id" = ?,
         "updated_at" = ?
-      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
+      WHERE "status" = 'running'
+      AND ${STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -1024,11 +1027,18 @@ export class BackendSqlite implements Backend {
       UPDATE "step_attempts"
       SET
         "status" = 'completed',
-        "output" = ?,
+        "output" = CASE
+          WHEN "status" = 'running' THEN ?
+          ELSE "output"
+        END,
         "error" = NULL,
-        "finished_at" = ?,
-        "updated_at" = ?
-      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
+        "finished_at" = COALESCE("finished_at", ?),
+        "updated_at" = CASE
+          WHEN "status" = 'running' THEN ?
+          ELSE "updated_at"
+        END
+      WHERE "status" IN ('running', 'completed')
+      AND ${STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
@@ -1051,10 +1061,17 @@ export class BackendSqlite implements Backend {
       SET
         "status" = 'failed',
         "output" = NULL,
-        "error" = ?,
-        "finished_at" = ?,
-        "updated_at" = ?
-      WHERE ${RUNNING_STEP_ATTEMPT_OWNED_WHERE}
+        "error" = CASE
+          WHEN "status" = 'running' THEN ?
+          ELSE "error"
+        END,
+        "finished_at" = COALESCE("finished_at", ?),
+        "updated_at" = CASE
+          WHEN "status" = 'running' THEN ?
+          ELSE "updated_at"
+        END
+      WHERE "status" IN ('running', 'failed')
+      AND ${STEP_ATTEMPT_OWNED_WHERE}
       RETURNING *
     `);
 
