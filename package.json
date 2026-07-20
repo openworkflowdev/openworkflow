@@ -54,7 +54,7 @@
     "eslint-plugin-boundaries": "^7.0.2",
     "eslint-plugin-functional": "^10.0.0",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-jsdoc": "^63.1.0",
+    "eslint-plugin-jsdoc": "^63.2.0",
     "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-unicorn": "^65.0.1",
     "husky": "^9.1.7",
