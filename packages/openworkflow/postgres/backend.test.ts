@@ -10,6 +10,74 @@ import {
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 
+interface StepMutationContext {
+  backend: BackendPostgres;
+  workflowRunId: string;
+  stepAttemptId: string;
+  workerId: string;
+  childWorkflowRunNamespaceId: string;
+  childWorkflowRunId: string;
+}
+
+interface StepMutationCase {
+  name: string;
+  mutate: (context: StepMutationContext) => Promise<unknown>;
+}
+
+const STEP_MUTATION_CASES: StepMutationCase[] = [
+  {
+    name: "child-link update",
+    mutate: async (context) =>
+      await context.backend.setStepAttemptChildWorkflowRun({
+        workflowRunId: context.workflowRunId,
+        stepAttemptId: context.stepAttemptId,
+        workerId: context.workerId,
+        childWorkflowRunNamespaceId: context.childWorkflowRunNamespaceId,
+        childWorkflowRunId: context.childWorkflowRunId,
+      }),
+  },
+  {
+    name: "completion",
+    mutate: async (context) =>
+      await context.backend.completeStepAttempt({
+        workflowRunId: context.workflowRunId,
+        stepAttemptId: context.stepAttemptId,
+        workerId: context.workerId,
+        output: { stale: true },
+      }),
+  },
+  {
+    name: "failure",
+    mutate: async (context) =>
+      await context.backend.failStepAttempt({
+        workflowRunId: context.workflowRunId,
+        stepAttemptId: context.stepAttemptId,
+        workerId: context.workerId,
+        error: { message: "stale failure" },
+      }),
+  },
+];
+
+async function waitForPostgresBackendLock(
+  pg: Postgres,
+  backendPid: number,
+): Promise<void> {
+  const timeoutAt = Date.now() + 2000;
+
+  while (Date.now() < timeoutAt) {
+    const [activity] = await pg<{ waitEventType: string | null }[]>`
+      SELECT "wait_event_type" AS "waitEventType"
+      FROM "pg_stat_activity"
+      WHERE "pid" = ${backendPid}
+    `;
+    if (activity?.waitEventType === "Lock") return;
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error("Timed out waiting for Postgres backend lock");
+}
+
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
   expect(testBackend).toBeTypeOf("function");
 });
@@ -243,6 +311,124 @@ describe("BackendPostgres idempotency advisory locks", () => {
     expect(reserved.unsafe).not.toHaveBeenCalledWith("ROLLBACK");
     expect(reserved.release).not.toHaveBeenCalled();
   });
+});
+
+describe("BackendPostgres step-attempt lease fencing", () => {
+  test.each(STEP_MUTATION_CASES)(
+    "$name waits for lease transfers and rejects stale workers",
+    async ({ mutate }) => {
+      const namespaceId = randomUUID();
+      const originalWorkerId = randomUUID();
+      const nextWorkerId = randomUUID();
+      const backendPool = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      const leaseTransferPool = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      const observerPool = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      const backend = BackendPostgres.fromPool(backendPool, { namespaceId });
+      const leaseTransfer = await leaseTransferPool.reserve();
+      let leaseTransferOpen = false;
+      let mutation: Promise<unknown> | undefined;
+
+      try {
+        const workflowRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        const claimed = await backend.claimWorkflowRun({
+          workerId: originalWorkerId,
+          leaseDurationMs: 60_000,
+        });
+        expect(claimed?.id).toBe(workflowRun.id);
+
+        const stepAttempt = await backend.createStepAttempt({
+          workflowRunId: workflowRun.id,
+          workerId: originalWorkerId,
+          stepName: randomUUID(),
+          kind: "workflow",
+          config: {},
+          context: null,
+        });
+        const childWorkflowRun = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        const [backendConnection] = await backendPool<{ pid: number }[]>`
+          SELECT pg_backend_pid() AS "pid"
+        `;
+        if (!backendConnection) {
+          throw new Error("Expected Postgres backend connection pid");
+        }
+
+        const workflowRunsTable = leaseTransfer`${leaseTransfer(DEFAULT_SCHEMA)}.${leaseTransfer("workflow_runs")}`;
+        await leaseTransfer.unsafe("BEGIN");
+        leaseTransferOpen = true;
+        const transferred = await leaseTransfer`
+          UPDATE ${workflowRunsTable}
+          SET
+            "worker_id" = ${nextWorkerId},
+            "available_at" = NOW() + INTERVAL '1 minute',
+            "updated_at" = NOW()
+          WHERE "namespace_id" = ${namespaceId}
+            AND "id" = ${workflowRun.id}
+          RETURNING "id"
+        `;
+        expect(transferred).toHaveLength(1);
+
+        const mutationPromise = mutate({
+          backend,
+          workflowRunId: workflowRun.id,
+          stepAttemptId: stepAttempt.id,
+          workerId: originalWorkerId,
+          childWorkflowRunNamespaceId: childWorkflowRun.namespaceId,
+          childWorkflowRunId: childWorkflowRun.id,
+        });
+        mutation = mutationPromise;
+
+        await waitForPostgresBackendLock(observerPool, backendConnection.pid);
+        await leaseTransfer.unsafe("COMMIT");
+        leaseTransferOpen = false;
+
+        await expect(mutationPromise).rejects.toThrow();
+
+        const persisted = await backend.getStepAttempt({
+          stepAttemptId: stepAttempt.id,
+        });
+        expect(persisted).toMatchObject({
+          status: "running",
+          output: null,
+          error: null,
+          childWorkflowRunNamespaceId: null,
+          childWorkflowRunId: null,
+        });
+      } finally {
+        if (leaseTransferOpen) {
+          await leaseTransfer.unsafe("ROLLBACK");
+        }
+        await mutation?.catch(() => null);
+        leaseTransfer.release();
+        await Promise.all([
+          backendPool.end(),
+          leaseTransferPool.end(),
+          observerPool.end(),
+        ]);
+      }
+    },
+  );
 });
 
 describe("BackendPostgres schema option", () => {

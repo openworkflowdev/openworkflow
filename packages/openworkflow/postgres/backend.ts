@@ -805,14 +805,10 @@ export class BackendPostgres implements Backend {
     params: CreateStepAttemptParams,
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
-    const workflowRunsTable = this.workflowRunsTable();
 
     const [stepAttempt] = await this.pg<StepAttempt[]>`
       WITH owned_workflow_run AS (
-        SELECT 1
-        FROM ${workflowRunsTable}
-        WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
-        FOR NO KEY UPDATE
+        ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}
       )
       INSERT INTO ${stepAttemptsTable} (
         "namespace_id",
@@ -852,17 +848,19 @@ export class BackendPostgres implements Backend {
     params: SetStepAttemptChildWorkflowRunParams,
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
-    const workflowRunsTable = this.workflowRunsTable();
 
     const [updated] = await this.pg<StepAttempt[]>`
+      WITH owned_workflow_run AS (
+        ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}
+      )
       UPDATE ${stepAttemptsTable} sa
       SET
         "child_workflow_run_namespace_id" = ${params.childWorkflowRunNamespaceId},
         "child_workflow_run_id" = ${params.childWorkflowRunId},
         "updated_at" = NOW()
-      FROM ${workflowRunsTable} wr
+      FROM owned_workflow_run
       WHERE sa."status" = 'running'
-      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
+      AND ${this.stepAttemptByIdWhere(params)}
       RETURNING sa.*
     `;
 
@@ -949,27 +947,41 @@ export class BackendPostgres implements Backend {
   }
 
   /**
-   * Match a step attempt whose running parent workflow is currently owned by
-   * the given worker. Shared by step-attempt mutations, which add their own
-   * allowed step statuses.
-   * @param params - Identifiers for the step attempt and owning worker
-   * @returns Combined WHERE fragment using `sa`/`wr` aliases
+   * Select and lock a running workflow run currently owned by the given
+   * worker. Step-attempt mutations use this before touching their target row so
+   * lease transfers serialize with all durable step writes.
+   * @param params - Identifiers for the workflow run and owning worker
+   * @returns Locking SELECT fragment for an owned workflow run
    */
-  private stepAttemptOwnedByWorkerWhere(
+  private runningWorkflowRunOwnedByWorkerForUpdate(
+    params: Readonly<{ workflowRunId: string; workerId: string }>,
+  ): PostgresFragment {
+    const workflowRunsTable = this.workflowRunsTable();
+
+    return this.pg`
+      SELECT 1
+      FROM ${workflowRunsTable}
+      WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
+      FOR NO KEY UPDATE
+    `;
+  }
+
+  /**
+   * Match a step attempt by namespace, workflow run, and attempt id. The
+   * caller is responsible for locking and validating the workflow lease.
+   * @param params - Identifiers for the step attempt
+   * @returns Combined WHERE fragment using the `sa` alias
+   */
+  private stepAttemptByIdWhere(
     params: Readonly<{
       workflowRunId: string;
       stepAttemptId: string;
-      workerId: string;
     }>,
   ): PostgresFragment {
     return this.pg`
       sa."namespace_id" = ${this.namespaceId}
       AND sa."workflow_run_id" = ${params.workflowRunId}
       AND sa."id" = ${params.stepAttemptId}
-      AND wr."namespace_id" = sa."namespace_id"
-      AND wr."id" = sa."workflow_run_id"
-      AND wr."status" = 'running'
-      AND wr."worker_id" = ${params.workerId}
     `;
   }
 
@@ -1000,9 +1012,11 @@ export class BackendPostgres implements Backend {
     params: CompleteStepAttemptParams,
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
-    const workflowRunsTable = this.workflowRunsTable();
 
     const [updated] = await this.pg<StepAttempt[]>`
+      WITH owned_workflow_run AS (
+        ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}
+      )
       UPDATE ${stepAttemptsTable} sa
       SET
         "status" = 'completed',
@@ -1016,9 +1030,9 @@ export class BackendPostgres implements Backend {
           WHEN sa."status" = 'running' THEN NOW()
           ELSE sa."updated_at"
         END
-      FROM ${workflowRunsTable} wr
+      FROM owned_workflow_run
       WHERE sa."status" IN ('running', 'completed')
-      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
+      AND ${this.stepAttemptByIdWhere(params)}
       RETURNING sa.*
     `;
 
@@ -1029,9 +1043,11 @@ export class BackendPostgres implements Backend {
 
   async failStepAttempt(params: FailStepAttemptParams): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
-    const workflowRunsTable = this.workflowRunsTable();
 
     const [updated] = await this.pg<StepAttempt[]>`
+      WITH owned_workflow_run AS (
+        ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}
+      )
       UPDATE ${stepAttemptsTable} sa
       SET
         "status" = 'failed',
@@ -1045,9 +1061,9 @@ export class BackendPostgres implements Backend {
           WHEN sa."status" = 'running' THEN NOW()
           ELSE sa."updated_at"
         END
-      FROM ${workflowRunsTable} wr
+      FROM owned_workflow_run
       WHERE sa."status" IN ('running', 'failed')
-      AND ${this.stepAttemptOwnedByWorkerWhere(params)}
+      AND ${this.stepAttemptByIdWhere(params)}
       RETURNING sa.*
     `;
 
