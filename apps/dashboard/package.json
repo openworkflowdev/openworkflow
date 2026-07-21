@@ -32,7 +32,7 @@
     "@tanstack/router-plugin": "^1.157.18",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "monaco-editor": "^0.55.1",
+    "monaco-editor": "^0.56.0",
     "nitro": "^3.0.260311-beta",
     "openworkflow": "*",
     "prom-client": "^15.1.3",
