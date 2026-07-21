@@ -36,3 +36,4 @@ updates:
       vitest:
         patterns:
           - "*vitest*"
+    open-pull-requests-limit: 20
