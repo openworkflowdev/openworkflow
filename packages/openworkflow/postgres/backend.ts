@@ -133,6 +133,58 @@ export class BackendPostgres implements Backend {
     await this.pg.end();
   }
 
+  /**
+   * Run a callback in a transaction on a connection reserved before BEGIN.
+   *
+   * postgres.js normally reserves a connection as part of `sql.begin()`, but
+   * when the pool is saturated it can dispatch queued work on the same
+   * connection before the BEGIN reservation takes effect. That can run
+   * unrelated statements inside the transaction or dispatch multiple BEGINs
+   * on one connection. Reserving first establishes exclusive ownership before
+   * BEGIN is sent.
+   *
+   * The corresponding postgres.js defect is tracked upstream:
+   * https://github.com/porsager/postgres/issues/823
+   *
+   * Closed connections are not released here because postgres.js has already
+   * removed them from the pool; releasing the stale handle would put a dead
+   * connection back into circulation.
+   * @param callback - Work to execute in the reserved transaction
+   * @returns Callback result after the transaction commits
+   */
+  private async withTransaction<Result>(
+    callback: (transaction: Postgres) => Promise<Result>,
+  ): Promise<Result> {
+    const reserved = await this.pg.reserve();
+    const transaction = reserved as unknown as Postgres;
+    let connectionClosed = false;
+
+    try {
+      await reserved.unsafe("BEGIN ISOLATION LEVEL READ COMMITTED");
+      const result = await callback(transaction);
+      await reserved.unsafe("COMMIT");
+      return result;
+    } catch (error) {
+      connectionClosed =
+        error instanceof Error &&
+        ("errno" in error ||
+          ("severity" in error &&
+            (error.severity === "FATAL" || error.severity === "PANIC")));
+      if (!connectionClosed) {
+        try {
+          await reserved.unsafe("ROLLBACK");
+        } catch {
+          connectionClosed = true;
+        }
+      }
+      throw error;
+    } finally {
+      if (!connectionClosed) {
+        reserved.release();
+      }
+    }
+  }
+
   async createWorkflowRun(
     params: CreateWorkflowRunParams,
   ): Promise<WorkflowRun> {
@@ -147,29 +199,24 @@ export class BackendPostgres implements Backend {
       idempotencyKey,
     });
 
-    return await this.pg.begin(
-      "isolation level read committed",
-      async (sql): Promise<WorkflowRun> => {
-        const tx = sql as unknown as Postgres;
+    return await this.withTransaction(async (tx) => {
+      await tx.unsafe(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+        [lockScope],
+      );
 
-        await tx.unsafe(
-          "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
-          [lockScope],
-        );
+      const existing = await this.getWorkflowRunByIdempotencyKey(
+        tx,
+        workflowName,
+        idempotencyKey,
+        new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
+      );
+      if (existing) {
+        return existing;
+      }
 
-        const existing = await this.getWorkflowRunByIdempotencyKey(
-          tx,
-          workflowName,
-          idempotencyKey,
-          new Date(Date.now() - DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS),
-        );
-        if (existing) {
-          return existing;
-        }
-
-        return await this.insertWorkflowRun(tx, params);
-      },
-    );
+      return await this.insertWorkflowRun(tx, params);
+    });
   }
 
   private async insertWorkflowRun(
@@ -265,8 +312,7 @@ export class BackendPostgres implements Backend {
   }
 
   async sendSignal(params: SendSignalParams): Promise<SendSignalResult> {
-    return await this.pg.begin(async (sql): Promise<SendSignalResult> => {
-      const tx = sql as unknown as Postgres;
+    return await this.withTransaction(async (tx) => {
       const stepAttemptsTable = this.stepAttemptsTable(tx);
       const workflowSignalsTable = this.workflowSignalsTable(tx);
 

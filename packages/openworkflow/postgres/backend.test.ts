@@ -5,9 +5,10 @@ import {
   DEFAULT_POSTGRES_URL,
   dropSchema,
   newPostgresMaxOne,
+  type Postgres,
 } from "./postgres.js";
 import { randomUUID } from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
   expect(testBackend).toBeTypeOf("function");
@@ -146,7 +147,8 @@ describe("BackendPostgres idempotency advisory locks", () => {
         deadlineAt: null,
       });
 
-      expect(queries).toContain("begin isolation level read committed");
+      expect(queries).toContain("BEGIN ISOLATION LEVEL READ COMMITTED");
+      expect(queries).toContain("COMMIT");
       expect(
         queries.some((query) => query.includes("pg_advisory_xact_lock")),
       ).toBe(true);
@@ -156,6 +158,90 @@ describe("BackendPostgres idempotency advisory locks", () => {
     } finally {
       await pg.end();
     }
+  });
+
+  test("rolls back and releases the reserved connection after an insert error", async () => {
+    const queries: string[] = [];
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL, {
+      debug: (_connection, query) => {
+        queries.push(query);
+      },
+    });
+    const backend = BackendPostgres.fromPool(pg, {
+      namespaceId: randomUUID(),
+    });
+
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: randomUUID(),
+          parentStepAttemptId: randomUUID(),
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toThrow(/foreign key constraint/i);
+
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).resolves.toMatchObject({ status: "pending" });
+
+      expect(queries).toContain("ROLLBACK");
+    } finally {
+      await pg.end();
+    }
+  });
+
+  test("does not release a reserved connection after a connection error", async () => {
+    const connectionError = Object.assign(new Error("connection closed"), {
+      errno: "CONNECTION_CLOSED",
+    });
+    const reserved = {
+      unsafe: vi.fn((query: string) =>
+        query.startsWith("SELECT")
+          ? Promise.reject(connectionError)
+          : Promise.resolve([]),
+      ),
+      release: vi.fn(),
+    };
+    const pg = {
+      reserve: () => Promise.resolve(reserved),
+    } as unknown as Postgres;
+    const backend = BackendPostgres.fromPool(pg);
+
+    await expect(
+      backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: randomUUID(),
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      }),
+    ).rejects.toBe(connectionError);
+
+    expect(reserved.unsafe).not.toHaveBeenCalledWith("ROLLBACK");
+    expect(reserved.release).not.toHaveBeenCalled();
   });
 });
 
