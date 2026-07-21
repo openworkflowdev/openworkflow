@@ -1,5 +1,12 @@
 # openworkflow
 
+## 0.9.2
+
+- Prevent stale worker writes after workflow lease transfers in PostgreSQL and
+  SQLite
+- Reserve PostgreSQL connections before transactions to prevent interleaving
+  with many concurrent workers
+
 ## 0.9.1
 
 - Add optional `status` and `workflowName` filters to `listWorkflowRuns` (#518)
