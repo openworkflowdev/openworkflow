@@ -33,7 +33,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "monaco-editor": "^0.56.0",
-    "nitro": "^3.0.260311-beta",
+    "nitro": "^3.0.260610-beta",
     "openworkflow": "*",
     "prom-client": "^15.1.3",
     "react": "^19.2.8",
