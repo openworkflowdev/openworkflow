@@ -311,6 +311,41 @@ describe("BackendPostgres idempotency advisory locks", () => {
     expect(reserved.unsafe).not.toHaveBeenCalledWith("ROLLBACK");
     expect(reserved.release).not.toHaveBeenCalled();
   });
+
+  test("does not release a reserved connection after a rollback error", async () => {
+    const transactionError = new Error("transaction failed");
+    const rollbackError = new Error("rollback failed");
+    const reserved = {
+      unsafe: vi.fn((query: string) => {
+        if (query.startsWith("SELECT")) return Promise.reject(transactionError);
+        if (query === "ROLLBACK") return Promise.reject(rollbackError);
+        return Promise.resolve([]);
+      }),
+      release: vi.fn(),
+    };
+    const pg = {
+      reserve: () => Promise.resolve(reserved),
+    } as unknown as Postgres;
+    const backend = BackendPostgres.fromPool(pg);
+
+    await expect(
+      backend.createWorkflowRun({
+        workflowName: randomUUID(),
+        version: null,
+        idempotencyKey: randomUUID(),
+        input: null,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      }),
+    ).rejects.toBe(transactionError);
+
+    expect(reserved.unsafe).toHaveBeenCalledWith("ROLLBACK");
+    expect(reserved.release).not.toHaveBeenCalled();
+  });
 });
 
 describe("BackendPostgres step-attempt lease fencing", () => {
