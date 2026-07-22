@@ -64,7 +64,7 @@
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.1",
-    "turbo": "^2.10.5",
+    "turbo": "^2.10.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.2"
