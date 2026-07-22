@@ -768,8 +768,7 @@ export class BackendPostgres implements Backend {
   async resumeWorkflowRun(
     params: ResumeWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    return await this.pg.begin(async (sql): Promise<WorkflowRun> => {
-      const tx = sql as unknown as Postgres;
+    return await this.withTransaction(async (tx): Promise<WorkflowRun> => {
       const workflowRunsTable = this.workflowRunsTable(tx);
       const stepAttemptsTable = this.stepAttemptsTable(tx);
 
@@ -779,6 +778,7 @@ export class BackendPostgres implements Backend {
           "status" = 'pending',
           "worker_id" = NULL,
           "error" = NULL,
+          "started_at" = NULL,
           "finished_at" = NULL,
           "available_at" = NOW(),
           "updated_at" = NOW()
@@ -789,20 +789,30 @@ export class BackendPostgres implements Backend {
       `;
 
       if (!updated) {
-        const existing = await this.getWorkflowRun({
-          workflowRunId: params.workflowRunId,
-        });
-        resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
+        const [existing] = await tx<WorkflowRun[]>`
+          SELECT *
+          FROM ${workflowRunsTable}
+          WHERE "namespace_id" = ${this.namespaceId}
+          AND "id" = ${params.workflowRunId}
+          LIMIT 1
+        `;
+
+        resolveResumeWorkflowRunConflict(
+          params.workflowRunId,
+          existing ?? null,
+        );
       }
 
-      // Drop the prior failed attempts so the next worker pass starts the
-      // failed step with a fresh retry budget and the existing completed
-      // attempts remain in cache (replay skips re-execution).
+      // Drop every attempt that did not succeed. Failed attempts go so the
+      // failing step gets a fresh retry budget; still-'running' attempts
+      // (sleep, signal-wait, child workflow) go so replay does not mistake
+      // them for in-flight work. Successful attempts stay and are replayed
+      // from cache without re-executing.
       await tx`
         DELETE FROM ${stepAttemptsTable}
         WHERE "namespace_id" = ${this.namespaceId}
         AND "workflow_run_id" = ${params.workflowRunId}
-        AND "status" = 'failed'
+        AND "status" NOT IN ('completed', 'succeeded')
       `;
 
       return updated;

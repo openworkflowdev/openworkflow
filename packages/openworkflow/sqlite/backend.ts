@@ -275,7 +275,8 @@ export class BackendSqlite implements Backend {
     `);
 
     const row = stmt.get(this.namespaceId, params.workflowRunId) as
-      WorkflowRunRow | undefined;
+      | WorkflowRunRow
+      | undefined;
 
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }
@@ -394,7 +395,8 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `);
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      { data: string | null } | undefined;
+      | { data: string | null }
+      | undefined;
 
     if (!row) return Promise.resolve<JsonValue | undefined>(undefined);
     return Promise.resolve(
@@ -748,16 +750,17 @@ export class BackendSqlite implements Backend {
     params: ResumeWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const currentTime = now();
+    let resumed = false;
 
+    this.db.exec("BEGIN IMMEDIATE");
     try {
-      this.db.exec("BEGIN IMMEDIATE");
-
       const updateStmt = this.db.prepare(`
         UPDATE "workflow_runs"
         SET
           "status" = 'pending',
           "worker_id" = NULL,
           "error" = NULL,
+          "started_at" = NULL,
           "finished_at" = NULL,
           "available_at" = ?,
           "updated_at" = ?
@@ -773,38 +776,40 @@ export class BackendSqlite implements Backend {
         params.workflowRunId,
       );
 
-      if (updateResult.changes === 0) {
-        this.db.exec("ROLLBACK");
-        const existing = await this.getWorkflowRun({
-          workflowRunId: params.workflowRunId,
-        });
-        resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
-      }
+      resumed = updateResult.changes > 0;
 
-      this.db
-        .prepare(
-          `
-          DELETE FROM "step_attempts"
-          WHERE "namespace_id" = ?
-          AND "workflow_run_id" = ?
-          AND "status" = 'failed'
-        `,
-        )
-        .run(this.namespaceId, params.workflowRunId);
+      if (resumed) {
+        // Drop every attempt that did not succeed. Failed attempts go so the
+        // failing step gets a fresh retry budget; still-'running' attempts
+        // (sleep, signal-wait, child workflow) go so replay does not mistake
+        // them for in-flight work. Successful attempts stay and are replayed
+        // from cache without re-executing.
+        this.db
+          .prepare(
+            `
+            DELETE FROM "step_attempts"
+            WHERE "namespace_id" = ?
+            AND "workflow_run_id" = ?
+            AND "status" NOT IN ('completed', 'succeeded')
+          `,
+          )
+          .run(this.namespaceId, params.workflowRunId);
+      }
 
       this.db.exec("COMMIT");
     } catch (error) {
-      try {
-        this.db.exec("ROLLBACK");
-      } catch {
-        // ignore
-      }
+      this.db.exec("ROLLBACK");
       throw error;
     }
 
     const updated = await this.getWorkflowRun({
       workflowRunId: params.workflowRunId,
     });
+
+    if (!resumed) {
+      resolveResumeWorkflowRunConflict(params.workflowRunId, updated);
+    }
+
     requireRow(updated, "resume workflow run");
     return updated;
   }
@@ -1080,7 +1085,8 @@ export class BackendSqlite implements Backend {
     `);
 
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      StepAttemptRow | undefined;
+      | StepAttemptRow
+      | undefined;
 
     return Promise.resolve(row ? rowToStepAttempt(row) : null);
   }

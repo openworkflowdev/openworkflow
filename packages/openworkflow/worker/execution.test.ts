@@ -3057,6 +3057,7 @@ describe("StepExecutor", () => {
     });
     expect(resumedRun?.status).toBe("pending");
     expect(resumedRun?.error).toBeNull();
+    expect(resumedRun?.startedAt).toBeNull();
     expect(resumedRun?.finishedAt).toBeNull();
     expect(resumedRun?.workerId).toBeNull();
 
@@ -3064,9 +3065,12 @@ describe("StepExecutor", () => {
       workflowRunId: handle.workflowRun.id,
       limit: 100,
     });
+    // only successful attempts survive; failed and still-running rows are gone
     expect(
-      stepsAfterResume.data.some((s) => s.status === "failed"),
-    ).toBe(false);
+      stepsAfterResume.data.every(
+        (s) => s.status === "completed" || s.status === "succeeded",
+      ),
+    ).toBe(true);
     expect(
       stepsAfterResume.data.some(
         (s) => s.stepName === "validate" && s.status === "completed",
@@ -3106,6 +3110,14 @@ describe("StepExecutor", () => {
     await expect(
       backend.resumeWorkflowRun({ workflowRunId: handle.workflowRun.id }),
     ).rejects.toThrow(/Cannot resume workflow run.*pending/);
+  });
+
+  test("resumeWorkflowRun throws when the run does not exist", async () => {
+    const backend = await createTestBackend();
+
+    await expect(
+      backend.resumeWorkflowRun({ workflowRunId: randomUUID() }),
+    ).rejects.toThrow(/does not exist/);
   });
 });
 
