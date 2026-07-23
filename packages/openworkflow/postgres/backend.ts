@@ -778,6 +778,7 @@ export class BackendPostgres implements Backend {
           "status" = 'pending',
           "worker_id" = NULL,
           "error" = NULL,
+          "attempts" = 0,
           "started_at" = NULL,
           "finished_at" = NULL,
           "available_at" = NOW(),
@@ -785,6 +786,7 @@ export class BackendPostgres implements Backend {
         WHERE "namespace_id" = ${this.namespaceId}
         AND "id" = ${params.workflowRunId}
         AND "status" = 'failed'
+        AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
         RETURNING *
       `;
 
@@ -803,16 +805,20 @@ export class BackendPostgres implements Backend {
         );
       }
 
-      // Drop every attempt that did not succeed. Failed attempts go so the
-      // failing step gets a fresh retry budget; still-'running' attempts
-      // (sleep, signal-wait, child workflow) go so replay does not mistake
-      // them for in-flight work. Successful attempts stay and are replayed
-      // from cache without re-executing.
+      // Drop failed attempts so the failing step gets a fresh retry budget,
+      // plus inert running attempts whose kinds hold no external state
+      // (function, signal-send). Running sleep, signal-wait and workflow
+      // attempts are preserved: replay resumes them, and deleting them would
+      // orphan linked child runs and already-delivered signals. Successful
+      // attempts stay and are replayed from cache.
       await tx`
         DELETE FROM ${stepAttemptsTable}
         WHERE "namespace_id" = ${this.namespaceId}
         AND "workflow_run_id" = ${params.workflowRunId}
-        AND "status" NOT IN ('completed', 'succeeded')
+        AND (
+          "status" = 'failed'
+          OR ("status" = 'running' AND "kind" IN ('function', 'signal-send'))
+        )
       `;
 
       return updated;
