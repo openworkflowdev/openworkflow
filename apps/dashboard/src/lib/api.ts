@@ -96,7 +96,7 @@ export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
  * budget; completed steps stay cached.
  */
 export const resumeWorkflowRunServerFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ workflowRunId: z.string() }))
+  .validator(z.object({ workflowRunId: z.string() }))
   .handler(async ({ data }): Promise<WorkflowRun> => {
     const backend = await getBackend();
     return backend.resumeWorkflowRun({ workflowRunId: data.workflowRunId });

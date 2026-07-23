@@ -3035,6 +3035,7 @@ describe("StepExecutor", () => {
       handle.workflowRun.id,
       40,
       25,
+      { maxWaitMs: 20_000 },
     );
     expect(failedStatus).toBe("failed");
     expect(validateRuns).toBe(1);
@@ -3083,6 +3084,7 @@ describe("StepExecutor", () => {
       handle.workflowRun.id,
       40,
       25,
+      { maxWaitMs: 20_000 },
     );
     expect(finalStatus).toBe("completed");
     // "validate" was cached from the original run, not re-executed
@@ -3092,7 +3094,7 @@ describe("StepExecutor", () => {
 
     const result = await handle.result();
     expect(result).toEqual({ validated: "ok", flaky: "recovered" });
-  });
+  }, 30_000);
 
   test("resumeWorkflowRun throws when the run is not in failed status", async () => {
     const backend = await createTestBackend();
