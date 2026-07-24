@@ -2573,6 +2573,267 @@ export function testBackend(options: TestBackendOptions): void {
       });
     });
 
+    describe("resumeWorkflowRun()", () => {
+      test("flips a failed run back to pending and clears failure fields", async () => {
+        const backend = await setup();
+
+        await createPendingWorkflowRun(backend);
+        const failedId = await claimAndFailNextPendingRun(backend);
+
+        const resumed = await backend.resumeWorkflowRun({
+          workflowRunId: failedId,
+        });
+
+        expect(resumed.status).toBe("pending");
+        expect(resumed.error).toBeNull();
+        expect(resumed.workerId).toBeNull();
+        expect(resumed.startedAt).toBeNull();
+        expect(resumed.finishedAt).toBeNull();
+        // run-level retry budget is reset so the resumed run gets fresh retries
+        expect(resumed.attempts).toBe(0);
+        expect(resumed.availableAt).not.toBeNull();
+        expect(deltaSeconds(resumed.availableAt)).toBeLessThan(1);
+
+        await teardown(backend);
+      });
+
+      test("keeps successful and in-flight attempts, drops failed and inert running ones", async () => {
+        const backend = await setup();
+
+        const claimed = await createClaimedWorkflowRun(backend);
+        const workerId = claimed.workerId!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+        const completed = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId,
+          stepName: "completed-step",
+          kind: "function",
+          config: {},
+          context: null,
+        });
+        await backend.completeStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: completed.id,
+          workerId,
+          output: { ok: true },
+        });
+
+        const failed = await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId,
+          stepName: "failed-step",
+          kind: "function",
+          config: {},
+          context: null,
+        });
+        await backend.failStepAttempt({
+          workflowRunId: claimed.id,
+          stepAttemptId: failed.id,
+          workerId,
+          error: { message: "boom" },
+        });
+
+        // Inert running function attempt (e.g. a worker that died mid-step):
+        // safe to drop because nothing references it.
+        await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId,
+          stepName: "running-fn",
+          kind: "function",
+          config: {},
+          context: null,
+        });
+
+        // In-flight durable wait: must be preserved so replay resumes it
+        // instead of restarting the timer from zero.
+        await backend.createStepAttempt({
+          workflowRunId: claimed.id,
+          workerId,
+          stepName: "running-sleep",
+          kind: "sleep",
+          config: {},
+          context: {
+            kind: "sleep",
+            resumeAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+        });
+
+        await backend.failWorkflowRun({
+          workflowRunId: claimed.id,
+          workerId,
+          error: { message: "run failed" },
+          retryPolicy: {
+            ...DEFAULT_WORKFLOW_RETRY_POLICY,
+            maximumAttempts: 1,
+          },
+        });
+
+        const failedRun = await backend.getWorkflowRun({
+          workflowRunId: claimed.id,
+        });
+        expect(failedRun?.status).toBe("failed");
+
+        await backend.resumeWorkflowRun({ workflowRunId: claimed.id });
+
+        const attempts = await backend.listStepAttempts({
+          workflowRunId: claimed.id,
+          limit: 100,
+        });
+        const survivingNames = attempts.data.map((a) => a.stepName);
+        expect(survivingNames).toHaveLength(2);
+        expect(survivingNames).toContain("completed-step");
+        expect(survivingNames).toContain("running-sleep");
+
+        await teardown(backend);
+      });
+
+      test("preserves an in-flight child-workflow attempt so the child is not orphaned", async () => {
+        const backend = await setup();
+
+        const parent = await createClaimedWorkflowRun(backend);
+        const workerId = parent.workerId!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+        // Running kind='workflow' attempt with a child run linked back to it.
+        const workflowAttempt = await backend.createStepAttempt({
+          workflowRunId: parent.id,
+          workerId,
+          stepName: "invoke-child",
+          kind: "workflow",
+          config: {},
+          context: { kind: "workflow", timeoutAt: null },
+        });
+
+        const child = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: workflowAttempt.namespaceId,
+          parentStepAttemptId: workflowAttempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        expect(child.parentStepAttemptId).toBe(workflowAttempt.id);
+
+        await backend.failWorkflowRun({
+          workflowRunId: parent.id,
+          workerId,
+          error: { message: "sibling failed" },
+          retryPolicy: {
+            ...DEFAULT_WORKFLOW_RETRY_POLICY,
+            maximumAttempts: 1,
+          },
+        });
+
+        await backend.resumeWorkflowRun({ workflowRunId: parent.id });
+
+        // The running workflow attempt must survive the resume...
+        const attempts = await backend.listStepAttempts({
+          workflowRunId: parent.id,
+          limit: 100,
+        });
+        expect(attempts.data.some((a) => a.id === workflowAttempt.id)).toBe(
+          true,
+        );
+
+        // ...so the child's parent pointer is not nulled by ON DELETE SET NULL.
+        const childAfter = await backend.getWorkflowRun({
+          workflowRunId: child.id,
+        });
+        expect(childAfter?.parentStepAttemptId).toBe(workflowAttempt.id);
+
+        await teardown(backend);
+      });
+
+      test("throws and preserves history when the deadline has passed", async () => {
+        const backend = await setup();
+
+        const created = await backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: null,
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: new Date(Date.now() - 1000),
+        });
+
+        // Claiming triggers the deadline sweep, which flips the run to failed;
+        // the run itself is then excluded from the claim, so this returns null.
+        await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+
+        const failedRun = await backend.getWorkflowRun({
+          workflowRunId: created.id,
+        });
+        expect(failedRun?.status).toBe("failed");
+        expect(failedRun?.error).not.toBeNull();
+
+        await expect(
+          backend.resumeWorkflowRun({ workflowRunId: created.id }),
+        ).rejects.toThrow(/deadline has already passed/);
+
+        // Resume must not have destroyed the run's failure diagnostics.
+        const afterResume = await backend.getWorkflowRun({
+          workflowRunId: created.id,
+        });
+        expect(afterResume?.status).toBe("failed");
+        expect(afterResume?.error).not.toBeNull();
+
+        await teardown(backend);
+      });
+
+      test("throws when resuming a run that is not failed", async () => {
+        const backend = await setup();
+
+        const created = await createPendingWorkflowRun(backend);
+
+        await expect(
+          backend.resumeWorkflowRun({ workflowRunId: created.id }),
+        ).rejects.toThrow(/Cannot resume workflow run .* with status pending/);
+
+        await teardown(backend);
+      });
+
+      test("throws when resuming a non-existent workflow run", async () => {
+        const backend = await setup();
+
+        const nonExistentId = randomUUID();
+
+        await expect(
+          backend.resumeWorkflowRun({ workflowRunId: nonExistentId }),
+        ).rejects.toThrow(`Workflow run ${nonExistentId} does not exist`);
+
+        await teardown(backend);
+      });
+
+      test("a resumed run is claimable by workers again", async () => {
+        const backend = await setup();
+
+        await createPendingWorkflowRun(backend);
+        const failedId = await claimAndFailNextPendingRun(backend);
+
+        await backend.resumeWorkflowRun({ workflowRunId: failedId });
+
+        const claimed = await backend.claimWorkflowRun({
+          workerId: randomUUID(),
+          leaseDurationMs: 100,
+        });
+
+        expect(claimed?.id).toBe(failedId);
+        expect(claimed?.status).toBe("running");
+
+        await teardown(backend);
+      });
+    });
+
     describe("sendSignal()", () => {
       test("returns empty when no active waiters", async () => {
         const result = await backend.sendSignal({
