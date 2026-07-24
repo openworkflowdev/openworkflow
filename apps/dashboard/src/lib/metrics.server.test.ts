@@ -1,6 +1,10 @@
 import { getBackend } from "./backend";
 import { getMetricsResponse } from "./metrics.server";
-import type { Backend, WorkflowRunCounts } from "openworkflow/internal";
+import type {
+  Backend,
+  WorkflowRunCounts,
+  WorkflowRunCountsByWorkflowName,
+} from "openworkflow/internal";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./backend", () => ({
@@ -23,16 +27,18 @@ describe("getMetricsResponse()", () => {
   });
 
   it("returns Prometheus exposition format with expected metric labels", async () => {
-    const counts: WorkflowRunCounts = {
-      ...ZERO_COUNTS,
-      pending: 3,
-      running: 3,
-      completed: 4,
-      failed: 2,
+    const counts: WorkflowRunCountsByWorkflowName = {
+      "send-email": {
+        ...ZERO_COUNTS,
+        pending: 3,
+        running: 3,
+        completed: 4,
+        failed: 2,
+      },
     };
 
-    const backend: Pick<Backend, "countWorkflowRuns"> = {
-      countWorkflowRuns: vi.fn().mockResolvedValue(counts),
+    const backend: Pick<Backend, "countWorkflowRunsByWorkflowName"> = {
+      countWorkflowRunsByWorkflowName: vi.fn().mockResolvedValue(counts),
     };
     mockedGetBackend.mockResolvedValue(backend);
 
@@ -45,17 +51,29 @@ describe("getMetricsResponse()", () => {
     );
     expect(body).toContain("# HELP openworkflow_workflow_runs");
     expect(body).toContain("# TYPE openworkflow_workflow_runs gauge");
-    expect(body).toContain('openworkflow_workflow_runs{status="pending"} 3');
-    expect(body).toContain('openworkflow_workflow_runs{status="running"} 3');
+    expect(body).toContain(
+      'openworkflow_workflow_runs{workflow_name="send-email",status="pending"} 3',
+    );
+    expect(body).toContain(
+      'openworkflow_workflow_runs{workflow_name="send-email",status="running"} 3',
+    );
     expect(body).not.toContain('openworkflow_workflow_runs{status="sleeping"}');
-    expect(body).toContain('openworkflow_workflow_runs{status="completed"} 4');
-    expect(body).toContain('openworkflow_workflow_runs{status="failed"} 2');
-    expect(body).toContain('openworkflow_workflow_runs{status="canceled"} 0');
+    expect(body).toContain(
+      'openworkflow_workflow_runs{workflow_name="send-email",status="completed"} 4',
+    );
+    expect(body).toContain(
+      'openworkflow_workflow_runs{workflow_name="send-email",status="failed"} 2',
+    );
+    expect(body).toContain(
+      'openworkflow_workflow_runs{workflow_name="send-email",status="canceled"} 0',
+    );
   });
 
-  it("calls backend.countWorkflowRuns() on every scrape", async () => {
-    const backend: Pick<Backend, "countWorkflowRuns"> = {
-      countWorkflowRuns: vi.fn().mockResolvedValue(ZERO_COUNTS),
+  it("calls backend.countWorkflowRunsByWorkflowName() on every scrape", async () => {
+    const backend: Pick<Backend, "countWorkflowRunsByWorkflowName"> = {
+      countWorkflowRunsByWorkflowName: vi
+        .fn()
+        .mockResolvedValue({ "send-email": ZERO_COUNTS }),
     };
     mockedGetBackend.mockResolvedValue(backend);
 
@@ -63,12 +81,12 @@ describe("getMetricsResponse()", () => {
     await getMetricsResponse();
 
     expect(mockedGetBackend).toHaveBeenCalledTimes(2);
-    expect(backend.countWorkflowRuns).toHaveBeenCalledTimes(2);
+    expect(backend.countWorkflowRunsByWorkflowName).toHaveBeenCalledTimes(2);
   });
 
   it("returns 500 when backend aggregation fails", async () => {
-    const backend: Pick<Backend, "countWorkflowRuns"> = {
-      countWorkflowRuns: vi
+    const backend: Pick<Backend, "countWorkflowRunsByWorkflowName"> = {
+      countWorkflowRunsByWorkflowName: vi
         .fn()
         .mockRejectedValue(new Error("failed to aggregate")),
     };
