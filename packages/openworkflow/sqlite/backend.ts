@@ -275,8 +275,7 @@ export class BackendSqlite implements Backend {
     `);
 
     const row = stmt.get(this.namespaceId, params.workflowRunId) as
-      | WorkflowRunRow
-      | undefined;
+      WorkflowRunRow | undefined;
 
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }
@@ -395,8 +394,7 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `);
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      | { data: string | null }
-      | undefined;
+      { data: string | null } | undefined;
 
     if (!row) return Promise.resolve<JsonValue | undefined>(undefined);
     return Promise.resolve(
@@ -1092,8 +1090,7 @@ export class BackendSqlite implements Backend {
     `);
 
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      | StepAttemptRow
-      | undefined;
+      StepAttemptRow | undefined;
 
     return Promise.resolve(row ? rowToStepAttempt(row) : null);
   }
