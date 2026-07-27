@@ -50,7 +50,6 @@ export {
   WORKFLOW_STEP_LIMIT,
   STEP_LIMIT_EXCEEDED_ERROR_CODE,
   createStepExecutionStateFromAttempts,
-  type StepExecutionState,
 } from "./step-history.js";
 
 /**
