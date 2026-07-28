@@ -942,7 +942,7 @@ async function executeWorkflowRunTransition(
   try {
     await options.transition();
   } catch (error) {
-    let currentRun: WorkflowRun | null = null;
+    let currentRun: WorkflowRun | null;
 
     try {
       currentRun = await options.backend.getWorkflowRun({
@@ -1131,7 +1131,9 @@ export async function executeWorkflow(
         // this should not happen when retry decision isn't failed
         // throw error to avoid silently swallowing retries, which we should
         // catch in tests if anything goes wrong
-        throw new Error("Step retry decision missing availableAt");
+        throw new Error("Step retry decision missing availableAt", {
+          cause: error,
+        });
       }
       /* v8 ignore stop */
 
