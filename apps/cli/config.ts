@@ -113,7 +113,12 @@ async function importConfigFile(filePath: string): Promise<LoadedConfig> {
       configFile: filePath,
     };
   } catch (error: unknown) {
-    throw new Error(`Failed to load config file ${filePath}: ${String(error)}`);
+    throw new Error(
+      `Failed to load config file ${filePath}: ${String(error)}`,
+      {
+        cause: error,
+      },
+    );
   }
 }
 

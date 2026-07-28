@@ -4052,7 +4052,7 @@ async function waitForParkedWorkflowRun(
   workflowRunId: string,
 ): Promise<ParkedWorkflowRun> {
   const startedAt = Date.now();
-  let latest: WorkflowRun | null = null;
+  let latest: WorkflowRun | null;
 
   do {
     latest = await backend.getWorkflowRun({ workflowRunId });
