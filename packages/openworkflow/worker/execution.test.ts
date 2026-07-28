@@ -245,9 +245,15 @@ describe("StepExecutor", () => {
     const worker = client.newWorker();
     // Use deadline to force immediate failure without retries
     const handle = await workflow.run({}, { deadlineAt: new Date() });
-    await worker.tick();
-    await sleep(100);
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      200,
+      10,
+    );
 
+    expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
   });
 
@@ -294,17 +300,16 @@ describe("StepExecutor", () => {
     const handle = await workflow.run();
     const worker = client.newWorker();
 
-    // First tick - hits sleep
     await worker.tick();
-    await sleep(200); // Wait for tick to complete
-    const parked = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(parked?.status).toBe("running");
-    expect(parked?.workerId).toBeNull();
+    const parked = await waitForParkedWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+    );
+    expect(parked.status).toBe("running");
+    expect(parked.workerId).toBeNull();
 
     // Wait for sleep to elapse
-    await sleep(50);
+    await sleepUntilAfter(parked.availableAt);
 
     // Second tick - completes
     await worker.tick();
@@ -1710,6 +1715,8 @@ describe("StepExecutor", () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const lateStepName = "late-after-park";
+    const releaseLateBranch = Promise.withResolvers<boolean>();
+    const lateBranchFinished = Promise.withResolvers<boolean>();
 
     const workflow = client.defineWorkflow(
       { name: `workflow-stale-branch-fence-${randomUUID()}` },
@@ -1717,8 +1724,12 @@ describe("StepExecutor", () => {
         await Promise.all([
           step.sleep("park-now", "600ms"),
           (async () => {
-            await sleep(200);
-            await step.run({ name: lateStepName }, () => "late-result");
+            try {
+              await releaseLateBranch.promise;
+              await step.run({ name: lateStepName }, () => "late-result");
+            } finally {
+              lateBranchFinished.resolve(true);
+            }
           })(),
         ]);
 
@@ -1730,8 +1741,8 @@ describe("StepExecutor", () => {
     const handle = await workflow.run();
     await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
 
-    // Give the late branch enough time to continue after the parent is parked.
-    await sleep(250);
+    releaseLateBranch.resolve(true);
+    await lateBranchFinished.promise;
 
     const attemptsWhileParked = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -3381,9 +3392,15 @@ describe("executeWorkflow", () => {
       const worker = client.newWorker();
       // Use deadline to skip retries - fails with deadline exceeded
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
     });
 
@@ -3403,9 +3420,15 @@ describe("executeWorkflow", () => {
 
       const worker = client.newWorker();
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
     });
 
@@ -3426,9 +3449,15 @@ describe("executeWorkflow", () => {
 
       const worker = client.newWorker();
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow();
     });
   });
@@ -3449,13 +3478,12 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run();
       const worker = client.newWorker();
       await worker.tick();
-      await sleep(200);
-
-      const workflowRun = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(workflowRun?.status).toBe("running");
-      expect(workflowRun?.workerId).toBeNull();
+      const workflowRun = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      expect(workflowRun.status).toBe("running");
+      expect(workflowRun.workerId).toBeNull();
     });
 
     test("resumes workflow after sleep duration", async () => {
@@ -3474,18 +3502,16 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run({ value: 5 });
       const worker = client.newWorker();
 
-      // first tick - hits sleep
       await worker.tick();
-      await sleep(200);
-
-      const parked = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(parked?.status).toBe("running");
-      expect(parked?.workerId).toBeNull();
+      const parked = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      expect(parked.status).toBe("running");
+      expect(parked.workerId).toBeNull();
 
       // wait for sleep
-      await sleep(50);
+      await sleepUntilAfter(parked.availableAt);
 
       await worker.tick();
 
@@ -3765,7 +3791,11 @@ describe("executeWorkflow", () => {
       const worker = client.newWorker();
       const handle = await workflow.run();
       await worker.tick();
-      await sleep(200);
+      const parked = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      await sleepUntilAfter(parked.availableAt);
       await worker.tick();
       await handle.result();
 
@@ -4014,6 +4044,30 @@ async function tickUntilParked(
 
   throw new Error(
     `Timed out waiting for workflow run ${workflowRunId} to park`,
+  );
+}
+
+async function waitForParkedWorkflowRun(
+  backend: BackendPostgres,
+  workflowRunId: string,
+): Promise<ParkedWorkflowRun> {
+  const startedAt = Date.now();
+  let latest: WorkflowRun | null = null;
+
+  do {
+    latest = await backend.getWorkflowRun({ workflowRunId });
+    if (
+      latest?.status === "running" &&
+      latest.workerId === null &&
+      latest.availableAt !== null
+    ) {
+      return latest as ParkedWorkflowRun;
+    }
+    await sleep(10);
+  } while (Date.now() - startedAt < 3000);
+
+  throw new Error(
+    `Timed out waiting for workflow run ${workflowRunId} to park; last status was ${latest?.status ?? "missing"}`,
   );
 }
 

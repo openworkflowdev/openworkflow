@@ -550,7 +550,6 @@ describe("OpenWorkflow", () => {
       const handle = await client.runWorkflow(spec, { data: 42 });
       const worker = client.newWorker();
       await worker.tick();
-      await sleep(100); // wait for background execution
 
       const result = await handle.result();
       expect(result).toEqual({ received: { data: 42 } });
@@ -666,7 +665,6 @@ describe("OpenWorkflow", () => {
       const handle = await workflow.run({ n: 21 });
       const worker = client.newWorker();
       await worker.tick();
-      await sleep(100); // wait for background execution
 
       const result = await handle.result();
       expect(result).toEqual({ doubled: 42 });
@@ -702,10 +700,6 @@ function createMockWorkflowRun(
     updatedAt: currentTime,
     ...overrides,
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function noopFn() {
