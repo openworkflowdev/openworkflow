@@ -1,9 +1,10 @@
 // @ts-check
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier";
+import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import boundaries from "eslint-plugin-boundaries";
 import functional from "eslint-plugin-functional";
-import importPlugin from "eslint-plugin-import";
+import { importX } from "eslint-plugin-import-x";
 import jsdoc from "eslint-plugin-jsdoc";
 import sonarjs from "eslint-plugin-sonarjs";
 import unicorn from "eslint-plugin-unicorn";
@@ -14,8 +15,8 @@ export default defineConfig(
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,
-  importPlugin.flatConfigs.recommended,
-  importPlugin.flatConfigs.typescript,
+  importX.flatConfigs.recommended,
+  importX.flatConfigs.typescript,
   // @ts-ignore
   sonarjs.configs.recommended,
   unicorn.configs.recommended,
@@ -42,11 +43,11 @@ export default defineConfig(
       },
     },
     settings: {
-      "import/resolver": {
-        typescript: {
+      "import-x/resolver-next": [
+        createTypeScriptImportResolver({
           alwaysTryTypes: true,
-        },
-      },
+        }),
+      ],
     },
   },
   {
@@ -62,9 +63,9 @@ export default defineConfig(
   {
     rules: {
       "func-style": ["error", "declaration"],
-      // "import/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
-      "import/no-extraneous-dependencies": "error",
-      "import/no-useless-path-segments": "error",
+      // "import-x/no-cycle": "error", // doubles eslint time, enable occasionally to check for cycles
+      "import-x/no-extraneous-dependencies": "error",
+      "import-x/no-useless-path-segments": "error",
       "jsdoc/check-indentation": "error",
       "jsdoc/require-throws": "error",
       "jsdoc/sort-tags": "error",
@@ -90,7 +91,7 @@ export default defineConfig(
   {
     files: ["apps/cli/templates/**/*.ts"],
     rules: {
-      "import/no-extraneous-dependencies": "off",
+      "import-x/no-extraneous-dependencies": "off",
     },
   },
   // ===========================================================================
@@ -106,7 +107,7 @@ export default defineConfig(
   {
     files: ["apps/dashboard/**/*.test.ts", "apps/dashboard/**/*.test.tsx"],
     rules: {
-      "import/no-extraneous-dependencies": [
+      "import-x/no-extraneous-dependencies": [
         "error",
         {
           devDependencies: true,
