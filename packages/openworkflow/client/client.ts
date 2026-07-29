@@ -178,8 +178,9 @@ export class OpenWorkflow {
   /**
    * Resume a failed workflow run. The run's status flips back to `pending`
    * so the next worker tick picks it up. Already-completed steps are served
-   * from history without re-executing; failed step attempts are discarded so
-   * the failing step starts with a fresh retry budget.
+   * from history without re-executing. Nothing is deleted: the failing step
+   * starts with a fresh retry budget because only failures recorded after the
+   * resume count against it.
    * @param workflowRunId - The ID of the failed workflow run to resume
    * @returns The updated workflow run
    * @throws {Error} If the run does not exist or is not in `failed` status

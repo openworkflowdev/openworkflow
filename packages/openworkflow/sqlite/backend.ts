@@ -748,28 +748,31 @@ export class BackendSqlite implements Backend {
     params: ResumeWorkflowRunParams,
   ): Promise<WorkflowRun> {
     const currentTime = now();
-    let resumed = false;
 
-    this.db.exec("BEGIN IMMEDIATE");
-    try {
-      const updateStmt = this.db.prepare(`
+    // Stamp the resume marker and requeue. Nothing is deleted and neither
+    // `error` nor `attempts` is touched: step attempts stay (preserving the
+    // failure record and parent/child linkage), and the retry budget is reset
+    // by only counting failures after `resumed_at` during replay.
+    const updateResult = this.db
+      .prepare(
+        `
         UPDATE "workflow_runs"
         SET
           "status" = 'pending',
           "worker_id" = NULL,
-          "error" = NULL,
-          "attempts" = 0,
           "started_at" = NULL,
           "finished_at" = NULL,
           "available_at" = ?,
+          "resumed_at" = ?,
           "updated_at" = ?
         WHERE "namespace_id" = ?
         AND "id" = ?
         AND "status" = 'failed'
         AND ("deadline_at" IS NULL OR "deadline_at" > ?)
-      `);
-
-      const updateResult = updateStmt.run(
+      `,
+      )
+      .run(
+        currentTime,
         currentTime,
         currentTime,
         this.namespaceId,
@@ -777,41 +780,11 @@ export class BackendSqlite implements Backend {
         currentTime,
       );
 
-      resumed = updateResult.changes > 0;
-
-      if (resumed) {
-        // Drop failed attempts so the failing step gets a fresh retry budget,
-        // plus inert running attempts whose kinds hold no external state
-        // (function, signal-send). Running sleep, signal-wait and workflow
-        // attempts are preserved: replay resumes them, and deleting them
-        // would orphan linked child runs and already-delivered signals.
-        // Successful attempts stay and are replayed from cache.
-        this.db
-          .prepare(
-            `
-            DELETE FROM "step_attempts"
-            WHERE "namespace_id" = ?
-            AND "workflow_run_id" = ?
-            AND (
-              "status" = 'failed'
-              OR ("status" = 'running' AND "kind" IN ('function', 'signal-send'))
-            )
-          `,
-          )
-          .run(this.namespaceId, params.workflowRunId);
-      }
-
-      this.db.exec("COMMIT");
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
-    }
-
     const updated = await this.getWorkflowRun({
       workflowRunId: params.workflowRunId,
     });
 
-    if (!resumed) {
+    if (updateResult.changes === 0) {
       resolveResumeWorkflowRunConflict(params.workflowRunId, updated);
     }
 
@@ -1185,6 +1158,7 @@ interface WorkflowRunRow {
   deadline_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+  resumed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1259,6 +1233,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     deadlineAt: fromISO(row.deadline_at),
     startedAt: fromISO(row.started_at),
     finishedAt: fromISO(row.finished_at),
+    resumedAt: fromISO(row.resumed_at),
     createdAt,
     updatedAt,
   };

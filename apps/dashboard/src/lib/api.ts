@@ -92,8 +92,8 @@ export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
 
 /**
  * Resume a failed workflow run by ID. Flips the run back to `pending` and
- * drops failed step attempts so the failing step starts with a fresh retry
- * budget; completed steps stay cached.
+ * gives the failing step a fresh retry budget by only counting failures after
+ * the resume; completed steps stay cached and history is preserved.
  */
 export const resumeWorkflowRunServerFn = createServerFn({ method: "POST" })
   .validator(z.object({ workflowRunId: z.string() }))

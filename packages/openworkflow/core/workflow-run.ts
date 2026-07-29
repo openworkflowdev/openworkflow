@@ -114,6 +114,7 @@ export interface WorkflowRun {
   deadlineAt: Date | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  resumedAt: Date | null; // Timestamp of the most recent resume
   createdAt: Date;
   updatedAt: Date;
 }

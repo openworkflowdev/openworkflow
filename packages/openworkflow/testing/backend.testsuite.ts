@@ -66,6 +66,7 @@ export function testBackend(options: TestBackendOptions): void {
           deadlineAt: newDateInOneYear(),
           startedAt: null,
           finishedAt: null,
+          resumedAt: null,
           createdAt: new Date(), // -
           updatedAt: new Date(), // -
         };
@@ -2574,30 +2575,39 @@ export function testBackend(options: TestBackendOptions): void {
     });
 
     describe("resumeWorkflowRun()", () => {
-      test("flips a failed run back to pending and clears failure fields", async () => {
+      test("requeues a failed run and stamps resumed_at without erasing history", async () => {
         const backend = await setup();
 
         await createPendingWorkflowRun(backend);
         const failedId = await claimAndFailNextPendingRun(backend);
+
+        const failedRun = await backend.getWorkflowRun({
+          workflowRunId: failedId,
+        });
+        expect(failedRun?.error).not.toBeNull();
 
         const resumed = await backend.resumeWorkflowRun({
           workflowRunId: failedId,
         });
 
         expect(resumed.status).toBe("pending");
-        expect(resumed.error).toBeNull();
         expect(resumed.workerId).toBeNull();
         expect(resumed.startedAt).toBeNull();
         expect(resumed.finishedAt).toBeNull();
-        // run-level retry budget is reset so the resumed run gets fresh retries
-        expect(resumed.attempts).toBe(0);
         expect(resumed.availableAt).not.toBeNull();
         expect(deltaSeconds(resumed.availableAt)).toBeLessThan(1);
+        // resume marker is stamped; the budget is reset by counting failures
+        // after it, not by mutating the run
+        expect(resumed.resumedAt).not.toBeNull();
+        expect(deltaSeconds(resumed.resumedAt)).toBeLessThan(1);
+        // error and the claim counter are left as the record of what happened
+        expect(resumed.error).not.toBeNull();
+        expect(resumed.attempts).toBe(failedRun?.attempts);
 
         await teardown(backend);
       });
 
-      test("keeps successful and in-flight attempts, drops failed and inert running ones", async () => {
+      test("preserves every step attempt and the run error on resume", async () => {
         const backend = await setup();
 
         const claimed = await createClaimedWorkflowRun(backend);
@@ -2633,19 +2643,8 @@ export function testBackend(options: TestBackendOptions): void {
           error: { message: "boom" },
         });
 
-        // Inert running function attempt (e.g. a worker that died mid-step):
-        // safe to drop because nothing references it.
-        await backend.createStepAttempt({
-          workflowRunId: claimed.id,
-          workerId,
-          stepName: "running-fn",
-          kind: "function",
-          config: {},
-          context: null,
-        });
-
-        // In-flight durable wait: must be preserved so replay resumes it
-        // instead of restarting the timer from zero.
+        // In-flight durable wait: preserved so replay resumes it rather than
+        // restarting the timer from zero.
         await backend.createStepAttempt({
           workflowRunId: claimed.id,
           workerId,
@@ -2673,15 +2672,21 @@ export function testBackend(options: TestBackendOptions): void {
         });
         expect(failedRun?.status).toBe("failed");
 
-        await backend.resumeWorkflowRun({ workflowRunId: claimed.id });
+        const resumed = await backend.resumeWorkflowRun({
+          workflowRunId: claimed.id,
+        });
+        // the failure record survives the resume
+        expect(resumed.error).not.toBeNull();
 
+        // nothing is deleted: completed, failed and running attempts all remain
         const attempts = await backend.listStepAttempts({
           workflowRunId: claimed.id,
           limit: 100,
         });
         const survivingNames = attempts.data.map((a) => a.stepName);
-        expect(survivingNames).toHaveLength(2);
+        expect(survivingNames).toHaveLength(3);
         expect(survivingNames).toContain("completed-step");
+        expect(survivingNames).toContain("failed-step");
         expect(survivingNames).toContain("running-sleep");
 
         await teardown(backend);

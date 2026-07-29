@@ -768,61 +768,37 @@ export class BackendPostgres implements Backend {
   async resumeWorkflowRun(
     params: ResumeWorkflowRunParams,
   ): Promise<WorkflowRun> {
-    return await this.withTransaction(async (tx): Promise<WorkflowRun> => {
-      const workflowRunsTable = this.workflowRunsTable(tx);
-      const stepAttemptsTable = this.stepAttemptsTable(tx);
+    const workflowRunsTable = this.workflowRunsTable();
 
-      const [updated] = await tx<WorkflowRun[]>`
-        UPDATE ${workflowRunsTable}
-        SET
-          "status" = 'pending',
-          "worker_id" = NULL,
-          "error" = NULL,
-          "attempts" = 0,
-          "started_at" = NULL,
-          "finished_at" = NULL,
-          "available_at" = NOW(),
-          "updated_at" = NOW()
-        WHERE "namespace_id" = ${this.namespaceId}
-        AND "id" = ${params.workflowRunId}
-        AND "status" = 'failed'
-        AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
-        RETURNING *
-      `;
+    // Stamp the resume marker and requeue. Nothing is deleted and neither
+    // `error` nor `attempts` is touched: step attempts stay (preserving the
+    // failure record and parent/child linkage), and the retry budget is reset
+    // by only counting failures after `resumed_at` during replay.
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE ${workflowRunsTable}
+      SET
+        "status" = 'pending',
+        "worker_id" = NULL,
+        "started_at" = NULL,
+        "finished_at" = NULL,
+        "available_at" = NOW(),
+        "resumed_at" = NOW(),
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" = 'failed'
+      AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
+      RETURNING *
+    `;
 
-      if (!updated) {
-        const [existing] = await tx<WorkflowRun[]>`
-          SELECT *
-          FROM ${workflowRunsTable}
-          WHERE "namespace_id" = ${this.namespaceId}
-          AND "id" = ${params.workflowRunId}
-          LIMIT 1
-        `;
+    if (!updated) {
+      const existing = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
+    }
 
-        resolveResumeWorkflowRunConflict(
-          params.workflowRunId,
-          existing ?? null,
-        );
-      }
-
-      // Drop failed attempts so the failing step gets a fresh retry budget,
-      // plus inert running attempts whose kinds hold no external state
-      // (function, signal-send). Running sleep, signal-wait and workflow
-      // attempts are preserved: replay resumes them, and deleting them would
-      // orphan linked child runs and already-delivered signals. Successful
-      // attempts stay and are replayed from cache.
-      await tx`
-        DELETE FROM ${stepAttemptsTable}
-        WHERE "namespace_id" = ${this.namespaceId}
-        AND "workflow_run_id" = ${params.workflowRunId}
-        AND (
-          "status" = 'failed'
-          OR ("status" = 'running' AND "kind" IN ('function', 'signal-send'))
-        )
-      `;
-
-      return updated;
-    });
+    return updated;
   }
 
   private async wakeParentWorkflowRun(

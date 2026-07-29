@@ -23,7 +23,7 @@ export function RunResumeAction({
       triggerLabel="Resume Run"
       triggerVariant="default"
       title="Resume this failed run?"
-      description="Completed steps stay cached and won't re-run. The failing step will be retried with a fresh retry budget. Previous failed attempts will be discarded."
+      description="Completed steps stay cached and won't re-run. The failing step is retried with a fresh retry budget, and the run's history is kept."
       cancelLabel="Cancel"
       confirmLabel="Resume Run"
       pendingLabel="Resuming..."
