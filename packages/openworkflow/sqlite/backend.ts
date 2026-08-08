@@ -4,6 +4,7 @@ import {
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   CancelWorkflowRunParams,
+  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -37,6 +38,7 @@ import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
+  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -742,6 +744,54 @@ export class BackendSqlite implements Backend {
     return updated;
   }
 
+  async resumeWorkflowRun(
+    params: ResumeWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const currentTime = now();
+
+    // Stamp the resume marker and requeue. Nothing is deleted and neither
+    // `error` nor `attempts` is touched: step attempts stay (preserving the
+    // failure record and parent/child linkage), and the retry budget is reset
+    // by only counting failures after `resumed_at` during replay.
+    const updateResult = this.db
+      .prepare(
+        `
+        UPDATE "workflow_runs"
+        SET
+          "status" = 'pending',
+          "worker_id" = NULL,
+          "started_at" = NULL,
+          "finished_at" = NULL,
+          "available_at" = ?,
+          "resumed_at" = ?,
+          "updated_at" = ?
+        WHERE "namespace_id" = ?
+        AND "id" = ?
+        AND "status" = 'failed'
+        AND ("deadline_at" IS NULL OR "deadline_at" > ?)
+      `,
+      )
+      .run(
+        currentTime,
+        currentTime,
+        currentTime,
+        this.namespaceId,
+        params.workflowRunId,
+        currentTime,
+      );
+
+    const updated = await this.getWorkflowRun({
+      workflowRunId: params.workflowRunId,
+    });
+
+    if (updateResult.changes === 0) {
+      resolveResumeWorkflowRunConflict(params.workflowRunId, updated);
+    }
+
+    requireRow(updated, "resume workflow run");
+    return updated;
+  }
+
   /**
    * Return positional placeholders for {@link RUNNING_WORKFLOW_RUN_OWNED_WHERE}
    * in the order the fragment expects: namespace, run id, worker id.
@@ -1108,6 +1158,7 @@ interface WorkflowRunRow {
   deadline_at: string | null;
   started_at: string | null;
   finished_at: string | null;
+  resumed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1182,6 +1233,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     deadlineAt: fromISO(row.deadline_at),
     startedAt: fromISO(row.started_at),
     finishedAt: fromISO(row.finished_at),
+    resumedAt: fromISO(row.resumed_at),
     createdAt,
     updatedAt,
   };
