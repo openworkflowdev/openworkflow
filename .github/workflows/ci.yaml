@@ -1,6 +1,5 @@
 name: CI
-permissions:
-  contents: read
+
 on:
   push:
     branches:
@@ -8,6 +7,14 @@ on:
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
