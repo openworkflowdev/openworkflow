@@ -1,5 +1,11 @@
 version: 2
 updates:
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore(deps)
   - package-ecosystem: github-actions
     directory: /
     schedule:
