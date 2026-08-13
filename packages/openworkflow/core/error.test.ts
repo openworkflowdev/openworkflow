@@ -64,7 +64,6 @@ describe("serializeError", () => {
   });
 
   test("serializes undefined to message", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
     const result = serializeError(undefined);
 
     expect(result.message).toBe("undefined");

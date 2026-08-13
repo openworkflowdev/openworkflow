@@ -137,7 +137,6 @@ describe("validateInput", () => {
   });
 
   test("handles undefined input when no schema", async () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
     const result = await validateInput(null, undefined);
 
     expect(result.success).toBe(true);

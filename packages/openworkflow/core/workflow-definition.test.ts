@@ -44,7 +44,6 @@ describe("isWorkflow", () => {
   });
 
   test("returns false for undefined", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
     expect(isWorkflow(undefined)).toBe(false);
   });
 
