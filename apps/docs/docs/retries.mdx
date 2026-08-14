@@ -91,9 +91,8 @@ would exceed it.
 
 ## Workflow Retries
 
-Errors thrown outside of `step.run(...)` are workflow-level failures.
-**Workflow-level failures are not retried by default** — the workflow is
-marked as `failed`.
+Errors thrown outside of `step.run(...)` are workflow-level failures. They are
+not retried by default; the workflow is marked as `failed`.
 
 To enable workflow-level retries, set a `retryPolicy` on the workflow spec:
 
@@ -139,7 +138,7 @@ Retries happen when:
 - A step function throws an error or returns a rejected promise
 - A worker crashes during step execution (the step is re-executed on recovery)
 
-Retries do **not** happen for:
+Retries do not happen for:
 
 - Completed steps (cached results are returned)
 - Explicitly canceled workflows

@@ -86,7 +86,7 @@ await ow.sendSignal({
 ## Signal Names
 
 Signal names are arbitrary strings scoped to the backend namespace. Use
-descriptive, unique names — often including an entity ID — to avoid collisions:
+descriptive, unique names, often including an entity ID, to avoid collisions:
 
 ```ts
 // Good - scoped to a specific entity
@@ -103,7 +103,7 @@ Like other step types, signal steps need unique names within a workflow. If you
 don't provide one, OpenWorkflow uses the signal name as the step name.
 
 ```ts
-// Implicit — step name defaults to signal name
+// Implicit: step name defaults to signal name
 await step.waitForSignal({ signal: `payment:${invoiceId}` });
 
 // Explicit step name
@@ -126,7 +126,7 @@ const result = await step.waitForSignal({
 });
 
 if (result === null) {
-  // timed out — no signal arrived within 24 hours
+  // Timed out: no signal arrived within 24 hours
   await step.run({ name: "escalate" }, async () => {
     await alerts.send("Approval timed out");
   });
@@ -136,7 +136,7 @@ if (result === null) {
 `timeout` accepts a [duration string](/docs/sleeping#duration-formats), a
 number of milliseconds, or a `Date`.
 
-If no timeout is specified, the wait defaults to **1 year**.
+If no timeout is specified, the wait defaults to 1 year.
 
 ## Schema Validation
 
@@ -181,8 +181,8 @@ at least one waiter, the call returns the original result without re-delivering.
 
 ## Fan-Out: One Signal, Many Waiters
 
-A single `sendSignal` call delivers to **every** workflow currently waiting on
-that signal name. This makes fan-out coordination straightforward:
+A single `sendSignal` call delivers to every workflow currently waiting on that
+signal name:
 
 ```ts
 // Multiple workflows waiting on the same signal

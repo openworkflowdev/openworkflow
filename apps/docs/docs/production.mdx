@@ -8,19 +8,16 @@ servers to connect to or third-party services to manage. Your database
 (PostgreSQL or SQLite) is the only dependency, and it stores all workflow
 state.
 
-This page covers what you need to know for production deployments: database
-setup, worker scaling, and monitoring.
-
 ## Architecture Overview
 
-OpenWorkflow uses a **worker-driven architecture**:
+OpenWorkflow uses a worker-driven architecture:
 
 1. **Workers** run in your infrastructure and poll the database for work
 2. **Clients** create workflow runs by writing to the database
 3. **Database** (PostgreSQL or SQLite) stores all workflow state
 
 There's no central orchestration server. Workers coordinate through the
-database, making the system simple to deploy and operate.
+database, so you don't deploy or operate a separate orchestration service.
 
 ```mermaid
 graph TD
@@ -73,10 +70,8 @@ export default defineConfig({
 });
 ```
 
-In this example, we use `OPENWORKFLOW_POSTGRES_URL`,
-`OPENWORKFLOW_NAMESPACE_ID`, and `OPENWORKFLOW_SCHEMA` env vars to dynamically
-set the Postgres URL, namespace, and schema, but you can set this up however
-you'd like.
+`OPENWORKFLOW_POSTGRES_URL`, `OPENWORKFLOW_NAMESPACE_ID`, and
+`OPENWORKFLOW_SCHEMA` set the Postgres URL, namespace, and schema.
 
 ### 3. Migrations
 
@@ -170,7 +165,7 @@ worker: {
 }
 ```
 
-**Guidelines:**
+Guidelines:
 
 - Start with `concurrency: 10` and adjust based on workload
 - Increase for I/O-bound workflows (lots of API calls, database queries)

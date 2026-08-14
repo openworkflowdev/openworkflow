@@ -246,15 +246,10 @@ A workflow run progresses through these states:
 
 ## Determinism
 
-<Info>
-  **New to workflow engines?** This is the most important rule to understand.
-  It's simple once you know *why* it exists.
-</Info>
-
 When a workflow resumes after a crash, OpenWorkflow replays it from the
 beginning. Completed steps return their saved results instantly, so no work is
 repeated. But for this to work, the workflow must take the same path every time
-it runs with the same inputs — it must be **deterministic**.
+it runs with the same inputs — it must be deterministic.
 
 This means you should avoid putting non-deterministic operations (like API
 calls, random numbers, or the current time) directly in the workflow body.

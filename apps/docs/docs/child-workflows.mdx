@@ -56,7 +56,7 @@ const processOrder = defineWorkflow(
 
 ## Timeout
 
-By default, the parent waits up to **1 year** for the child to finish. You can
+By default, the parent waits up to 1 year for the child to finish. You can
 customize this with `options.timeout`:
 
 ```ts
@@ -84,9 +84,8 @@ await step.runWorkflow(w.spec, undefined, {
 ```
 
 <Warning>
-  When the timeout is reached, the **parent step fails** but the **child
-  workflow keeps running** independently. The child is not automatically
-  canceled.
+  When the timeout is reached, the parent step fails, but the child workflow
+  keeps running independently. The child is not automatically canceled.
 </Warning>
 
 ## Workflow Spec
@@ -108,7 +107,7 @@ uses the target workflow name.
 
 ## Error Handling
 
-If the child workflow **fails**, the parent workflow step also fails:
+If the child workflow fails, the parent workflow step also fails:
 
 ```ts
 const orderPipeline = defineWorkflow(
@@ -129,7 +128,7 @@ const orderPipeline = defineWorkflow(
 );
 ```
 
-If the child workflow is **canceled**, the parent workflow step fails with an
+If the child workflow is canceled, the parent workflow step fails with an
 error indicating the child was canceled.
 
 <Note>

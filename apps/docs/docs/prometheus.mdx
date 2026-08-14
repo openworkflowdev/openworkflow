@@ -5,8 +5,8 @@ description: Monitor workflow health with Prometheus
 
 The OpenWorkflow dashboard exposes a `GET /metrics` endpoint that serves
 workflow run counts in Prometheus exposition format. Use it to track failures,
-detect stuck backlogs, and alert on throughput drops — with no extra services
-to deploy.
+detect stuck backlogs, and alert on throughput drops without deploying another
+service.
 
 ## Setup
 
@@ -70,11 +70,11 @@ Replace `localhost:3000` with the address where your dashboard is running.
 | Values | `pending`, `running`, `completed`, `failed`, `canceled` |
 
 Current count of workflow runs in each status. One query is executed per
-scrape — there is no caching.
+scrape; there is no caching.
 
-- **Active statuses** (`pending`, `running`) — Is work piling up? Are runs
+- **Active statuses** (`pending`, `running`): Is work piling up? Are runs
   stuck?
-- **Terminal statuses** (`completed`, `failed`, `canceled`) — Are failures
+- **Terminal statuses** (`completed`, `failed`, `canceled`): Are failures
   increasing? Is throughput steady?
 
 Legacy `sleeping` runs are folded into the `running` metric label.

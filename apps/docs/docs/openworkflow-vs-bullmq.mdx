@@ -26,8 +26,8 @@ With OpenWorkflow, you write one function:
 
 ### Native workflow semantics
 
-BullMQ is strong for queue processing, but complex business flows require
-composing jobs into graphs and managing orchestration state yourself.
+With BullMQ, complex business flows require composing jobs into graphs and
+managing orchestration state yourself.
 
 OpenWorkflow treats the flow as one workflow run with durable step history and
 replay.
@@ -35,8 +35,8 @@ replay.
 ### No separate queue infrastructure
 
 BullMQ requires Redis, a separate service to run alongside your application.
-OpenWorkflow uses PostgreSQL or SQLite, which most teams already have for their
-application data. One fewer service to provision and monitor.
+OpenWorkflow uses PostgreSQL or SQLite, so teams that already run one of those
+databases have one fewer service to provision and monitor.
 
 ## When BullMQ is the Right Call
 
@@ -45,5 +45,6 @@ application data. One fewer service to provision and monitor.
   don't need workflows for that.
 - **Existing Redis investment**: If your team already runs Redis and your jobs
   are straightforward, the adoption cost of BullMQ is genuinely low.
-- **High throughput on independent jobs**: BullMQ on Redis can push very high
-  job throughput for independent, short-lived work.
+- **Independent job throughput**: BullMQ on Redis is a better fit when
+  throughput for independent, short-lived jobs matters more than workflow
+  orchestration.

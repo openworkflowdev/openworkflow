@@ -10,7 +10,7 @@ durable workflow running locally.
 ## Prerequisites
 
 - **Node.js** (v22.5+) or **Bun**
-- **A database** — SQLite (no setup required) or PostgreSQL
+- **A database**: SQLite (no setup required) or PostgreSQL
 
 ## 1. Install
 
@@ -108,22 +108,22 @@ its steps, and their results.
 
 ## What you just built
 
-Here's what's happening under the hood:
+The setup has four parts:
 
-1. **`openworkflow.config.ts`** — Tells OpenWorkflow which database to use and
+1. **`openworkflow.config.ts`**: Tells OpenWorkflow which database to use and
    where to find your workflow files.
-2. **`openworkflow/hello-world.ts`** — Defines a workflow with one or more
+2. **`openworkflow/hello-world.ts`**: Defines a workflow with one or more
    steps. Each step is a checkpoint: if anything crashes, the workflow
    resumes from the last completed step instead of starting over.
-3. **`openworkflow/hello-world.run.ts`** — A script that enqueues a workflow
+3. **`openworkflow/hello-world.run.ts`**: A script that enqueues a workflow
    run. In production, this would be your API handler or a cron job.
-4. **The worker** — A long-running process that executes workflow runs. It polls
+4. **The worker**: A long-running process that executes workflow runs. It polls
    the database, claims available work, and persists results.
 
 ## Next steps
 
-- [Overview](/docs/overview) — Understand how workflows, steps, and workers fit
+- [Overview](/docs/overview): Understand how workflows, steps, and workers fit
   together
-- [Workflows](/docs/workflows) — Learn how to define and configure workflows
-- [Steps](/docs/steps) — See how steps protect your operations from crashes
-- [Production](/docs/production) — Deploy OpenWorkflow to your infrastructure
+- [Workflows](/docs/workflows): Learn how to define and configure workflows
+- [Steps](/docs/steps): See how steps protect your operations from crashes
+- [Production](/docs/production): Deploy OpenWorkflow to your infrastructure

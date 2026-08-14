@@ -50,18 +50,13 @@ Temporal exposes multiple timeout classes and retry options per workflow and
 activity. That flexibility is useful when you need it.
 
 OpenWorkflow keeps the default surface smaller (`step.run`, `step.sleep`,
-retries with backoff, optional `deadlineAt`) and is often faster to adopt for
-TypeScript teams that want fewer moving parts.
+retries with backoff, optional `deadlineAt`) for TypeScript teams that want
+fewer moving parts.
 
 ### Tradeoff: happy-path overhead vs resume-path replay CPU
 
-OpenWorkflow optimizes for lower orchestration overhead on the common path, and
-accepts higher replay CPU cost on resumptions (retries, crashes, sleeps, deploy
-handoff).
-
-We made this design choice to keep OpenWorkflow fast: execution of most
-workflows is quicker with fewer hops, at the cost of more replay work when runs
-resume.
+OpenWorkflow uses fewer orchestration hops on the common path and accepts
+higher replay CPU when runs resume after retries, crashes, sleeps, or deploys.
 
 ## When Temporal is the Right Call
 
