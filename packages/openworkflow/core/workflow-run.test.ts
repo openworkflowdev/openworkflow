@@ -123,7 +123,9 @@ describe("validateInput", () => {
   test("handles async schema validation", async () => {
     const schema = createMockSchema<string>({
       validate: async (input) => {
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1);
+        });
         return { value: (input as string).toUpperCase() };
       },
     });
@@ -137,7 +139,7 @@ describe("validateInput", () => {
   });
 
   test("handles undefined input when no schema", async () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     const result = await validateInput(null, undefined);
 
     expect(result.success).toBe(true);

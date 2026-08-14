@@ -40,7 +40,6 @@ const summarizeDoc = ow.defineWorkflow(
       await randomSleep();
 
       // fail 50% of the time to demonstrate retries
-      // eslint-disable-next-line sonarjs/pseudo-random
       if (Math.random() < 0.5) {
         console.log(`[${input.num}] ⚠️ Simulated failure during summarization`);
         throw new Error("Simulated summarization error");
@@ -132,7 +131,8 @@ await main().catch((error: unknown) => {
 });
 
 function randomSleep() {
-  // eslint-disable-next-line sonarjs/pseudo-random
   const sleepDurationMs = Math.floor(Math.random() * 1000) * 5;
-  return new Promise((resolve) => setTimeout(resolve, sleepDurationMs));
+  return new Promise((resolve) => {
+    setTimeout(resolve, sleepDurationMs);
+  });
 }

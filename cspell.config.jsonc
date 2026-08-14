@@ -23,10 +23,11 @@
     "Mintlify",
     "nypm",
     "openworkflow",
+    "oxlint",
     "pghero",
     "posthog",
-    "sonarjs",
     "trivago",
+    "tsgolint",
 
     // postgres
     "hashtextextended",

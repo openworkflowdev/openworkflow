@@ -194,6 +194,24 @@ function RunDetailsPage() {
     });
   }, [steps]);
 
+  const stepsByName = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const step of steps) {
+      counts[step.stepName] = (counts[step.stepName] ?? 0) + 1;
+    }
+    return counts;
+  }, [steps]);
+  const stepAttemptIndexById = useMemo(() => {
+    const seenByName: Record<string, number> = {};
+    const attemptIndexes: Record<string, number> = {};
+    for (const step of steps) {
+      const attemptIndex = (seenByName[step.stepName] ?? 0) + 1;
+      seenByName[step.stepName] = attemptIndex;
+      attemptIndexes[step.id] = attemptIndex;
+    }
+    return attemptIndexes;
+  }, [steps]);
+
   if (!run) {
     return (
       <AppLayout>
@@ -213,23 +231,6 @@ function RunDetailsPage() {
   const referenceNowMs = referenceNow.getTime();
   const duration = computeDuration(run.startedAt, run.finishedAt);
   const startedAt = formatRelativeTime(run.startedAt, referenceNowMs);
-  const stepsByName = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const step of steps) {
-      counts[step.stepName] = (counts[step.stepName] ?? 0) + 1;
-    }
-    return counts;
-  }, [steps]);
-  const stepAttemptIndexById = useMemo(() => {
-    const seenByName: Record<string, number> = {};
-    const attemptIndexes: Record<string, number> = {};
-    for (const step of steps) {
-      const attemptIndex = (seenByName[step.stepName] ?? 0) + 1;
-      seenByName[step.stepName] = attemptIndex;
-      attemptIndexes[step.id] = attemptIndex;
-    }
-    return attemptIndexes;
-  }, [steps]);
   const selectedStep =
     selectedStepId === null
       ? null
@@ -365,6 +366,7 @@ function RunDetailsPage() {
 
                   return (
                     <button
+                      type="button"
                       id={`step-option-${step.id}`}
                       key={step.id}
                       ref={(node) => {

@@ -23,10 +23,10 @@ updates:
       commitlint:
         patterns:
           - "*commitlint*"
-      eslint:
+      oxlint:
         patterns:
-          - "@eslint/js"
-          - "eslint"
+          - "oxlint"
+          - "oxlint-tsgolint"
       react:
         patterns:
           - "@types/react"

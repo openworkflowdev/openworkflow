@@ -38,7 +38,6 @@ export function resolveCancelWorkflowRunConflict(
   existing: Readonly<WorkflowRun> | null,
 ): WorkflowRun {
   if (!existing) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(`Workflow run ${workflowRunId} does not exist`);
   }
 
@@ -48,13 +47,11 @@ export function resolveCancelWorkflowRunConflict(
 
   // 'succeeded' status is deprecated
   if (["succeeded", "completed", "failed"].includes(existing.status)) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(
       `Cannot cancel workflow run ${workflowRunId} with status ${existing.status}`,
     );
   }
 
-  // eslint-disable-next-line functional/no-throw-statements
   throw new Error("Failed to cancel workflow run");
 }
 

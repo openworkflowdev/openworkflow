@@ -453,7 +453,7 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
  */
 function cancelSetup(): never {
   p.cancel("Setup canceled.");
-  // eslint-disable-next-line unicorn/no-process-exit
+  // oxlint-disable-next-line unicorn/no-process-exit
   process.exit(0);
 }
 
@@ -995,7 +995,7 @@ function addWorkerScriptToPackageJson(): void {
 
     writeFileSync(
       packageJsonPath,
-      JSON.stringify(packageJson, null, 2) + "\n",
+      `${JSON.stringify(packageJson, null, 2)}\n`,
       "utf8",
     );
 

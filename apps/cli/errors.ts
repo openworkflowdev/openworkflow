@@ -30,7 +30,7 @@ export function withErrorHandling<T extends unknown[]>(
       if (error instanceof CLIError) {
         consola.error(error.message);
         if (error.detail) consola.info(error.detail);
-        // eslint-disable-next-line unicorn/no-process-exit
+        // oxlint-disable-next-line unicorn/no-process-exit
         process.exit(1);
       }
       const message = error instanceof Error ? error.message : String(error);
@@ -38,7 +38,7 @@ export function withErrorHandling<T extends unknown[]>(
       if (error instanceof Error && error.stack) {
         consola.debug(error.stack);
       }
-      // eslint-disable-next-line unicorn/no-process-exit
+      // oxlint-disable-next-line unicorn/no-process-exit
       process.exit(1);
     }
   };

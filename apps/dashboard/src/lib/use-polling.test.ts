@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invalidate = vi.fn();
 
-vi.mock("@tanstack/react-router", () => ({
+vi.mock(import("@tanstack/react-router"), () => ({
   useRouter: () => ({ invalidate }),
 }));
 

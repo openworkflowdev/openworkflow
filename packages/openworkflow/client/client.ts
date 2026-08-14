@@ -117,7 +117,7 @@ export class OpenWorkflow {
 
     return new WorkflowRunHandle<Output>({
       backend: this.backend,
-      workflowRun: workflowRun,
+      workflowRun,
       resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
       resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
     });
@@ -326,7 +326,7 @@ class WorkflowRunHandle<Output> {
     const start = Date.now();
     const timeout = options?.timeoutMs ?? this.resultTimeoutMs;
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
     while (true) {
       const latest = await this.backend.getWorkflowRun({
         workflowRunId: this.workflowRun.id,

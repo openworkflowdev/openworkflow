@@ -53,7 +53,6 @@ export function decodeListCursor(
   params: Readonly<{ after?: string; before?: string }>,
 ): Cursor | null {
   if (params.after && params.before) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error("Cannot specify both 'after' and 'before' cursors");
   }
   if (params.after) return decodeCursor(params.after);

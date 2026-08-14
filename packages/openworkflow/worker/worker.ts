@@ -301,7 +301,9 @@ class WorkflowExecution {
  * @returns Promise resolved after sleeping
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /**

@@ -1223,9 +1223,7 @@ describe("Worker", () => {
   test("worker handles when canceled workflow during execution", async () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => 0);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
     const stepStarted = Promise.withResolvers<boolean>();
     const releaseStep = Promise.withResolvers<boolean>();
 
@@ -1512,9 +1510,7 @@ describe("Worker", () => {
     vi.useFakeTimers();
 
     const claimWorkflowRun = vi.fn().mockRejectedValue(new Error("boom"));
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => 0);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
 
     const worker = new Worker({
       backend: {
@@ -2135,5 +2131,7 @@ function retryDelayMs(run: WorkflowRun, fallbackStartMs: number): number {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

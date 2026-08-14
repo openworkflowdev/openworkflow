@@ -72,15 +72,13 @@ async function waitForPostgresBackendLock(
     `;
     if (activity?.waitEventType === "Lock") return;
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   }
 
   throw new Error("Timed out waiting for Postgres backend lock");
 }
-
-test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
-  expect(testBackend).toBeTypeOf("function");
-});
 
 testBackend({
   setup: async () => {

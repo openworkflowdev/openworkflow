@@ -7,10 +7,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, describe, afterAll, expect, vi } from "vitest";
 
-test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
-  expect(testBackend).toBeTypeOf("function");
-});
-
 describe("BackendSqlite (in-memory)", () => {
   testBackend({
     setup: () => {
@@ -121,7 +117,7 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
       exec(sql: string) {
         calls.push(sql);
         if (sql === "BEGIN IMMEDIATE") {
-          // eslint-disable-next-line @typescript-eslint/only-throw-error
+          // oxlint-disable-next-line typescript/only-throw-error
           throw "busy";
         }
         if (sql === "ROLLBACK") throw new Error("cannot rollback");

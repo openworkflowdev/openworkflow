@@ -14,7 +14,7 @@ describe("encodeCursor", () => {
       id: "abc123",
     };
     const encoded = encodeCursor(cursor);
-    expect(typeof encoded).toBe("string");
+    expect(encoded).toBeTypeOf("string");
     expect(encoded).toBe(
       Buffer.from(
         JSON.stringify({

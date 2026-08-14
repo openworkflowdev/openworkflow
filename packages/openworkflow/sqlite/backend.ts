@@ -134,7 +134,7 @@ export class BackendSqlite implements Backend {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // oxlint-disable-next-line typescript/require-await
   async stop(): Promise<void> {
     this.db.close();
   }
@@ -394,6 +394,7 @@ export class BackendSqlite implements Backend {
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
       { data: string | null } | undefined;
 
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     if (!row) return Promise.resolve<JsonValue | undefined>(undefined);
     return Promise.resolve(
       (fromJSON(row.data) as JsonValue | undefined) ?? null,
@@ -824,7 +825,7 @@ export class BackendSqlite implements Backend {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // oxlint-disable-next-line typescript/require-await
   async countWorkflowRuns(): Promise<WorkflowRunCounts> {
     const stmt = this.db.prepare(`
       SELECT "status", COUNT(*) AS "count"

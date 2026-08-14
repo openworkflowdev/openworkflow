@@ -3440,7 +3440,7 @@ describe("executeWorkflow", () => {
         { name: "non-error-workflow" },
         async ({ step }) => {
           await step.run({ name: "throw-object" }, () => {
-            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            // oxlint-disable-next-line typescript/only-throw-error
             throw { custom: "error", code: 500 };
           });
           return "nope";
@@ -3871,7 +3871,11 @@ describe("executeWorkflow", () => {
         retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
       });
 
-      expect(sendSignalMock).toHaveBeenCalled();
+      expect(sendSignalMock).toHaveBeenCalledWith({
+        signal: "notify",
+        data: { v: 1 },
+        idempotencyKey: "__signal:signal-send-resume-run:notify",
+      });
       expect(completeStepAttempt).toHaveBeenCalledWith(
         expect.objectContaining({ stepAttemptId: "running-signal-send" }),
       );
@@ -3947,7 +3951,9 @@ describe("createStepExecutionStateFromAttempts", () => {
 });
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function sleepUntilAfter(date: Date): Promise<void> {

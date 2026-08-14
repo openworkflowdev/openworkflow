@@ -201,7 +201,7 @@ describe("normalizeStepOutput", () => {
   });
 
   test("converts undefined to null", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     expect(normalizeStepOutput(undefined)).toBeNull();
   });
 

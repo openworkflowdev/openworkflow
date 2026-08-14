@@ -3,7 +3,7 @@ import { getMetricsResponse } from "./metrics.server";
 import type { Backend, WorkflowRunCounts } from "openworkflow/internal";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./backend", () => ({
+vi.mock(import("./backend"), () => ({
   getBackend: vi.fn(),
 }));
 

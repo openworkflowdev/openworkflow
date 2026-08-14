@@ -8,7 +8,7 @@ export type { WorkflowRunMetadata } from "./core/workflow-function.js";
 export {
   defineWorkflowSpec,
   defineWorkflow,
-  declareWorkflow, // eslint-disable-line @typescript-eslint/no-deprecated
+  declareWorkflow, // oxlint-disable-line typescript/no-deprecated
 } from "./core/workflow-definition.js";
 
 // worker

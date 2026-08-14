@@ -18,7 +18,6 @@ describe("defineWorkflowSpec", () => {
 
 describe("defineWorkflow", () => {
   test("returns workflow with spec and fn", () => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
     function fn() {
       return { result: "done" };
     }
@@ -44,7 +43,7 @@ describe("isWorkflow", () => {
   });
 
   test("returns false for undefined", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     expect(isWorkflow(undefined)).toBe(false);
   });
 

@@ -1087,7 +1087,7 @@ export class BackendPostgres implements Backend {
 
 /**
  * sqlDateDefaultNow returns the provided date or `NOW()` if not.
- * This is needed so we don't have to disable the eslint rule for every query.
+ * This is needed so we don't have to disable the lint rule for every query.
  * @param pg - Postgres client
  * @param date - Date to use (or null)
  * @returns The provided date or a NOW() expression

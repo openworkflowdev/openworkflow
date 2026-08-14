@@ -54,14 +54,14 @@ export {
 
 /**
  * Signal thrown when a workflow needs to sleep. Contains the time when the
- * workflow should resume.
+ * workflow should resume. Not an actual error, but we use it for control flow.
  */
-class SleepSignal extends Error {
+class SleepSignalError extends Error {
   readonly resumeAt: Date;
 
   constructor(resumeAt: Readonly<Date>) {
-    super("SleepSignal");
-    this.name = "SleepSignal";
+    super("SleepSignalError");
+    this.name = "SleepSignalError";
     this.resumeAt = resumeAt;
   }
 }
@@ -479,7 +479,7 @@ class StepExecutor implements StepApi {
 
     // Sleep attempts are not marked completed here — that happens when the
     // workflow resumes.
-    throw new SleepSignal(
+    throw new SleepSignalError(
       this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
     );
   }
@@ -505,7 +505,7 @@ class StepExecutor implements StepApi {
 
     // Workflow steps are terminal once a failure is persisted. Prevents
     // replay from spawning duplicate children when Promise.all short-circuits
-    // on a sibling SleepSignal in the same pass.
+    // on a sibling SleepSignalError in the same pass.
     const terminallyFailedAttempt =
       this.history.findTerminallyFailedWorkflow(stepName);
     if (terminallyFailedAttempt) {
@@ -643,7 +643,7 @@ class StepExecutor implements StepApi {
       timeoutAt && Number.isFinite(timeoutAt.getTime())
         ? timeoutAt
         : defaultWaitTimeoutAt(workflowAttempt.createdAt);
-    throw new SleepSignal(
+    throw new SleepSignalError(
       this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
     );
   }
@@ -903,7 +903,7 @@ class StepExecutor implements StepApi {
       return await this.completeSignalWaitStep<Output>(attempt, null);
     }
 
-    throw new SleepSignal(
+    throw new SleepSignalError(
       this.history.resolveEarliestRunningWaitResumeAt(timeoutAt),
     );
   }
@@ -985,7 +985,6 @@ export interface ExecuteWorkflowParams {
  * - Completing, failing, or parking the workflow run based on the outcome
  * @param params - The execution parameters
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity
 export async function executeWorkflow(
   params: Readonly<ExecuteWorkflowParams>,
 ): Promise<void> {
@@ -1051,7 +1050,7 @@ export async function executeWorkflow(
     if (hasPendingRunningSleep) {
       const earliestResumeAt = history.earliestRunningWaitResumeAt();
       if (earliestResumeAt && Date.now() < earliestResumeAt.getTime()) {
-        throw new SleepSignal(earliestResumeAt);
+        throw new SleepSignalError(earliestResumeAt);
       }
     }
 
@@ -1091,7 +1090,7 @@ export async function executeWorkflow(
     executionFence.deactivate();
 
     // handle sleep signal by parking the workflow in running status
-    if (error instanceof SleepSignal) {
+    if (error instanceof SleepSignalError) {
       await runTransition(() =>
         backend.sleepWorkflowRun({
           workflowRunId: workflowRun.id,

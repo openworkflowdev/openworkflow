@@ -9,7 +9,7 @@ describe("serializeError", () => {
     expect(result.name).toBe("Error");
     expect(result.message).toBe("Something went wrong");
     expect(result.stack).toBeDefined();
-    expect(typeof result.stack).toBe("string");
+    expect(result.stack).toBeTypeOf("string");
   });
 
   test("serializes TypeError with correct name", () => {
@@ -64,7 +64,7 @@ describe("serializeError", () => {
   });
 
   test("serializes undefined to message", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     const result = serializeError(undefined);
 
     expect(result.message).toBe("undefined");

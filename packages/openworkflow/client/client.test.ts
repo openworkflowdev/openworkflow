@@ -217,7 +217,7 @@ describe("OpenWorkflow", () => {
       output: { ok: true },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
+    // oxlint-disable-next-line typescript/no-confusing-void-expression
     const result = await handle.result();
     expect(result).toEqual({ ok: true });
   });

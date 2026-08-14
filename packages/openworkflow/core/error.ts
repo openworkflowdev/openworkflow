@@ -67,6 +67,5 @@ export function requireRow<T>(
   row: T,
   operation: string,
 ): asserts row is NonNullable<T> {
-  // eslint-disable-next-line functional/no-throw-statements
   if (!row) throw new Error(`Failed to ${operation}`);
 }

@@ -73,7 +73,7 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
   let currentDir = path.resolve(startDir ?? process.cwd());
 
   // search up the directory tree
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  // oxlint-disable-next-line typescript/no-unnecessary-condition
   while (true) {
     for (const ext of CONFIG_EXTENSIONS) {
       const fileName = `${CONFIG_NAME}.${ext}`;
