@@ -2,6 +2,10 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "linden",
   "name": "OpenWorkflow",
+  "description": "Open-source durable workflow engine for TypeScript, powered by PostgreSQL or SQLite.",
+  "metadata": {
+    "timestamp": true
+  },
   "colors": {
     "primary": "#000000"
   },
