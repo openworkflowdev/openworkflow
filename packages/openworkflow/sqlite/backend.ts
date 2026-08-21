@@ -24,6 +24,8 @@ import {
   SendSignalResult,
   GetSignalDeliveryParams,
   toWorkflowRunCounts,
+  toWorkflowRunCountsByWorkflowName,
+  WorkflowRunCountsByWorkflowName,
 } from "../core/backend.js";
 import {
   buildPaginatedResponse,
@@ -839,6 +841,23 @@ export class BackendSqlite implements Backend {
       count: number;
     }[];
     return toWorkflowRunCounts(rows);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async countWorkflowRunsByWorkflowName(): Promise<WorkflowRunCountsByWorkflowName> {
+    const stmt = this.db.prepare(`
+      SELECT "workflow_name" AS "workflowName", "status", COUNT(*) AS "count"
+      FROM "workflow_runs"
+      WHERE "namespace_id" = ?
+      GROUP BY "workflow_name", "status"
+    `);
+
+    const rows = stmt.all(this.namespaceId) as {
+      workflowName: string;
+      status: string;
+      count: number;
+    }[];
+    return toWorkflowRunCountsByWorkflowName(rows);
   }
 
   listWorkflowRuns(
