@@ -55,6 +55,6 @@
     "@vitejs/plugin-react": "^6.0.5",
     "jsdom": "^30.0.1",
     "vite": "^8.2.2",
-    "web-vitals": "^6.1.1"
+    "web-vitals": "^6.2.1"
   }
 }
