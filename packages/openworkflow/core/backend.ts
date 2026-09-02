@@ -26,6 +26,7 @@ export interface Backend {
     params: Readonly<ListWorkflowRunsParams>,
   ): Promise<PaginatedResponse<WorkflowRun>>;
   countWorkflowRuns(): Promise<WorkflowRunCounts>;
+  countWorkflowRunsByWorkflowName(): Promise<WorkflowRunCountsByWorkflowName>;
   claimWorkflowRun(
     params: Readonly<ClaimWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -215,6 +216,8 @@ export type WorkflowRunCounts = Omit<
   "succeeded" | "sleeping"
 >;
 
+export type WorkflowRunCountsByWorkflowName = Record<string, WorkflowRunCounts>;
+
 /**
  * Convert status-count rows from a `GROUP BY "status"` query into a
  * typed {@link WorkflowRunCounts} object.
@@ -251,4 +254,33 @@ export function toWorkflowRunCounts(
   }
 
   return counts;
+}
+
+/**
+ * Convert workflow-name/status-count rows into normalized workflow run counts.
+ * @param rows - Rows from the database query
+ * @returns Workflow run counts keyed by workflow name, then status
+ */
+export function toWorkflowRunCountsByWorkflowName(
+  rows: readonly {
+    workflowName: string;
+    status: string;
+    count: number | string;
+  }[],
+): WorkflowRunCountsByWorkflowName {
+  const countsByWorkflowName: WorkflowRunCountsByWorkflowName = {};
+
+  for (const row of rows) {
+    const workflowCounts = (countsByWorkflowName[row.workflowName] ??=
+      toWorkflowRunCounts([]));
+    const counts = toWorkflowRunCounts([
+      { status: row.status, count: row.count },
+    ]);
+
+    for (const status of Object.keys(counts) as (keyof WorkflowRunCounts)[]) {
+      workflowCounts[status] += counts[status];
+    }
+  }
+
+  return countsByWorkflowName;
 }
