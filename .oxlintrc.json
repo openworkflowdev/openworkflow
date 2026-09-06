@@ -72,6 +72,7 @@
       { "classes": false, "functions": false }
     ],
     "eslint/no-void": "allow",
+    "eslint/one-var": "allow",
     "eslint/prefer-destructuring": "allow",
     "eslint/prefer-named-capture-group": "allow",
     "eslint/require-await": "allow",
@@ -110,8 +111,9 @@
     "react/no-multi-comp": "allow",
     "react/no-unescaped-entities": "allow",
     "react/only-export-components": "allow",
-    "react/react-compiler": "allow",
     "react/react-in-jsx-scope": "allow",
+    "react/set-state-in-effect": "allow",
+    "react/todo": "allow",
     "typescript/consistent-type-imports": "allow",
     "typescript/consistent-return": "allow",
     "typescript/explicit-function-return-type": "allow",
@@ -229,6 +231,7 @@
     {
       "files": ["packages/openworkflow/core/standard-schema.ts"],
       "rules": {
+        "eslint/no-redeclare": "allow",
         "typescript/no-useless-empty-export": "allow",
         "unicorn/require-module-specifiers": "allow"
       }
