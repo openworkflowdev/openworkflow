@@ -112,7 +112,6 @@
     "react/no-unescaped-entities": "allow",
     "react/only-export-components": "allow",
     "react/react-in-jsx-scope": "allow",
-    "react/set-state-in-effect": "allow",
     "react/todo": "allow",
     "typescript/consistent-type-imports": "allow",
     "typescript/consistent-return": "allow",

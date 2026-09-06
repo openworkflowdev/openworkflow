@@ -29,6 +29,7 @@ import {
   getStatusBadgeClass,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-polling";
+import { useStepSelection } from "@/lib/use-step-selection";
 import { cn } from "@/lib/utils";
 import {
   computeDuration,
@@ -37,7 +38,12 @@ import {
   getListboxNavigationIndex,
 } from "@/utils";
 import { ArrowLeftIcon, ListDashesIcon } from "@phosphor-icons/react";
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  useHydrated,
+  useRouter,
+} from "@tanstack/react-router";
 import type {
   StepAttempt,
   WorkflowRun,
@@ -46,7 +52,6 @@ import type {
 import {
   type KeyboardEvent,
   type ReactNode,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -127,9 +132,7 @@ function RunDetailsPage() {
   const params = Route.useParams();
   const navigate = Route.useNavigate();
   const router = useRouter();
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(() =>
-    getDefaultSelectedStepId(steps),
-  );
+  const [selectedStepId, setSelectedStepId] = useStepSelection(steps);
   const stepOptionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
@@ -183,16 +186,6 @@ function RunDetailsPage() {
   usePolling({
     enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
   });
-
-  useEffect(() => {
-    setSelectedStepId((previousStepId) => {
-      if (previousStepId && steps.some((step) => step.id === previousStepId)) {
-        return previousStepId;
-      }
-
-      return getDefaultSelectedStepId(steps);
-    });
-  }, [steps]);
 
   const stepsByName = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -917,13 +910,9 @@ function MetadataDebugSection({
 
 function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
   const [copied, setCopied] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useHydrated();
   const serializedValue = stringifyDebugValue(value);
   const useStructuredEditor = shouldUseStructuredEditor(value, serializedValue);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   async function copyPayload() {
     try {
@@ -980,26 +969,6 @@ function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
       )}
     </div>
   );
-}
-
-function getDefaultSelectedStepId(
-  steps: readonly StepAttempt[],
-): string | null {
-  if (steps.length === 0) {
-    return null;
-  }
-
-  const failedStep = steps.find((step) => step.status === "failed");
-  if (failedStep) {
-    return failedStep.id;
-  }
-
-  const runningStep = steps.find((step) => step.status === "running");
-  if (runningStep) {
-    return runningStep.id;
-  }
-
-  return steps.at(-1)?.id ?? null;
 }
 
 function getRunStatusHelp(status: string): string {
