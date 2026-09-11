@@ -38,11 +38,11 @@ You should see output like:
 ```text
 # HELP openworkflow_workflow_runs Current count of workflow runs in each status.
 # TYPE openworkflow_workflow_runs gauge
-openworkflow_workflow_runs{status="pending"} 12
-openworkflow_workflow_runs{status="running"} 3
-openworkflow_workflow_runs{status="completed"} 847
-openworkflow_workflow_runs{status="failed"} 2
-openworkflow_workflow_runs{status="canceled"} 0
+openworkflow_workflow_runs{workflow_name="send-welcome-email",status="pending"} 12
+openworkflow_workflow_runs{workflow_name="send-welcome-email",status="running"} 3
+openworkflow_workflow_runs{workflow_name="send-welcome-email",status="completed"} 847
+openworkflow_workflow_runs{workflow_name="send-welcome-email",status="failed"} 2
+openworkflow_workflow_runs{workflow_name="send-welcome-email",status="canceled"} 0
 ```
 
 ### 3. Configure Prometheus to scrape the dashboard
@@ -66,7 +66,7 @@ Replace `localhost:3000` with the address where your dashboard is running.
 | Field  | Value                                                   |
 | ------ | ------------------------------------------------------- |
 | Type   | Gauge                                                   |
-| Labels | `status`                                                |
+| Labels | `workflow_name`, `status`                               |
 | Values | `pending`, `running`, `completed`, `failed`, `canceled` |
 
 Current count of workflow runs in each status. One query is executed per
