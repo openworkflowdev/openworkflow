@@ -45,7 +45,7 @@
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^26.4.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
     "cspell": "^10.2.2",
     "husky": "^9.1.7",
     "jscpd": "^5.1.2",
@@ -58,7 +58,7 @@
     "tsx": "^4.23.13",
     "turbo": "^2.10.12",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.2"
+    "vitest": "^5.0.0"
   },
   "packageManager": "npm@11.8.0",
   "engines": {
