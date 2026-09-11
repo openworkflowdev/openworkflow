@@ -50,7 +50,7 @@
     "husky": "^9.1.7",
     "jscpd": "^5.1.2",
     "knip": "^6.34.0",
-    "oxlint": "^1.81.0",
+    "oxlint": "^1.82.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
     "prettier-plugin-packagejson": "^3.0.2",
