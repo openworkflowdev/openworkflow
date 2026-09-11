@@ -3005,6 +3005,213 @@ describe("StepExecutor", () => {
     expect(status).toBe("failed");
     sendSignalSpy.mockRestore();
   });
+
+  test("resumeWorkflowRun re-runs the failed step without re-executing completed steps", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    let validateRuns = 0;
+    let flakyRuns = 0;
+    let shouldFail = true;
+
+    const workflow = client.defineWorkflow(
+      { name: `resume-from-failure-${randomUUID()}` },
+      async ({ step }) => {
+        const validated = await step.run({ name: "validate" }, () => {
+          validateRuns++;
+          return "ok";
+        });
+
+        const flaky = await step.run(
+          { name: "flaky", retryPolicy: { maximumAttempts: 2 } },
+          () => {
+            flakyRuns++;
+            if (shouldFail) {
+              throw new Error("simulated upstream failure");
+            }
+            return "recovered";
+          },
+        );
+
+        return { validated, flaky };
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 1 });
+    const handle = await workflow.run();
+
+    const failedStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      40,
+      25,
+      { maxWaitMs: 20_000 },
+    );
+    expect(failedStatus).toBe("failed");
+    expect(validateRuns).toBe(1);
+    expect(flakyRuns).toBe(2);
+
+    const stepsBeforeResume = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    const failedBefore = stepsBeforeResume.data.filter(
+      (s) => s.status === "failed",
+    );
+    expect(failedBefore).toHaveLength(2);
+
+    shouldFail = false;
+    await backend.resumeWorkflowRun({ workflowRunId: handle.workflowRun.id });
+
+    const resumedRun = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(resumedRun?.status).toBe("pending");
+    expect(resumedRun?.startedAt).toBeNull();
+    expect(resumedRun?.finishedAt).toBeNull();
+    expect(resumedRun?.workerId).toBeNull();
+    // resume marker is stamped; the failure record is left intact
+    expect(resumedRun?.resumedAt).not.toBeNull();
+    expect(resumedRun?.error).not.toBeNull();
+
+    const stepsAfterResume = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+      limit: 100,
+    });
+    // history is preserved: the two failed "flaky" attempts still exist
+    expect(
+      stepsAfterResume.data.filter(
+        (s) => s.stepName === "flaky" && s.status === "failed",
+      ),
+    ).toHaveLength(2);
+    expect(
+      stepsAfterResume.data.some(
+        (s) => s.stepName === "validate" && s.status === "completed",
+      ),
+    ).toBe(true);
+
+    const finalStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      40,
+      25,
+      { maxWaitMs: 20_000 },
+    );
+    expect(finalStatus).toBe("completed");
+    // "validate" was cached from the original run, not re-executed
+    expect(validateRuns).toBe(1);
+    // "flaky" ran 2 times on the original run + 1 on resume
+    expect(flakyRuns).toBe(3);
+
+    const result = await handle.result();
+    expect(result).toEqual({ validated: "ok", flaky: "recovered" });
+  }, 30_000);
+
+  test("resumeWorkflowRun continues past the fixed step to downstream steps", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const ran: string[] = [];
+    let gatewayDown = true;
+
+    const workflow = client.defineWorkflow(
+      { name: `resume-middle-step-${randomUUID()}` },
+      async ({ step }) => {
+        await step.run({ name: "validate" }, () => {
+          ran.push("validate");
+          return "ok";
+        });
+
+        await step.run(
+          { name: "reserve", retryPolicy: { maximumAttempts: 2 } },
+          () => {
+            ran.push("reserve");
+            if (gatewayDown) {
+              throw new Error("gateway down");
+            }
+            return "auth";
+          },
+        );
+
+        await step.run({ name: "confirm" }, () => {
+          ran.push("confirm");
+          return "receipt";
+        });
+
+        await step.run({ name: "send-receipt" }, () => {
+          ran.push("send-receipt");
+        });
+
+        return "done";
+      },
+    );
+
+    const worker = client.newWorker({ concurrency: 1 });
+    const handle = await workflow.run();
+
+    const failedStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      40,
+      25,
+      { maxWaitMs: 20_000 },
+    );
+    expect(failedStatus).toBe("failed");
+    // validate completed once; reserve exhausted its 2 attempts; the steps
+    // after the failing one never ran
+    expect(ran.filter((s) => s === "validate")).toHaveLength(1);
+    expect(ran.filter((s) => s === "reserve")).toHaveLength(2);
+    expect(ran).not.toContain("confirm");
+    expect(ran).not.toContain("send-receipt");
+
+    gatewayDown = false;
+    await backend.resumeWorkflowRun({ workflowRunId: handle.workflowRun.id });
+
+    const finalStatus = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      40,
+      25,
+      { maxWaitMs: 20_000 },
+    );
+    expect(finalStatus).toBe("completed");
+    // validate stayed cached (not re-run); reserve retried once more with a
+    // fresh budget and succeeded; the downstream steps now run
+    expect(ran.filter((s) => s === "validate")).toHaveLength(1);
+    expect(ran.filter((s) => s === "reserve")).toHaveLength(3);
+    expect(ran).toContain("confirm");
+    expect(ran).toContain("send-receipt");
+  }, 30_000);
+
+  test("resumeWorkflowRun throws when the run is not in failed status", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: `resume-invalid-${randomUUID()}` },
+      async ({ step }) => {
+        return await step.run({ name: "noop" }, () => "ok");
+      },
+    );
+
+    const handle = await workflow.run();
+
+    await expect(
+      backend.resumeWorkflowRun({ workflowRunId: handle.workflowRun.id }),
+    ).rejects.toThrow(/Cannot resume workflow run.*pending/);
+  });
+
+  test("resumeWorkflowRun throws when the run does not exist", async () => {
+    const backend = await createTestBackend();
+
+    await expect(
+      backend.resumeWorkflowRun({ workflowRunId: randomUUID() }),
+    ).rejects.toThrow(/does not exist/);
+  });
 });
 
 describe("executeWorkflow", () => {
@@ -4127,6 +4334,7 @@ function createMockWorkflowRun(
     deadlineAt: null,
     startedAt: new Date("2026-01-01T00:00:00.000Z"),
     finishedAt: null,
+    resumedAt: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,

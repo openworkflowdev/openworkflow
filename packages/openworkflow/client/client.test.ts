@@ -696,6 +696,7 @@ function createMockWorkflowRun(
     deadlineAt: null,
     startedAt: null,
     finishedAt: null,
+    resumedAt: null,
     createdAt: currentTime,
     updatedAt: currentTime,
     ...overrides,
