@@ -241,7 +241,8 @@ bunx @openworkflow/cli worker start --help
 
 ## Environment Variables
 
-The CLI loads `.env` files automatically before reading the config.
+The CLI loads `.env` from the current directory before reading the config. You
+can pass `--env-file <path>` to load a different .env file.
 
 ```bash
 # .env

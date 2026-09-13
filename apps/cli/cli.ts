@@ -23,6 +23,7 @@ program
   .command("init")
   .description("initialize OpenWorkflow")
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(init));
 
 // doctor
@@ -30,6 +31,7 @@ program
   .command("doctor")
   .description("check configuration and list available workflows")
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(doctor));
 
 // worker
@@ -45,6 +47,7 @@ workerCmd
     Number.parseInt,
   )
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(workerStart));
 
 // dashboard
@@ -57,6 +60,7 @@ program
     Number.parseInt,
   )
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(dashboard));
 
 await program.parseAsync(process.argv);

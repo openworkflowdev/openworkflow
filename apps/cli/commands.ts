@@ -33,6 +33,7 @@ type BackendChoice = "sqlite" | "postgres" | "both";
 
 interface CommandOptions {
   config?: string;
+  envFile?: string;
 }
 
 interface DashboardOptions extends CommandOptions {
@@ -70,10 +71,9 @@ export function getVersion(): string {
  * @param options - Command options
  */
 export async function init(options: CommandOptions = {}): Promise<void> {
-  const configPath = options.config;
   p.intro("Initializing OpenWorkflow...");
 
-  const { configFile } = await loadConfigWithEnv(configPath);
+  const { configFile } = await loadConfigWithEnv(options);
   let configFileToDelete: string | null = null;
 
   if (configFile) {
@@ -127,7 +127,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     );
   }
 
-  const configFileName = configPath ?? getConfigFileName(packageJson);
+  const configFileName = options.config ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
   const runFileName = getRunFileName(packageJson);
@@ -196,10 +196,9 @@ export async function init(options: CommandOptions = {}): Promise<void> {
  * @param options - Command options
  */
 export async function doctor(options: CommandOptions = {}): Promise<void> {
-  const configPath = options.config;
   consola.start("Running OpenWorkflow doctor...");
 
-  const { config, configFile } = await loadConfigWithEnv(configPath);
+  const { config, configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -257,10 +256,9 @@ export type WorkerStartOptions = WorkerConfig & CommandOptions;
 export async function workerStart(
   options: WorkerStartOptions = {},
 ): Promise<void> {
-  const { config: configPath, ...workerConfig } = options;
   consola.start("Starting worker...");
 
-  const { config, configFile } = await loadConfigWithEnv(configPath);
+  const { config, configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -306,7 +304,9 @@ export async function workerStart(
 
     assertNoDuplicateWorkflows(workflows);
 
-    const workerOptions = mergeDefinedOptions(config.worker, workerConfig);
+    const workerOptions = mergeDefinedOptions(config.worker, {
+      concurrency: options.concurrency,
+    });
     if (workerOptions.concurrency !== undefined) {
       assertPositiveInteger("concurrency", workerOptions.concurrency);
     }
@@ -383,11 +383,10 @@ export function validateDashboardPort(port?: number): number | undefined {
  * @returns Resolves when the dashboard process exits.
  */
 export async function dashboard(options: DashboardOptions = {}): Promise<void> {
-  const configPath = options.config;
   const port = validateDashboardPort(options.port);
   consola.start("Starting dashboard...");
 
-  const { configFile } = await loadConfigWithEnv(configPath);
+  const { configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -1066,12 +1065,19 @@ function updateEnvForPostgres(): void {
 }
 
 /**
- * Load CLI config after loading .env, and wrap errors for user-facing output.
- * @param configPath - Optional explicit config file path
+ * Load CLI config after loading environment variables, and wrap config errors.
+ * @param options - Config and environment file paths
  * @returns Loaded config and metadata.
  */
-async function loadConfigWithEnv(configPath?: string) {
-  loadDotenv({ quiet: true });
+async function loadConfigWithEnv(options: CommandOptions) {
+  const { config: configPath, envFile } = options;
+  const { error } = loadDotenv({ path: envFile ?? ".env", quiet: true });
+  if (envFile !== undefined && error) {
+    throw new CLIError(
+      `Failed to load environment file: ${envFile}`,
+      error.message,
+    );
+  }
   try {
     return configPath
       ? await loadConfigFromPath(configPath)
