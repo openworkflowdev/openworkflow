@@ -25,7 +25,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { addDependency, detectPackageManager } from "nypm";
 import { OpenWorkflow } from "openworkflow";
-import { isWorkflow, Workflow } from "openworkflow/internal";
+import { Backend, isWorkflow, Workflow } from "openworkflow/internal";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -208,6 +208,7 @@ export async function doctor(options: CommandOptions = {}): Promise<void> {
   const backend = config.backend;
 
   try {
+    await checkBackendConnection(backend);
     consola.log("");
     consola.info(`Config file: ${configFile}`);
 
@@ -286,6 +287,8 @@ export async function workerStart(
   }
 
   try {
+    await checkBackendConnection(backend);
+
     // discover and import workflows
     const dirs = getWorkflowDirectories(config);
     consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
@@ -454,6 +457,21 @@ function cancelSetup(): never {
   p.cancel("Setup canceled.");
   // oxlint-disable-next-line unicorn/no-process-exit
   process.exit(0);
+}
+
+/**
+ * Exercise backend initialization, connectivity, and workflow table access.
+ * @param backend - Configured backend
+ */
+async function checkBackendConnection(backend: Backend): Promise<void> {
+  try {
+    await backend.listWorkflowRuns({ limit: 1 });
+  } catch (error) {
+    throw new CLIError(
+      "Failed to access backend.",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 /**
