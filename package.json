@@ -48,7 +48,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "cspell": "^10.2.2",
     "husky": "^9.1.7",
-    "jscpd": "^5.1.2",
+    "jscpd": "^5.2.0",
     "knip": "^6.34.0",
     "oxlint": "^1.81.0",
     "oxlint-tsgolint": "^7.0.2001",
