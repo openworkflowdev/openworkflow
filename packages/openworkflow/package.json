@@ -60,7 +60,7 @@
     "valibot": "^1.4.2",
     "vitest": "^5.0.0",
     "yup": "^1.7.1",
-    "zod": "^4.5.4"
+    "zod": "^4.6.2"
   },
   "peerDependencies": {
     "postgres": "^3.4.9"
