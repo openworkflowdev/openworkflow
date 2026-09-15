@@ -64,6 +64,26 @@ describe("loadConfig", () => {
     expect(configFile).toContain(filename);
   });
 
+  test("resolves aliases in config imports", async () => {
+    fs.mkdirSync(path.join(tmpDir, "src"));
+    fs.writeFileSync(
+      path.join(tmpDir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { paths: { "~/*": ["./src/*"] } } }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "src", "name.ts"),
+      'export const name: string = "aliased";',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.ts"),
+      'import { name } from "~/name"; export default { name };',
+    );
+
+    const { config } = await loadConfig(tmpDir);
+
+    expect((config as unknown as TestConfig).name).toBe("aliased");
+  });
+
   test("throws if importing the config file fails", async () => {
     const filePath = path.join(tmpDir, "openworkflow.config.js");
     // simulate failure, throw when imported

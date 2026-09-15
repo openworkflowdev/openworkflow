@@ -1,4 +1,4 @@
-import { createJiti } from "jiti";
+import { createModuleLoader } from "./module-loader.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -43,10 +43,6 @@ interface LoadedConfig {
 
 const CONFIG_NAME = "openworkflow.config";
 const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
-const jiti = createJiti(import.meta.url, {
-  tryNative: false,
-  tsconfigPaths: true,
-}); // bun compatibility
 
 /**
  * Load OpenWorkflow config from an explicit path.
@@ -116,6 +112,7 @@ export function findConfigFile(startDir = process.cwd()): string | undefined {
  */
 async function importConfigFile(filePath: string): Promise<LoadedConfig> {
   try {
+    const jiti = createModuleLoader(filePath, { tryNative: false }); // bun compatibility
     const fileUrl = pathToFileURL(filePath).href;
     const config = await jiti.import(fileUrl, {
       default: true,

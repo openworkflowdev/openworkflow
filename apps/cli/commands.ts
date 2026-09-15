@@ -5,6 +5,7 @@ import {
   loadConfigFromPath,
 } from "./config.js";
 import { CLIError, exit } from "./errors.js";
+import { createModuleLoader } from "./module-loader.js";
 import {
   CONFIG,
   HELLO_WORLD_RUNNER,
@@ -16,7 +17,6 @@ import {
 import * as p from "@clack/prompts";
 import { consola } from "consola";
 import { config as loadDotenv } from "dotenv";
-import { createJiti } from "jiti";
 import { spawn } from "node:child_process";
 import {
   existsSync,
@@ -790,15 +790,12 @@ async function importWorkflows(
   files: string[],
 ): Promise<Workflow<unknown, unknown, unknown>[]> {
   const workflows: Workflow<unknown, unknown, unknown>[] = [];
-  const jiti = createJiti(import.meta.url, {
-    tryNative: true,
-    tsconfigPaths: true,
-  });
 
   for (const file of files) {
     // import the module
     let module: Record<string, unknown>;
     try {
+      const jiti = createModuleLoader(file);
       module = await jiti.import(pathToFileURL(file).href);
     } catch (error) {
       const errorMessage =
