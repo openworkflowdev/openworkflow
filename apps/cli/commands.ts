@@ -790,7 +790,10 @@ async function importWorkflows(
   files: string[],
 ): Promise<Workflow<unknown, unknown, unknown>[]> {
   const workflows: Workflow<unknown, unknown, unknown>[] = [];
-  const jiti = createJiti(import.meta.url);
+  const jiti = createJiti(import.meta.url, {
+    tryNative: true,
+    tsconfigPaths: true,
+  });
 
   for (const file of files) {
     // import the module
