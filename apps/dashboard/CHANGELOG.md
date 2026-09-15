@@ -1,5 +1,10 @@
 # @openworkflow/dashboard
 
+## 0.1.10
+
+- Fix transient invalid step selections when pages change or steps disappear,
+  while preserving the selected step across polling updates
+
 ## 0.1.9
 
 - Add workflow signals support

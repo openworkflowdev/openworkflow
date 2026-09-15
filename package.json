@@ -34,13 +34,13 @@
     "worker": "npm run openworkflow worker start"
   },
   "dependencies": {
-    "openworkflow": "^0.8.1"
+    "openworkflow": "^0.10.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.0.2",
     "@commitlint/config-workspace-scopes": "^21.2.0",
-    "@openworkflow/cli": "^0.4.3",
+    "@openworkflow/cli": "^0.5.0",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.8",
