@@ -6,11 +6,18 @@ import {
   getExampleWorkflowFileName,
   getRunFileName,
   validateDashboardPort,
+  init,
 } from "./commands.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { addDependency } from "nypm";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+vi.mock(import("nypm"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  addDependency: vi.fn(),
+}));
 
 describe("getConfigFileName", () => {
   test("prefers TypeScript when it is in devDependencies", () => {
@@ -187,5 +194,102 @@ describe("validateDashboardPort", () => {
     expect(() => validateDashboardPort(65_536)).toThrow(
       "Invalid dashboard port.",
     );
+  });
+});
+
+describe("init", () => {
+  let cwd: string;
+  const isTTY = process.stdin.isTTY;
+
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ow-init-"));
+    fs.writeFileSync(path.join(cwd, "package.json"), '{"type":"module"}');
+    vi.spyOn(process, "cwd").mockReturnValue(cwd);
+    vi.mocked(addDependency).mockReset().mockResolvedValue({});
+    process.stdin.isTTY = false;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.stdin.isTTY = isTTY;
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
+  test.each(["sqlite", "postgres", "both"] as const)(
+    "scaffolds %s without prompts or installation",
+    async (backend) => {
+      await init({ backend, yes: true, skipInstall: true });
+      const client = fs.readFileSync(
+        path.join(cwd, "openworkflow/client.js"),
+        "utf8",
+      );
+      expect(client.includes("BackendSqlite.connect")).toBe(
+        backend !== "postgres",
+      );
+      expect(client.includes("BackendPostgres.connect")).toBe(
+        backend !== "sqlite",
+      );
+      expect(fs.existsSync(path.join(cwd, "openworkflow.config.js"))).toBe(
+        true,
+      );
+      expect(addDependency).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")),
+      ).toEqual({
+        type: "module",
+        scripts: { worker: "npx @openworkflow/cli worker start" },
+      });
+    },
+  );
+
+  test("requires a backend with --yes", async () => {
+    await expect(init({ yes: true })).rejects.toThrow("--backend is required");
+  });
+
+  test("requires --yes without a terminal", async () => {
+    await expect(init({ backend: "sqlite" })).rejects.toThrow(
+      "requires a terminal",
+    );
+  });
+
+  test.each([
+    ["openworkflow.config.js", 'throw new Error("config executed");'],
+    ["package.json", '{"scripts":{"worker":"custom"}}'],
+  ])("preserves existing %s", async (file, contents) => {
+    fs.writeFileSync(path.join(cwd, file), contents);
+    await expect(init({ backend: "sqlite", yes: true })).rejects.toThrow(
+      "overwrite",
+    );
+    expect(addDependency).not.toHaveBeenCalled();
+    expect(fs.readFileSync(path.join(cwd, file), "utf8")).toBe(contents);
+  });
+
+  test.each([
+    "[]",
+    '{"scripts":"invalid"}',
+    '{"dependencies":[]}',
+    '{"devDependencies":{"typescript":true}}',
+  ])("rejects invalid manifest %s", async (contents) => {
+    fs.writeFileSync(path.join(cwd, "package.json"), contents);
+    await expect(
+      init({ backend: "sqlite", yes: true, skipInstall: true }),
+    ).rejects.toThrow("Invalid package.json");
+    expect(fs.existsSync(path.join(cwd, "openworkflow"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "package.json"), "utf8")).toBe(
+      contents,
+    );
+  });
+
+  test("installs runtime and development dependencies", async () => {
+    await init({ backend: "postgres", yes: true });
+    expect(addDependency).toHaveBeenCalledWith(["openworkflow", "postgres"], {
+      silent: true,
+      packageManager: "npm",
+    });
+    expect(addDependency).toHaveBeenCalledWith(["@openworkflow/cli"], {
+      silent: true,
+      dev: true,
+      packageManager: "npm",
+    });
   });
 });

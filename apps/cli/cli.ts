@@ -8,7 +8,7 @@ import {
   workerStart,
 } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 
 // openworkflow
 const program = new Command();
@@ -22,6 +22,21 @@ program
 program
   .command("init")
   .description("initialize OpenWorkflow")
+  .addOption(
+    new Option("--backend <backend>", "backend to configure").choices([
+      "sqlite",
+      "postgres",
+      "both",
+    ]),
+  )
+  .option(
+    "-y, --yes",
+    "skip prompts (requires --backend; does not allow overwrites)",
+  )
+  .option(
+    "--skip-install",
+    "create project files without installing dependencies",
+  )
   .option("--config <path>", "path to OpenWorkflow config file")
   .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(init));

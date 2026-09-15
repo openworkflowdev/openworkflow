@@ -28,7 +28,7 @@ bun add -D @openworkflow/cli
 
 ### `init`
 
-Initialize OpenWorkflow in your project:
+Initialize OpenWorkflow in a project with an existing `package.json`:
 
 <CodeGroup>
 ```bash npm
@@ -45,15 +45,24 @@ bunx @openworkflow/cli init
 
 </CodeGroup>
 
-This interactive command:
+By default, `init` is interactive and prompts for a backend, installs
+dependencies, and creates a config, client, example workflow, and runner. It
+also adds a `worker` script and updates `.gitignore` or `.env` for the selected
+backend.
 
-1. Asks which backend to use (SQLite, PostgreSQL, or both)
-2. Installs required dependencies
-3. Creates `openworkflow.config.ts`
-4. Creates an example workflow in `./openworkflow/`
-5. Adds a `worker` script to `package.json`
-6. Updates `.gitignore` for SQLite (if selected)
-7. Adds `OPENWORKFLOW_POSTGRES_URL` to `.env` for PostgreSQL (if selected)
+Options:
+
+- `--backend <backend>` - Select `sqlite`, `postgres`, or `both`. With `both`,
+  PostgreSQL is used when `NODE_ENV=production`; otherwise SQLite is used.
+- `-y, --yes` - Skip prompts. Requires `--backend` and rejects existing configs.
+- `--skip-install` - Create files without installing dependencies or changing
+  dependency declarations. Prints the installation commands to run later.
+
+For unattended setup without installing dependencies:
+
+```bash
+npx @openworkflow/cli init --backend postgres --yes --skip-install
+```
 
 ### `worker start`
 

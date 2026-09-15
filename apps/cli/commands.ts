@@ -28,7 +28,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { addDependency, detectPackageManager } from "nypm";
+import {
+  addDependency,
+  addDependencyCommand,
+  detectPackageManager,
+} from "nypm";
 import { OpenWorkflow } from "openworkflow";
 import { Backend, isWorkflow, Workflow } from "openworkflow/internal";
 
@@ -44,6 +48,12 @@ type BackendChoice = "sqlite" | "postgres" | "both";
 interface CommandOptions {
   config?: string;
   envFile?: string;
+}
+
+interface InitOptions extends CommandOptions {
+  backend?: BackendChoice;
+  yes?: boolean;
+  skipInstall?: boolean;
 }
 
 interface DashboardOptions extends CommandOptions {
@@ -80,13 +90,27 @@ export function getVersion(): string {
  * openworkflow init
  * @param options - Command options
  */
-export async function init(options: CommandOptions = {}): Promise<void> {
+// oxlint-disable-next-line complexity
+export async function init(options: InitOptions = {}): Promise<void> {
+  if (options.yes && !options.backend) {
+    throw new CLIError("--backend is required with --yes.");
+  }
+  if (!options.yes && !process.stdin.isTTY) {
+    throw new CLIError(
+      "Interactive setup requires a terminal. Pass --backend sqlite|postgres|both --yes.",
+    );
+  }
   p.intro("Initializing OpenWorkflow...");
 
-  const { configFile } = await loadConfigWithEnv(options);
+  const configFile = findConfigWithEnv(options);
   let configFileToDelete: string | null = null;
 
-  if (configFile) {
+  if (configFile && existsSync(configFile)) {
+    if (options.yes) {
+      throw new CLIError(
+        `Config file already exists at ${configFile}. --yes does not allow overwrites.`,
+      );
+    }
     const shouldOverride = await p.confirm({
       message: `Config file already exists at ${configFile}. Override it?`,
       initialValue: false,
@@ -97,27 +121,29 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     configFileToDelete = configFile;
   }
 
-  const backendChoice = await p.select<BackendChoice>({
-    message: "Select a backend for OpenWorkflow:",
-    options: [
-      {
-        value: "sqlite",
-        label: "SQLite",
-        hint: "Recommended for testing and development",
-      },
-      {
-        value: "postgres",
-        label: "PostgreSQL",
-        hint: "Recommended for production",
-      },
-      {
-        value: "both",
-        label: "Both",
-        hint: "SQLite for dev, PostgreSQL for production",
-      },
-    ],
-    initialValue: "sqlite",
-  });
+  const backendChoice =
+    options.backend ??
+    (await p.select<BackendChoice>({
+      message: "Select a backend for OpenWorkflow:",
+      options: [
+        {
+          value: "sqlite",
+          label: "SQLite",
+          hint: "Recommended for testing and development",
+        },
+        {
+          value: "postgres",
+          label: "PostgreSQL",
+          hint: "Recommended for production",
+        },
+        {
+          value: "both",
+          label: "Both",
+          hint: "SQLite for dev, PostgreSQL for production",
+        },
+      ],
+      initialValue: "sqlite",
+    }));
 
   if (p.isCancel(backendChoice)) cancelSetup();
 
@@ -126,7 +152,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
   // detect package manager & install packages
   spinner.start("Detecting package manager...");
   const pm = await detectPackageManager(process.cwd());
-  const packageManager = pm?.name ?? "your package manager";
+  const packageManager = pm?.name ?? "npm";
   spinner.stop(`Using ${packageManager}`);
 
   const packageJson = readPackageJsonForDoctor();
@@ -137,6 +163,8 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     );
   }
 
+  validateInitManifest(packageJson);
+
   const configFileName = options.config ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
@@ -145,10 +173,14 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     ? `npx tsx openworkflow/${runFileName}`
     : `node openworkflow/${runFileName}`;
 
-  const shouldSetup = await p.confirm({
-    message: "Install packages and set up project files?",
-    initialValue: true,
-  });
+  const shouldSetup =
+    options.yes ??
+    (await p.confirm({
+      message: options.skipInstall
+        ? "Set up project files?"
+        : "Install packages and set up project files?",
+      initialValue: true,
+    }));
 
   if (p.isCancel(shouldSetup)) cancelSetup();
 
@@ -157,22 +189,31 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     return;
   }
 
+  const dependencies = getDependenciesToInstall(backendChoice);
+  const devDependencies = getDevDependenciesToInstall();
+  if (options.skipInstall) {
+    p.note(
+      [
+        addDependencyCommand(packageManager, dependencies),
+        addDependencyCommand(packageManager, devDependencies, { dev: true }),
+      ].join("\n"),
+      "Install dependencies before running OpenWorkflow",
+    );
+  } else {
+    spinner.start(`Installing ${dependencies.join(", ")}...`);
+    await addDependency(dependencies, { silent: true, packageManager });
+    spinner.stop(`Installed ${dependencies.join(", ")}`);
+    spinner.start(`Installing ${devDependencies.join(", ")}...`);
+    await addDependency(devDependencies, {
+      silent: true,
+      dev: true,
+      packageManager,
+    });
+    spinner.stop(`Installed ${devDependencies.join(", ")}`);
+  }
+
   if (configFileToDelete) {
     unlinkSync(configFileToDelete);
-  }
-
-  {
-    const dependencies = getDependenciesToInstall(backendChoice);
-    spinner.start(`Installing ${dependencies.join(", ")}...`);
-    await addDependency(dependencies, { silent: true });
-    spinner.stop(`Installed ${dependencies.join(", ")}`);
-  }
-
-  {
-    const devDependencies = getDevDependenciesToInstall();
-    spinner.start(`Installing ${devDependencies.join(", ")}...`);
-    await addDependency(devDependencies, { silent: true, dev: true });
-    spinner.stop(`Installed ${devDependencies.join(", ")}`);
   }
 
   createClientFile(backendChoice, clientFileName);
@@ -199,6 +240,34 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     "Next steps",
   );
   p.outro("✅ Setup complete!");
+}
+
+// Validate the manifest fields that init reads or updates.
+function validateInitManifest(manifest: unknown): void {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new CLIError("Invalid package.json: expected an object.");
+  }
+
+  for (const key of ["scripts", "dependencies", "devDependencies"]) {
+    const field = (manifest as Record<string, unknown>)[key];
+    if (field === undefined) continue;
+    if (
+      field === null ||
+      typeof field !== "object" ||
+      Array.isArray(field) ||
+      Object.values(field).some((value) => typeof value !== "string")
+    ) {
+      throw new CLIError(
+        `Invalid package.json: ${key} must be an object containing string values.`,
+      );
+    }
+  }
+
+  const { scripts } = manifest as PackageJsonForDoctor;
+  const worker = scripts?.["worker"];
+  if (worker !== undefined && worker !== "npx @openworkflow/cli worker start") {
+    throw new CLIError("Setup would overwrite package.json scripts.worker.");
+  }
 }
 
 /**
@@ -1107,11 +1176,11 @@ function updateEnvForPostgres(): void {
 }
 
 /**
- * Load CLI config after loading environment variables, and wrap config errors.
+ * Find the config and load its environment without importing it.
  * @param options - Config and environment file paths
- * @returns Loaded config and metadata.
+ * @returns Config path, if found.
  */
-async function loadConfigWithEnv(options: CommandOptions) {
+function findConfigWithEnv(options: CommandOptions) {
   const { envFile } = options;
   const configPath = options.config
     ? path.resolve(options.config)
@@ -1127,6 +1196,12 @@ async function loadConfigWithEnv(options: CommandOptions) {
       error.message,
     );
   }
+  return configPath;
+}
+
+// Load the environment before importing config for commands that use it.
+async function loadConfigWithEnv(options: CommandOptions) {
+  const configPath = findConfigWithEnv(options);
   try {
     return await loadConfigFromPath(configPath ?? "openworkflow.config.ts");
   } catch (error) {
@@ -1136,6 +1211,7 @@ async function loadConfigWithEnv(options: CommandOptions) {
 }
 
 interface PackageJsonForDoctor {
+  scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
