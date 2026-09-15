@@ -986,8 +986,9 @@ describe("native OpenTelemetry instrumentation", () => {
     expect(spans.flatMap((span) => span.events)).toHaveLength(1);
   });
 
-  test("binds concurrent heartbeat callbacks to their own executions", async () => {
+  test("keeps concurrent heartbeats bound to their executions after a failure", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const consoleError = vi.spyOn(console, "error").mockReturnValue();
     const ow = new OpenWorkflow({ backend });
     const gate = Promise.withResolvers<void>();
     const executionSpans = new Map<string, string | undefined>();
@@ -1021,6 +1022,16 @@ describe("native OpenTelemetry instrumentation", () => {
       expect(heartbeatSpans).toEqual(executionSpans);
       expect(new Set(executionSpans.values()).size).toBe(2);
       expect([...executionSpans.values()]).not.toContain(undefined);
+
+      const error = new Error("Lease renewal failed");
+      heartbeat.mockRejectedValueOnce(error);
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(consoleError).toHaveBeenCalledWith("Heartbeat failed:", error);
+
+      heartbeatSpans.clear();
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(heartbeatSpans).toEqual(executionSpans);
+      expect(consoleError).toHaveBeenCalledTimes(1);
     } finally {
       gate.resolve();
       await worker.stop();
@@ -1113,6 +1124,7 @@ describe("native OpenTelemetry instrumentation", () => {
 
   test.each([
     null,
+    {},
     { traceContext: { traceparent: "invalid" } },
     { traceContext: { traceparent: 42 } },
   ])(
