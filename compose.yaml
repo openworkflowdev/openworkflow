@@ -12,7 +12,17 @@ services:
 
   prometheus:
     image: prom/prometheus
+    profiles: [observability]
     ports:
       - 9090:9090
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  aspire:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2
+    profiles: [observability]
+    environment:
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - 127.0.0.1:18888:18888
+      - 127.0.0.1:4318:18890

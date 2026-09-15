@@ -58,7 +58,12 @@
       },
       {
         "group": "Reference",
-        "pages": ["docs/configuration", "docs/cli", "docs/dashboard"]
+        "pages": [
+          "docs/configuration",
+          "docs/cli",
+          "docs/dashboard",
+          "docs/opentelemetry"
+        ]
       },
       {
         "group": "Integrations",

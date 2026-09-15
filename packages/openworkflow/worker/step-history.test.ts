@@ -178,12 +178,12 @@ describe("StepHistory", () => {
   });
 
   describe("wait-time helpers", () => {
-    test("earliestRunningWaitResumeAt returns null with no running waits", () => {
+    test("earliestRunningWait returns null with no running waits", () => {
       const history = new StepHistory({ attempts: [] });
-      expect(history.earliestRunningWaitResumeAt()).toBeNull();
+      expect(history.earliestRunningWait()).toBeNull();
     });
 
-    test("earliestRunningWaitResumeAt picks the earliest running wait", () => {
+    test("earliestRunningWait picks the earliest running wait", () => {
       const sleepLate = createMockStepAttempt({
         stepName: "sleep-late",
         kind: "sleep",
@@ -198,12 +198,13 @@ describe("StepHistory", () => {
       });
       const history = new StepHistory({ attempts: [sleepLate, sleepEarly] });
 
-      expect(history.earliestRunningWaitResumeAt()?.toISOString()).toBe(
-        "2026-05-01T00:00:00.000Z",
-      );
+      expect(history.earliestRunningWait()).toEqual({
+        attempt: sleepEarly,
+        resumeAt: new Date("2026-05-01T00:00:00.000Z"),
+      });
     });
 
-    test("resolveEarliestRunningWaitResumeAt picks the earlier of fallback or running", () => {
+    test("resolveEarliestRunningWait picks the earlier of fallback or running", () => {
       const sleep = createMockStepAttempt({
         stepName: "sleep",
         kind: "sleep",
@@ -212,25 +213,32 @@ describe("StepHistory", () => {
       });
       const history = new StepHistory({ attempts: [sleep] });
 
-      const earlierFallback = new Date("2026-05-01T00:00:00.000Z");
-      expect(
-        history
-          .resolveEarliestRunningWaitResumeAt(earlierFallback)
-          .toISOString(),
-      ).toBe("2026-05-01T00:00:00.000Z");
+      const attempt = createMockStepAttempt({ stepName: "fallback" });
+      const earlierFallback = {
+        attempt,
+        resumeAt: new Date("2026-05-01T00:00:00.000Z"),
+      };
+      expect(history.resolveEarliestRunningWait(earlierFallback)).toEqual(
+        earlierFallback,
+      );
 
-      const laterFallback = new Date("2026-07-01T00:00:00.000Z");
-      expect(
-        history.resolveEarliestRunningWaitResumeAt(laterFallback).toISOString(),
-      ).toBe("2026-06-01T00:00:00.000Z");
+      const laterFallback = {
+        attempt,
+        resumeAt: new Date("2026-07-01T00:00:00.000Z"),
+      };
+      expect(history.resolveEarliestRunningWait(laterFallback)).toEqual({
+        attempt: sleep,
+        resumeAt: new Date("2026-06-01T00:00:00.000Z"),
+      });
     });
 
-    test("resolveEarliestRunningWaitResumeAt falls back when no running waits", () => {
+    test("resolveEarliestRunningWait falls back when no running waits", () => {
       const history = new StepHistory({ attempts: [] });
-      const fallback = new Date("2026-05-01T00:00:00.000Z");
-      expect(
-        history.resolveEarliestRunningWaitResumeAt(fallback).toISOString(),
-      ).toBe("2026-05-01T00:00:00.000Z");
+      const fallback = {
+        attempt: createMockStepAttempt(),
+        resumeAt: new Date("2026-05-01T00:00:00.000Z"),
+      };
+      expect(history.resolveEarliestRunningWait(fallback)).toEqual(fallback);
     });
   });
 });

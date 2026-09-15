@@ -39,12 +39,29 @@ import {
   type WorkflowRun,
 } from "../core/workflow-run.js";
 import {
+  ATTRIBUTE_NAMES,
+  getOtelApi,
+  getSpanKind,
+  setAttribute,
+  setAttributes,
+  workflowRunAttributes,
+  captureTraceContext,
+  EXECUTION_OUTCOMES,
+  extractTraceContext,
+  SPAN_NAMES,
+  stepAttemptAttributes,
+  recordError,
+  traceOperation,
+} from "../telemetry.js";
+import {
   defaultWaitTimeoutAt,
   getContextTimeoutAt,
+  type RunningWait,
   StepHistory,
   StepLimitExceededError,
   WORKFLOW_STEP_LIMIT,
 } from "./step-history.js";
+import type { Span } from "@opentelemetry/api";
 
 export {
   WORKFLOW_STEP_LIMIT,
@@ -58,11 +75,13 @@ export {
  */
 class SleepSignalError extends Error {
   readonly resumeAt: Date;
+  readonly attempt: Readonly<StepAttempt>;
 
-  constructor(resumeAt: Readonly<Date>) {
+  constructor({ resumeAt, attempt }: Readonly<RunningWait>) {
     super("SleepSignalError");
     this.name = "SleepSignalError";
     this.resumeAt = resumeAt;
+    this.attempt = attempt;
   }
 }
 
@@ -340,6 +359,7 @@ function buildSignalIdempotencyKey(
 export interface StepExecutorOptions {
   backend: Backend;
   workflowRunId: string;
+  workflowName: string;
   workerId: string;
   history: StepHistory;
   executionFence: ExecutionFenceController;
@@ -362,6 +382,7 @@ interface RunWorkflowStepRequest<
 class StepExecutor implements StepApi {
   private readonly backend: Backend;
   private readonly workflowRunId: string;
+  private readonly workflowName: string;
   private readonly workerId: string;
   private readonly history: StepHistory;
   private readonly executionFence: ExecutionFenceController;
@@ -369,6 +390,7 @@ class StepExecutor implements StepApi {
   constructor(options: Readonly<StepExecutorOptions>) {
     this.backend = options.backend;
     this.workflowRunId = options.workflowRunId;
+    this.workflowName = options.workflowName;
     this.workerId = options.workerId;
     this.history = options.history;
     this.executionFence = options.executionFence;
@@ -407,17 +429,17 @@ class StepExecutor implements StepApi {
 
   /**
    * Persist completion for a step attempt and record it on the history.
-   * @param stepAttemptId - Step attempt id to complete
+   * @param attempt - Step attempt to complete
    * @param output - Step output payload (or null)
    * @returns The completed step attempt
    */
   private async completeStepAttemptAndRecord(
-    stepAttemptId: string,
+    attempt: Readonly<StepAttempt>,
     output: JsonValue | null,
   ): Promise<StepAttempt> {
     const completed = await this.backend.completeStepAttempt({
       workflowRunId: this.workflowRunId,
-      stepAttemptId,
+      stepAttemptId: attempt.id,
       workerId: this.workerId,
       output,
     });
@@ -442,9 +464,18 @@ class StepExecutor implements StepApi {
     const attempt = await this.createNewStepAttempt(stepName, "function", null);
 
     try {
-      const result = await fn();
+      const result = await traceOperation(
+        SPAN_NAMES.STEP_ATTEMPT_EXECUTE,
+        {
+          attributes: {
+            ...stepAttemptAttributes(attempt),
+            [ATTRIBUTE_NAMES.WORKFLOW_NAME]: this.workflowName,
+          },
+        },
+        async () => fn(),
+      );
       const savedAttempt = await this.completeStepAttemptAndRecord(
-        attempt.id,
+        attempt,
         normalizeStepOutput(result),
       );
       return savedAttempt.output as Output;
@@ -471,7 +502,7 @@ class StepExecutor implements StepApi {
     }
     const resumeAt = result.value;
 
-    await this.createNewStepAttempt(
+    const attempt = await this.createNewStepAttempt(
       stepName,
       "sleep",
       createSleepContext(resumeAt),
@@ -480,7 +511,7 @@ class StepExecutor implements StepApi {
     // Sleep attempts are not marked completed here — that happens when the
     // workflow resumes.
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
+      this.history.resolveEarliestRunningWait({ resumeAt, attempt }),
     );
   }
 
@@ -613,7 +644,7 @@ class StepExecutor implements StepApi {
     // Child completed successfully — propagate result
     if (childRun.status === "completed" || childRun.status === "succeeded") {
       const completed = await this.completeStepAttemptAndRecord(
-        workflowAttempt.id,
+        workflowAttempt,
         childRun.output,
       );
       return completed.output as Output;
@@ -644,7 +675,10 @@ class StepExecutor implements StepApi {
         ? timeoutAt
         : defaultWaitTimeoutAt(workflowAttempt.createdAt);
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
+      this.history.resolveEarliestRunningWait({
+        resumeAt,
+        attempt: workflowAttempt,
+      }),
     );
   }
 
@@ -669,18 +703,32 @@ class StepExecutor implements StepApi {
     }
     const parsedInput = validationResult.value;
 
-    const childRun = await this.backend.createWorkflowRun({
-      workflowName: request.workflowSpec.name,
-      version: request.workflowSpec.version ?? null,
-      idempotencyKey: buildWorkflowIdempotencyKey(attempt),
-      config: {},
-      context: null,
-      input: normalizeStepOutput(parsedInput),
-      parentStepAttemptNamespaceId: attempt.namespaceId,
-      parentStepAttemptId: attempt.id,
-      availableAt: null,
-      deadlineAt: null,
-    });
+    const childRun = await traceOperation(
+      SPAN_NAMES.WORKFLOW_RUN_CREATE,
+      {
+        kind: await getSpanKind("PRODUCER"),
+        attributes: {
+          [ATTRIBUTE_NAMES.WORKFLOW_NAME]: request.workflowSpec.name,
+          [ATTRIBUTE_NAMES.PARENT_WORKFLOW_RUN_ID]: this.workflowRunId,
+        },
+      },
+      async (span) => {
+        const run = await this.backend.createWorkflowRun({
+          workflowName: request.workflowSpec.name,
+          version: request.workflowSpec.version ?? null,
+          idempotencyKey: buildWorkflowIdempotencyKey(attempt),
+          config: {},
+          context: captureTraceContext(),
+          input: normalizeStepOutput(parsedInput),
+          parentStepAttemptNamespaceId: attempt.namespaceId,
+          parentStepAttemptId: attempt.id,
+          availableAt: null,
+          deadlineAt: null,
+        });
+        setAttributes(span, workflowRunAttributes(run));
+        return run;
+      },
+    );
 
     this.assertExecutionActive();
     const linked = await this.backend.setStepAttemptChildWorkflowRun({
@@ -792,13 +840,34 @@ class StepExecutor implements StepApi {
     options: Readonly<{ signal: string; data?: JsonValue }>,
   ): Promise<{ workflowRunIds: string[] }> {
     try {
-      const result = await this.backend.sendSignal({
-        signal: options.signal,
-        data: options.data ?? null,
-        idempotencyKey: buildSignalIdempotencyKey(this.workflowRunId, stepName),
-      });
+      const result = await traceOperation(
+        SPAN_NAMES.SIGNAL_SEND,
+        {
+          kind: await getSpanKind("PRODUCER"),
+          attributes: {
+            ...stepAttemptAttributes(attempt),
+            [ATTRIBUTE_NAMES.SIGNAL_NAME]: options.signal,
+          },
+        },
+        async (span) => {
+          const sent = await this.backend.sendSignal({
+            signal: options.signal,
+            data: options.data ?? null,
+            idempotencyKey: buildSignalIdempotencyKey(
+              this.workflowRunId,
+              stepName,
+            ),
+          });
+          setAttribute(
+            span,
+            ATTRIBUTE_NAMES.SIGNAL_RECIPIENT_COUNT,
+            sent.workflowRunIds.length,
+          );
+          return sent;
+        },
+      );
 
-      const completed = await this.completeStepAttemptAndRecord(attempt.id, {
+      const completed = await this.completeStepAttemptAndRecord(attempt, {
         ...result,
       });
       return completed.output as { workflowRunIds: string[] };
@@ -904,7 +973,7 @@ class StepExecutor implements StepApi {
     }
 
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(timeoutAt),
+      this.history.resolveEarliestRunningWait({ resumeAt: timeoutAt, attempt }),
     );
   }
 
@@ -919,7 +988,7 @@ class StepExecutor implements StepApi {
     output: { data: Output } | null,
   ): Promise<{ data: Output } | null> {
     const completed = await this.completeStepAttemptAndRecord(
-      attempt.id,
+      attempt,
       output as JsonValue | null,
     );
     return completed.output as { data: Output } | null;
@@ -936,7 +1005,7 @@ async function executeWorkflowRunTransition(
     backend: Backend;
     workflowRunId: string;
     workerId: string;
-    transition: () => Promise<unknown>;
+    transition: () => Promise<WorkflowRun>;
   }>,
 ): Promise<void> {
   try {
@@ -974,6 +1043,7 @@ export interface ExecuteWorkflowParams {
   workflowVersion: string | null;
   workerId: string;
   retryPolicy: RetryPolicy;
+  onExecutionStart?: () => void;
 }
 
 /**
@@ -984,20 +1054,56 @@ export interface ExecuteWorkflowParams {
  * - Executing the workflow function
  * - Completing, failing, or parking the workflow run based on the outcome
  * @param params - The execution parameters
+ * @returns Resolves when this execution is complete
  */
 export async function executeWorkflow(
   params: Readonly<ExecuteWorkflowParams>,
 ): Promise<void> {
+  const { workflowRun } = params;
+  const otel = await getOtelApi();
+  const origin = extractTraceContext(workflowRun.context);
+  const originSpan = origin && otel?.trace.getSpanContext(origin);
+
+  return traceOperation(
+    SPAN_NAMES.WORKFLOW_RUN_EXECUTE,
+    {
+      kind: otel?.SpanKind.CONSUMER,
+      attributes: {
+        ...workflowRunAttributes(workflowRun),
+        [ATTRIBUTE_NAMES.EXECUTION_ATTEMPT]: workflowRun.attempts,
+      },
+      links:
+        originSpan && otel?.isSpanContextValid(originSpan)
+          ? [{ context: originSpan }]
+          : [],
+    },
+    (span) => executeWorkflowAttempt(params, span),
+
+    // make each execution start its own trace, but keep propagated baggage
+    origin && otel?.trace.deleteSpan(origin),
+  );
+}
+
+/**
+ * Process one claimed execution and report its outcome on the active span.
+ * @param params - Execution parameters
+ * @param span - Execution span
+ */
+async function executeWorkflowAttempt(
+  params: Readonly<ExecuteWorkflowParams>,
+  span: Span | undefined,
+): Promise<void> {
   const { backend, workflowRun, workflowFn, workflowVersion, workerId } =
     params;
   const executionFence = new ExecutionFence();
+  params.onExecutionStart?.();
 
   /**
    * Run a backend transition for this workflow run, handling stale-write races.
    * @param fn - Backend transition to execute
    * @returns Promise resolved when the transition completes
    */
-  function runTransition(fn: () => Promise<unknown>): Promise<void> {
+  function runTransition(fn: () => Promise<WorkflowRun>): Promise<void> {
     return executeWorkflowRunTransition({
       backend,
       workflowRunId: workflowRun.id,
@@ -1018,16 +1124,24 @@ export async function executeWorkflow(
     error: SerializedError,
     retryPolicy: RetryPolicy,
   ): Promise<void> {
-    return runTransition(() =>
-      backend.failWorkflowRun({
+    return runTransition(async () => {
+      const run = await backend.failWorkflowRun({
         workflowRunId: workflowRun.id,
         workerId,
         error,
         retryPolicy,
         attempts: workflowRun.attempts,
         deadlineAt: workflowRun.deadlineAt,
-      }),
-    );
+      });
+      setAttribute(
+        span,
+        ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+        run.status === "pending"
+          ? EXECUTION_OUTCOMES.RETRYING
+          : EXECUTION_OUTCOMES.FAILED,
+      );
+      return run;
+    });
   }
 
   try {
@@ -1039,7 +1153,7 @@ export async function executeWorkflow(
     const history = new StepHistory({ attempts });
 
     // Complete any elapsed sleep waits first, then park on the earliest
-    // remaining running wait (sleep or runWorkflow timeout).
+    // remaining running wait (sleep, signal, or child workflow).
     const hasPendingRunningSleep = await completeElapsedRunningSleepAttempts({
       backend,
       workflowRunId: workflowRun.id,
@@ -1048,15 +1162,16 @@ export async function executeWorkflow(
     });
 
     if (hasPendingRunningSleep) {
-      const earliestResumeAt = history.earliestRunningWaitResumeAt();
-      if (earliestResumeAt && Date.now() < earliestResumeAt.getTime()) {
-        throw new SleepSignalError(earliestResumeAt);
+      const wait = history.earliestRunningWait();
+      if (wait && Date.now() < wait.resumeAt.getTime()) {
+        throw new SleepSignalError(wait);
       }
     }
 
     const executor = new StepExecutor({
       backend,
       workflowRunId: workflowRun.id,
+      workflowName: workflowRun.workflowName,
       workerId,
       history,
       executionFence,
@@ -1079,6 +1194,11 @@ export async function executeWorkflow(
 
     // mark success
     executionFence.deactivate();
+    setAttribute(
+      span,
+      ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+      EXECUTION_OUTCOMES.COMPLETED,
+    );
     await runTransition(() =>
       backend.completeWorkflowRun({
         workflowRunId: workflowRun.id,
@@ -1091,6 +1211,12 @@ export async function executeWorkflow(
 
     // handle sleep signal by parking the workflow in running status
     if (error instanceof SleepSignalError) {
+      setAttributes(span, stepAttemptAttributes(error.attempt));
+      setAttribute(
+        span,
+        ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+        EXECUTION_OUTCOMES.SUSPENDED,
+      );
       await runTransition(() =>
         backend.sleepWorkflowRun({
           workflowRunId: workflowRun.id,
@@ -1100,6 +1226,25 @@ export async function executeWorkflow(
       );
       return;
     }
+
+    if (error instanceof StaleExecutionBranchError) {
+      setAttribute(
+        span,
+        ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+        EXECUTION_OUTCOMES.STALE,
+      );
+      return;
+    }
+
+    if (error instanceof StepError) {
+      setAttribute(span, ATTRIBUTE_NAMES.STEP_NAME, error.stepName);
+    }
+    recordError(span, error instanceof StepError ? error.originalError : error);
+    setAttribute(
+      span,
+      ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+      EXECUTION_OUTCOMES.FAILED,
+    );
 
     if (error instanceof StepLimitExceededError) {
       await failRun(
@@ -1138,6 +1283,11 @@ export async function executeWorkflow(
 
       const availableAt = retryDecision.availableAt;
 
+      setAttribute(
+        span,
+        ATTRIBUTE_NAMES.EXECUTION_OUTCOME,
+        EXECUTION_OUTCOMES.RETRYING,
+      );
       await runTransition(() =>
         backend.rescheduleWorkflowRunAfterFailedStepAttempt({
           workflowRunId: workflowRun.id,
@@ -1146,10 +1296,6 @@ export async function executeWorkflow(
           availableAt,
         }),
       );
-      return;
-    }
-
-    if (error instanceof StaleExecutionBranchError) {
       return;
     }
 

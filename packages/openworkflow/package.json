@@ -56,6 +56,8 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-trace-node": "^2.11.0",
     "arktype": "^2.2.3",
     "valibot": "^1.5.0",
     "vitest": "^5.0.0",
@@ -63,9 +65,13 @@
     "zod": "^4.6.3"
   },
   "peerDependencies": {
+    "@opentelemetry/api": "1",
     "postgres": "^3.4.9"
   },
   "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    },
     "postgres": {
       "optional": true
     }
