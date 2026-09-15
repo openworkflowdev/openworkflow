@@ -56,6 +56,39 @@ export function resolveCancelWorkflowRunConflict(
 }
 
 /**
+ * Resolve the outcome when a resumeWorkflowRun UPDATE affected no rows. The
+ * UPDATE is gated on `status = 'failed'` AND an unexpired deadline, so a
+ * zero-row outcome means the run doesn't exist, isn't in a resumable state,
+ * or has already blown its deadline (in which case resuming it is futile).
+ * @param workflowRunId - ID of the workflow run (used in error messages)
+ * @param existing - Current workflow run, or null if not found
+ * @throws {Error} If the run is missing, not `failed`, or past its deadline
+ */
+export function resolveResumeWorkflowRunConflict(
+  workflowRunId: string,
+  existing: Readonly<WorkflowRun> | null,
+): never {
+  if (!existing) {
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error(`Workflow run ${workflowRunId} does not exist`);
+  }
+
+  if (existing.status === "failed") {
+    // The UPDATE also gates on the deadline, so a still-`failed` run that did
+    // not resume is one whose deadline has already elapsed.
+    // eslint-disable-next-line functional/no-throw-statements
+    throw new Error(
+      `Cannot resume workflow run ${workflowRunId}; its deadline has already passed`,
+    );
+  }
+
+  // eslint-disable-next-line functional/no-throw-statements
+  throw new Error(
+    `Cannot resume workflow run ${workflowRunId} with status ${existing.status}; only failed runs can be resumed`,
+  );
+}
+
+/**
  * WorkflowRun represents a single execution instance of a workflow.
  */
 export interface WorkflowRun {
@@ -78,6 +111,7 @@ export interface WorkflowRun {
   deadlineAt: Date | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  resumedAt: Date | null; // Timestamp of the most recent resume
   createdAt: Date;
   updatedAt: Date;
 }

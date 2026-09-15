@@ -151,6 +151,45 @@ describe("StepHistory", () => {
       expect(history.findRunning("a")).toBeUndefined();
     });
 
+    test("failures before resumedAt are excluded from the retry budget", () => {
+      const resumedAt = new Date("2026-01-01T12:00:00.000Z");
+      const beforeResume = createMockStepAttempt({
+        stepName: "a",
+        status: "failed",
+        finishedAt: new Date("2026-01-01T11:59:59.000Z"),
+      });
+      const afterResume = createMockStepAttempt({
+        stepName: "a",
+        status: "failed",
+        finishedAt: new Date("2026-01-01T12:00:01.000Z"),
+      });
+
+      const history = new StepHistory({
+        attempts: [beforeResume, afterResume],
+        resumedAt,
+      });
+
+      // only the post-resume failure counts, but both rows remain history
+      expect(history.failedAttemptCount("a")).toBe(1);
+    });
+
+    test("without resumedAt every failure counts", () => {
+      const first = createMockStepAttempt({
+        stepName: "a",
+        status: "failed",
+        finishedAt: new Date("2026-01-01T11:00:00.000Z"),
+      });
+      const second = createMockStepAttempt({
+        stepName: "a",
+        status: "failed",
+        finishedAt: new Date("2026-01-01T12:00:00.000Z"),
+      });
+
+      const history = new StepHistory({ attempts: [first, second] });
+
+      expect(history.failedAttemptCount("a")).toBe(2);
+    });
+
     test("replaceRunningAttempt updates the running entry in place", () => {
       const initial = createMockStepAttempt({
         id: "attempt-1",

@@ -5,6 +5,7 @@ import {
   Backend,
   WorkflowRunCounts,
   CancelWorkflowRunParams,
+  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
@@ -37,6 +38,7 @@ import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
+  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -759,6 +761,42 @@ export class BackendPostgres implements Backend {
     }
 
     await this.wakeParentWorkflowRun(updated);
+
+    return updated;
+  }
+
+  async resumeWorkflowRun(
+    params: ResumeWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    const workflowRunsTable = this.workflowRunsTable();
+
+    // Stamp the resume marker and requeue. Nothing is deleted and neither
+    // `error` nor `attempts` is touched: step attempts stay (preserving the
+    // failure record and parent/child linkage), and the retry budget is reset
+    // by only counting failures after `resumed_at` during replay.
+    const [updated] = await this.pg<WorkflowRun[]>`
+      UPDATE ${workflowRunsTable}
+      SET
+        "status" = 'pending',
+        "worker_id" = NULL,
+        "started_at" = NULL,
+        "finished_at" = NULL,
+        "available_at" = NOW(),
+        "resumed_at" = NOW(),
+        "updated_at" = NOW()
+      WHERE "namespace_id" = ${this.namespaceId}
+      AND "id" = ${params.workflowRunId}
+      AND "status" = 'failed'
+      AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
+      RETURNING *
+    `;
+
+    if (!updated) {
+      const existing = await this.getWorkflowRun({
+        workflowRunId: params.workflowRunId,
+      });
+      resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
+    }
 
     return updated;
   }
