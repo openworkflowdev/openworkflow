@@ -56,6 +56,7 @@ import {
 import {
   defaultWaitTimeoutAt,
   getContextTimeoutAt,
+  type RunningWait,
   StepHistory,
   StepLimitExceededError,
   WORKFLOW_STEP_LIMIT,
@@ -76,7 +77,7 @@ class SleepSignalError extends Error {
   readonly resumeAt: Date;
   readonly attempt: Readonly<StepAttempt>;
 
-  constructor(resumeAt: Readonly<Date>, attempt: Readonly<StepAttempt>) {
+  constructor({ resumeAt, attempt }: Readonly<RunningWait>) {
     super("SleepSignalError");
     this.name = "SleepSignalError";
     this.resumeAt = resumeAt;
@@ -261,7 +262,7 @@ function hasWorkflowTimedOut(
  * Malformed historical resume timestamps are treated as elapsed for backward
  * compatibility.
  * @param options - Sleep pre-pass options
- * @returns Earliest pending sleep attempt, or null when all sleeps elapsed
+ * @returns Whether any running sleep remains pending after completion pass
  */
 async function completeElapsedRunningSleepAttempts(
   options: Readonly<{
@@ -270,8 +271,8 @@ async function completeElapsedRunningSleepAttempts(
     workerId: string;
     history: StepHistory;
   }>,
-): Promise<StepAttempt | null> {
-  let pendingSleep: { attempt: StepAttempt; resumeAtMs: number } | null = null;
+): Promise<boolean> {
+  let hasPendingRunningSleep = false;
 
   // Snapshot running attempts since we mutate history during iteration.
   const running = [...options.history.runningAttempts()];
@@ -284,9 +285,7 @@ async function completeElapsedRunningSleepAttempts(
     const resumeAt = new Date(attempt.context.resumeAt);
     const resumeAtMs = resumeAt.getTime();
     if (Number.isFinite(resumeAtMs) && Date.now() < resumeAtMs) {
-      if (!pendingSleep || resumeAtMs < pendingSleep.resumeAtMs) {
-        pendingSleep = { attempt, resumeAtMs };
-      }
+      hasPendingRunningSleep = true;
       continue;
     }
 
@@ -300,7 +299,7 @@ async function completeElapsedRunningSleepAttempts(
     options.history.recordCompletion(completed);
   }
 
-  return pendingSleep?.attempt ?? null;
+  return hasPendingRunningSleep;
 }
 
 /**
@@ -512,8 +511,7 @@ class StepExecutor implements StepApi {
     // Sleep attempts are not marked completed here — that happens when the
     // workflow resumes.
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
-      attempt,
+      this.history.resolveEarliestRunningWait({ resumeAt, attempt }),
     );
   }
 
@@ -677,8 +675,10 @@ class StepExecutor implements StepApi {
         ? timeoutAt
         : defaultWaitTimeoutAt(workflowAttempt.createdAt);
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(resumeAt),
-      workflowAttempt,
+      this.history.resolveEarliestRunningWait({
+        resumeAt,
+        attempt: workflowAttempt,
+      }),
     );
   }
 
@@ -973,8 +973,7 @@ class StepExecutor implements StepApi {
     }
 
     throw new SleepSignalError(
-      this.history.resolveEarliestRunningWaitResumeAt(timeoutAt),
-      attempt,
+      this.history.resolveEarliestRunningWait({ resumeAt: timeoutAt, attempt }),
     );
   }
 
@@ -1154,18 +1153,18 @@ async function executeWorkflowAttempt(
     const history = new StepHistory({ attempts });
 
     // Complete any elapsed sleep waits first, then park on the earliest
-    // remaining running wait (sleep or runWorkflow timeout).
-    const pendingSleep = await completeElapsedRunningSleepAttempts({
+    // remaining running wait (sleep, signal, or child workflow).
+    const hasPendingRunningSleep = await completeElapsedRunningSleepAttempts({
       backend,
       workflowRunId: workflowRun.id,
       workerId,
       history,
     });
 
-    if (pendingSleep) {
-      const earliestResumeAt = history.earliestRunningWaitResumeAt();
-      if (earliestResumeAt && Date.now() < earliestResumeAt.getTime()) {
-        throw new SleepSignalError(earliestResumeAt, pendingSleep);
+    if (hasPendingRunningSleep) {
+      const wait = history.earliestRunningWait();
+      if (wait && Date.now() < wait.resumeAt.getTime()) {
+        throw new SleepSignalError(wait);
       }
     }
 

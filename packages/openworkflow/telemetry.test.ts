@@ -238,6 +238,63 @@ describe("native OpenTelemetry instrumentation", () => {
     expect(completed?.output).toBe(42);
   });
 
+  test("attributes suspension to an earlier signal timeout alongside a pending sleep", async () => {
+    const ow = new OpenWorkflow({ backend });
+    const workflow = ow.defineWorkflow({ name: "mixed-waits" }, () => {
+      throw new Error("Expected to suspend before replay");
+    });
+    const handle = await workflow.run();
+    const workerId = "test-worker";
+    const claimed = await backend.claimWorkflowRun({
+      workerId,
+      leaseDurationMs: 30_000,
+    });
+    assert.ok(claimed);
+    const timeoutAt = new Date(Date.now() + 5000);
+    await backend.createStepAttempt({
+      workflowRunId: claimed.id,
+      workerId,
+      stepName: "sleep-late",
+      kind: "sleep",
+      config: {},
+      context: {
+        kind: "sleep",
+        resumeAt: new Date(Date.now() + 120_000).toISOString(),
+      },
+    });
+    await backend.createStepAttempt({
+      workflowRunId: claimed.id,
+      workerId,
+      stepName: "wait-early",
+      kind: "signal-wait",
+      config: {},
+      context: {
+        kind: "signal-wait",
+        signal: "approval",
+        timeoutAt: timeoutAt.toISOString(),
+      },
+    });
+    await backend.sleepWorkflowRun({
+      workflowRunId: claimed.id,
+      workerId,
+      availableAt: new Date(),
+    });
+    await executeNext(workflow.workflow);
+
+    const parked = await backend.getWorkflowRun({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(parked?.availableAt).toEqual(timeoutAt);
+    const execution = exporter
+      .getFinishedSpans()
+      .find((span) => span.name === SPAN_NAMES.WORKFLOW_RUN_EXECUTE);
+    expect(execution?.attributes).toMatchObject({
+      [ATTRIBUTE_NAMES.STEP_NAME]: "wait-early",
+      [ATTRIBUTE_NAMES.STEP_KIND]: "signal-wait",
+      [ATTRIBUTE_NAMES.STEP_TIMEOUT_AT]: timeoutAt.toISOString(),
+    });
+  });
+
   test("retains the original submission context on idempotent starts", async () => {
     const ow = new OpenWorkflow({ backend });
     const workflow = ow.defineWorkflow(
