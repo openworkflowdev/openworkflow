@@ -43,7 +43,10 @@ interface LoadedConfig {
 
 const CONFIG_NAME = "openworkflow.config";
 const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
-const jiti = createJiti(import.meta.url, { tryNative: false }); // bun compatibility
+const jiti = createJiti(import.meta.url, {
+  tryNative: false,
+  tsconfigPaths: true,
+}); // bun compatibility
 
 /**
  * Load OpenWorkflow config from an explicit path.
