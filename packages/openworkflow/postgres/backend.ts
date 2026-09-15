@@ -1,9 +1,11 @@
 import {
   toWorkflowRunCounts,
+  toWorkflowRunCountsByWorkflowName,
   DEFAULT_NAMESPACE_ID,
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   WorkflowRunCounts,
+  WorkflowRunCountsByWorkflowName,
   CancelWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
@@ -471,6 +473,21 @@ export class BackendPostgres implements Backend {
     `;
 
     return toWorkflowRunCounts(rows);
+  }
+
+  async countWorkflowRunsByWorkflowName(): Promise<WorkflowRunCountsByWorkflowName> {
+    const workflowRunsTable = this.workflowRunsTable();
+
+    const rows = await this.pg<
+      { workflowName: string; status: string; count: string }[]
+    >`
+      SELECT "workflow_name" AS "workflowName", "status", COUNT(*) AS "count"
+      FROM ${workflowRunsTable}
+      WHERE "namespace_id" = ${this.namespaceId}
+      GROUP BY "workflow_name", "status"
+    `;
+
+    return toWorkflowRunCountsByWorkflowName(rows);
   }
 
   async claimWorkflowRun(
