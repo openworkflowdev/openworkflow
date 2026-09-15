@@ -1,4 +1,4 @@
-import postgres, { toCamel } from "postgres";
+import postgres from "postgres";
 
 export const DEFAULT_POSTGRES_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
@@ -24,7 +24,7 @@ export function newPostgres(url: string, options?: PostgresOptions) {
     ...options,
     transform: {
       column: {
-        from: toCamel,
+        from: postgres.toCamel,
       },
     },
   });
