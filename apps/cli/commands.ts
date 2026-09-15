@@ -1,5 +1,10 @@
-import { WorkerConfig, loadConfig, loadConfigFromPath } from "./config.js";
-import { CLIError } from "./errors.js";
+import {
+  WorkerConfig,
+  findConfigFile,
+  loadConfig,
+  loadConfigFromPath,
+} from "./config.js";
+import { CLIError, exit } from "./errors.js";
 import {
   CONFIG,
   HELLO_WORLD_RUNNER,
@@ -28,6 +33,11 @@ import { OpenWorkflow } from "openworkflow";
 import { Backend, isWorkflow, Workflow } from "openworkflow/internal";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const workflowSources = new WeakMap<
+  Workflow<unknown, unknown, unknown>,
+  string
+>();
 
 type BackendChoice = "sqlite" | "postgres" | "both";
 
@@ -197,6 +207,10 @@ export async function init(options: CommandOptions = {}): Promise<void> {
  */
 export async function doctor(options: CommandOptions = {}): Promise<void> {
   consola.start("Running OpenWorkflow doctor...");
+  const timer = setTimeout(() => {
+    consola.error("Doctor timed out after 30 seconds.");
+    void exit(1);
+  }, 30_000);
 
   const { config, configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
@@ -206,46 +220,50 @@ export async function doctor(options: CommandOptions = {}): Promise<void> {
     );
   }
   const backend = config.backend;
+  let cleanupFailed = false;
 
   try {
     await checkBackendConnection(backend);
+    if (config.worker?.concurrency !== undefined) {
+      assertPositiveInteger("concurrency", config.worker.concurrency);
+    }
     consola.log("");
-    consola.info(`Config file: ${configFile}`);
+    consola.info(`Config file: ${path.relative(process.cwd(), configFile)}`);
 
     const backendName = backend.constructor.name.replace("Backend", "");
     consola.log(`  • Backend: ${backendName}`);
 
-    const packageJson = readPackageJsonForDoctor();
-    if (packageJson) {
-      warnIfMissingBackendPackage(backendName, packageJson);
-      warnIfMissingTsconfig(packageJson);
-    }
-
     // discover directories
-    const dirs = getWorkflowDirectories(config);
+    const dirs = [...new Set(getWorkflowDirectories(config))];
     consola.log(`  • Workflow directories: ${dirs.join(", ")}`);
 
     // discover files
     const configFileDir = path.dirname(configFile);
-    const { files, workflows } = await discoverWorkflowsInDirs(
+    const { workflows } = await discoverWorkflowsInDirs(
       dirs,
       configFileDir,
       config.ignorePatterns ?? [],
     );
-    consola.log("");
-    consola.info(`Found ${String(files.length)} workflow file(s):`);
-    for (const file of files) {
-      consola.log(`  • ${file}`);
-    }
-
+    assertNoDuplicateWorkflows(workflows);
     printDiscoveredWorkflows(workflows);
-    warnAboutDuplicateWorkflows(workflows);
-
-    consola.log("");
-    consola.success("Configuration looks good!");
   } finally {
-    await backend.stop();
+    // Imported configs can omit the backend despite the declared config type.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
+    if (typeof backend?.stop === "function") {
+      try {
+        await backend.stop();
+      } catch (error) {
+        cleanupFailed = true;
+        consola.error(`Backend cleanup failed: ${String(error)}`);
+      }
+    }
   }
+
+  clearTimeout(timer);
+  if (cleanupFailed) await exit(1);
+  consola.log("");
+  consola.success("Configuration looks good!");
+  await exit(0);
 }
 
 export type WorkerStartOptions = WorkerConfig & CommandOptions;
@@ -327,7 +345,11 @@ export async function workerStart(
     await worker.start();
     consola.success("Worker started.");
   } catch (error) {
-    await gracefulShutdown();
+    try {
+      await gracefulShutdown();
+    } catch (cleanupError) {
+      consola.warn(`Backend cleanup failed: ${String(cleanupError)}`);
+    }
     throw error;
   }
 }
@@ -463,7 +485,18 @@ function cancelSetup(): never {
  * Exercise backend initialization, connectivity, and workflow table access.
  * @param backend - Configured backend
  */
-async function checkBackendConnection(backend: Backend): Promise<void> {
+async function checkBackendConnection(
+  backend: Backend | undefined,
+): Promise<void> {
+  if (
+    typeof backend?.listWorkflowRuns !== "function" ||
+    typeof backend.stop !== "function"
+  ) {
+    throw new CLIError(
+      "Missing or invalid backend.",
+      "Set config.backend to a connected OpenWorkflow backend.",
+    );
+  }
   try {
     await backend.listWorkflowRuns({ limit: 1 });
   } catch (error) {
@@ -518,7 +551,7 @@ function findDuplicateWorkflows(
   for (const workflow of workflows) {
     const name = workflow.spec.name;
     const version = workflow.spec.version ?? null;
-    const key = version ? `${name}@${version}` : name;
+    const key = JSON.stringify([name, version]);
 
     const existing = workflowKeys.get(key);
     if (existing) {
@@ -560,24 +593,6 @@ function assertNoDuplicateWorkflows(
 }
 
 /**
- * Warn about duplicate workflows without failing.
- * @param workflows - Discovered workflows
- */
-function warnAboutDuplicateWorkflows(
-  workflows: Workflow<unknown, unknown, unknown>[],
-): void {
-  const duplicates = findDuplicateWorkflows(workflows);
-  for (const duplicate of duplicates) {
-    consola.warn(
-      `Duplicate workflow detected: ${formatWorkflowIdentity(duplicate.name, duplicate.version)}`,
-    );
-    consola.warn(
-      "Multiple files export a workflow with the same name and version.",
-    );
-  }
-}
-
-/**
  * Print discovered workflows to the console.
  * @param workflows - Array of discovered workflows
  */
@@ -585,13 +600,14 @@ function printDiscoveredWorkflows(
   workflows: Workflow<unknown, unknown, unknown>[],
 ): void {
   consola.log("");
-  consola.info(`Discovered ${String(workflows.length)} workflow(s):`);
+  consola.info(
+    `Found ${String(workflows.length)} workflow${workflows.length === 1 ? "" : "s"}:`,
+  );
   for (const workflow of workflows) {
     const name = workflow.spec.name;
-    const version = workflow.spec.version ?? "unversioned";
-    const versionStr =
-      version === "unversioned" ? "" : ` (version: ${version})`;
-    consola.log(`  • ${name}${versionStr}`);
+    const version = workflow.spec.version;
+    const versionStr = version ? ` (${version})` : "";
+    consola.log(`  • ${name}${versionStr} — ${workflowSources.get(workflow)}`);
   }
 }
 
@@ -678,8 +694,8 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 /**
- * Check whether a file path matches ignore patterns.
- * @param filePath - Absolute file path
+ * Check whether a file or directory path matches ignore patterns.
+ * @param filePath - Absolute path, with a trailing separator for directories
  * @param baseDir - Base directory for relative matching
  * @param matchers - Compiled regex matchers
  * @returns Whether the file should be ignored
@@ -693,9 +709,14 @@ function isIgnoredFile(
 
   const relativePath = normalizeForGlobMatch(path.relative(baseDir, filePath));
   const fileName = path.basename(filePath);
+  const isDirectory = filePath.endsWith(path.sep);
 
   return matchers.some(
-    (matcher) => matcher.test(relativePath) || matcher.test(fileName),
+    (matcher) =>
+      matcher.test(relativePath) ||
+      matcher.test(fileName) ||
+      (isDirectory &&
+        (matcher.test(`${relativePath}/`) || matcher.test(`${fileName}/`))),
   );
 }
 
@@ -727,22 +748,24 @@ export function discoverWorkflowFiles(
     try {
       entries = readdirSync(absoluteDir, { withFileTypes: true });
     } catch (error) {
-      // doesn't exist or can't be read, skip
-      const errMessage = error instanceof Error ? error.message : String(error);
-      consola.debug(`Failed to read directory: ${absoluteDir} - ${errMessage}`);
-      return;
+      throw new CLIError(
+        `Cannot read workflow directory: ${absoluteDir}`,
+        `${String(error)}\nCorrect config.dirs or make the directory readable.`,
+      );
     }
 
     for (const entry of entries) {
       const fullPath = path.join(absoluteDir, entry.name);
       if (entry.isDirectory()) {
-        scanDirectory(fullPath);
+        if (!isIgnoredFile(`${fullPath}${path.sep}`, baseDir, matchers)) {
+          scanDirectory(fullPath);
+        }
       } else if (
         entry.isFile() &&
         WORKFLOW_EXTENSIONS.some((ext: string) =>
           entry.name.endsWith(`.${ext}`),
         ) &&
-        !entry.name.endsWith(".d.ts") &&
+        !/\.d\.(?:ts|mts|cts)$/.test(entry.name) &&
         !isIgnoredFile(fullPath, baseDir, matchers)
       ) {
         discoveredFiles.push(fullPath);
@@ -754,7 +777,7 @@ export function discoverWorkflowFiles(
     scanDirectory(dir);
   }
 
-  return discoveredFiles;
+  return [...new Set(discoveredFiles)];
 }
 
 /**
@@ -787,6 +810,7 @@ async function importWorkflows(
     for (const [key, value] of Object.entries(module)) {
       if (isWorkflow(value)) {
         workflows.push(value);
+        workflowSources.set(value, path.relative(process.cwd(), file));
         consola.debug(
           `Found workflow "${value.spec.name}" in ${file} (${key})`,
         );
@@ -794,7 +818,7 @@ async function importWorkflows(
     }
   }
 
-  return workflows;
+  return [...new Set(workflows)];
 }
 
 /**
@@ -1088,8 +1112,15 @@ function updateEnvForPostgres(): void {
  * @returns Loaded config and metadata.
  */
 async function loadConfigWithEnv(options: CommandOptions) {
-  const { config: configPath, envFile } = options;
-  const { error } = loadDotenv({ path: envFile ?? ".env", quiet: true });
+  const { envFile } = options;
+  const configPath = options.config
+    ? path.resolve(options.config)
+    : findConfigFile();
+  const baseDir = configPath ? path.dirname(configPath) : process.cwd();
+  const { error } = loadDotenv({
+    path: envFile ?? path.join(baseDir, ".env"),
+    quiet: true,
+  });
   if (envFile !== undefined && error) {
     throw new CLIError(
       `Failed to load environment file: ${envFile}`,
@@ -1097,9 +1128,7 @@ async function loadConfigWithEnv(options: CommandOptions) {
     );
   }
   try {
-    return configPath
-      ? await loadConfigFromPath(configPath)
-      : await loadConfig();
+    return await loadConfigFromPath(configPath ?? "openworkflow.config.ts");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CLIError("Failed to load OpenWorkflow config.", message);
@@ -1202,50 +1231,6 @@ function hasDependency(
   return Boolean(
     packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name],
   );
-}
-
-/**
- * Warn when the configured backend is missing its package.
- * @param backendName - Configured backend name.
- * @param packageJson - Parsed package.json.
- */
-function warnIfMissingBackendPackage(
-  backendName: string,
-  packageJson: Readonly<PackageJsonForDoctor>,
-): void {
-  const backendNameLower = backendName.toLowerCase();
-
-  const isPostgres = backendNameLower.includes("postgres");
-  const isSqlite = backendNameLower.includes("sqlite");
-
-  if ((isPostgres || isSqlite) && !hasDependency(packageJson, "openworkflow")) {
-    consola.warn(
-      `Backend is ${backendName} but openworkflow is not installed.`,
-    );
-  }
-
-  if (isPostgres && !hasDependency(packageJson, "postgres")) {
-    consola.warn(
-      `Backend is ${backendName} but the postgres driver is not installed.`,
-    );
-  }
-}
-
-/**
- * Warn when TypeScript is installed but tsconfig.json is missing.
- * @param packageJson - Parsed package.json.
- */
-function warnIfMissingTsconfig(
-  packageJson: Readonly<PackageJsonForDoctor>,
-): void {
-  if (!hasDependency(packageJson, "typescript")) {
-    return;
-  }
-
-  const tsconfigPath = path.join(process.cwd(), "tsconfig.json");
-  if (!existsSync(tsconfigPath)) {
-    consola.warn("TypeScript is installed but no tsconfig.json was found.");
-  }
 }
 
 /**

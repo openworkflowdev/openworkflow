@@ -147,7 +147,7 @@ See [Dashboard](/docs/dashboard) for details.
 
 ### `doctor`
 
-Diagnose your OpenWorkflow setup:
+Check your config, backend connection, and workflows for problems.
 
 <CodeGroup>
 ```bash npm
@@ -163,37 +163,6 @@ bunx @openworkflow/cli doctor
 ```
 
 </CodeGroup>
-
-This command checks:
-
-- Config file exists and loads correctly
-- Backend connection works
-- Workflow directories exist
-- Workflow files are discoverable
-- Workflows export valid definitions
-- No duplicate workflow names
-
-Example output:
-
-```
-ℹ Config file: /project/openworkflow.config.ts
-  • Backend: Postgres
-  • Workflow directories: ./openworkflow
-
-ℹ Found 3 workflow file(s):
-  • /project/openworkflow/orders.ts
-  • /project/openworkflow/notifications.ts
-  • /project/openworkflow/reports.ts
-
-ℹ Discovered 5 workflow(s):
-  • process-order
-  • send-notification (version: 2.0.0)
-  • send-notification (version: 1.0.0)
-  • generate-report
-  • cleanup
-
-✔ Configuration looks good!
-```
 
 ### `--version`
 

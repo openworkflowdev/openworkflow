@@ -29,7 +29,7 @@ program
 // doctor
 program
   .command("doctor")
-  .description("check configuration and list available workflows")
+  .description("check worker prerequisites")
   .option("--config <path>", "path to OpenWorkflow config file")
   .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(doctor));

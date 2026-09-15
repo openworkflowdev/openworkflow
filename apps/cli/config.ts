@@ -70,7 +70,17 @@ export async function loadConfigFromPath(
  * @returns The loaded configuration and metadata
  */
 export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
-  let currentDir = path.resolve(startDir ?? process.cwd());
+  const configFile = findConfigFile(startDir);
+  return configFile ? importConfigFile(configFile) : getEmptyLoadedConfig();
+}
+
+/**
+ * Find the nearest config without executing it, so its environment can load first.
+ * @param startDir - Directory to search from
+ * @returns Config path, if found
+ */
+export function findConfigFile(startDir = process.cwd()): string | undefined {
+  let currentDir = path.resolve(startDir);
 
   // search up the directory tree
   // oxlint-disable-next-line typescript/no-unnecessary-condition
@@ -80,7 +90,7 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
       const filePath = path.join(currentDir, fileName);
 
       if (existsSync(filePath)) {
-        return await importConfigFile(filePath);
+        return filePath;
       }
     }
 
@@ -93,7 +103,7 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
     currentDir = parentDir;
   }
 
-  return getEmptyLoadedConfig();
+  return undefined;
 }
 
 /**
@@ -104,12 +114,15 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
 async function importConfigFile(filePath: string): Promise<LoadedConfig> {
   try {
     const fileUrl = pathToFileURL(filePath).href;
-    const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
+    const config = await jiti.import(fileUrl, {
       default: true,
     });
 
+    if (typeof config !== "object" || config === null) {
+      throw new Error("Config must export an object.");
+    }
     return {
-      config,
+      config: config as OpenWorkflowConfig,
       configFile: filePath,
     };
   } catch (error: unknown) {
