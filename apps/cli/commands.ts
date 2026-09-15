@@ -109,7 +109,7 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     initialValue: "sqlite",
   });
 
-  if (p.isCancel(backendChoice)) cancelSetup();
+  if (typeof backendChoice === "symbol") cancelSetup();
 
   const spinner = p.spinner();
 
