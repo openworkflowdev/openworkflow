@@ -56,5 +56,5 @@ export class WorkflowRegistry {
  * @returns Registry key
  */
 function registryKey(name: string, version: string | null): string {
-  return version ? `${name}@${version}` : name;
+  return JSON.stringify([name, version]);
 }

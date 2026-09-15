@@ -22,6 +22,16 @@ describe("WorkflowRegistry", () => {
       expect(registry.get("my-workflow", "v1")).toBe(workflow);
     });
 
+    test("keeps names containing @ distinct from versioned identities", () => {
+      const registry = new WorkflowRegistry();
+      const named = createMockWorkflow("email@v1");
+      const versioned = createMockWorkflow("email", "v1");
+      registry.register(named);
+      registry.register(versioned);
+      expect(registry.get("email@v1", null)).toBe(named);
+      expect(registry.get("email", "v1")).toBe(versioned);
+    });
+
     test("registers multiple versions of the same workflow", () => {
       const registry = new WorkflowRegistry();
       const v1 = createMockWorkflow("my-workflow", "v1");
