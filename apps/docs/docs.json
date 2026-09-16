@@ -82,6 +82,11 @@
       }
     ]
   },
+  "seo": {
+    "organization": {
+      "sameAs": ["https://github.com/openworkflowdev"]
+    }
+  },
   "redirects": [
     {
       "source": "/docs",
