@@ -9,6 +9,8 @@ import {
   init,
 } from "./commands.js";
 import { loadConfigFromPath } from "./config.js";
+import * as p from "@clack/prompts";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +20,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock(import("nypm"), async (importOriginal) => ({
   ...(await importOriginal()),
   addDependency: vi.fn(),
+}));
+
+vi.mock(import("@clack/prompts"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  note: vi.fn(),
 }));
 
 describe("getConfigFileName", () => {
@@ -246,6 +253,50 @@ describe("init", () => {
   test("requires a backend with --yes", async () => {
     await expect(init({ yes: true })).rejects.toThrow("--backend is required");
   });
+
+  test.each([
+    "my config.js",
+    "config/custom.js",
+    'my "quoted" $HOME `printf expanded` $(printf expanded) config\'s.js',
+  ])(
+    "includes the literal config path in generated commands: %s",
+    async (config) => {
+      const note = vi.mocked(p.note).mockClear();
+      await init({ backend: "sqlite", yes: true, skipInstall: true, config });
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
+      ) as { scripts: { worker: string } };
+      const nextSteps = note.mock.calls.find(
+        ([, title]) => title === "Next steps",
+      )?.[0];
+      const commands = nextSteps
+        ?.split("\n")
+        .filter((line) => line.startsWith("$ npx @openworkflow/cli"))
+        .map((line) => line.slice(2));
+      expect(commands).toHaveLength(2);
+
+      for (const [command, subcommand] of [
+        [manifest.scripts.worker, ["worker", "start"]],
+        [commands?.[0], ["worker", "start"]],
+        [commands?.[1], ["dashboard"]],
+      ] as const) {
+        // Let the shell parse the command, but capture arguments instead of running npx.
+        const args = execFileSync(
+          "sh",
+          ["-c", `npx() { printf '%s\\n' "$@"; }; ${command}`],
+          { cwd, encoding: "utf8" },
+        )
+          .trimEnd()
+          .split("\n");
+        expect(args).toEqual([
+          "@openworkflow/cli",
+          ...subcommand,
+          "--config",
+          config,
+        ]);
+      }
+    },
+  );
 
   test.each([
     ["openworkflow.config.js", false],

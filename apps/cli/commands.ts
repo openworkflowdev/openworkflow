@@ -166,7 +166,11 @@ export async function init(options: InitOptions = {}): Promise<void> {
     );
   }
 
-  validateInitManifest(packageJson);
+  const configArg = options.config
+    ? ` --config '${options.config.replaceAll("'", String.raw`'\''`)}'`
+    : "";
+  const workerCommand = `npx @openworkflow/cli worker start${configArg}`;
+  validateInitManifest(packageJson, workerCommand);
 
   const configFileName = options.config ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
@@ -231,7 +235,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     updateEnvForPostgres();
   }
 
-  addWorkerScriptToPackageJson();
+  addWorkerScriptToPackageJson(workerCommand);
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
@@ -239,14 +243,14 @@ export async function init(options: InitOptions = {}): Promise<void> {
 
   // wrap up
   p.note(
-    `➡️ Start a worker:\n$ npx @openworkflow/cli worker start\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard`,
+    `➡️ Start a worker:\n$ ${workerCommand}\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard${configArg}`,
     "Next steps",
   );
   p.outro("✅ Setup complete!");
 }
 
 // Validate the manifest fields that init reads or updates.
-function validateInitManifest(manifest: unknown): void {
+function validateInitManifest(manifest: unknown, workerCommand: string): void {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new CLIError("Invalid package.json: expected an object.");
   }
@@ -268,7 +272,11 @@ function validateInitManifest(manifest: unknown): void {
 
   const { scripts } = manifest as PackageJsonForDoctor;
   const worker = scripts?.["worker"];
-  if (worker !== undefined && worker !== "npx @openworkflow/cli worker start") {
+  if (
+    worker !== undefined &&
+    worker !== "npx @openworkflow/cli worker start" &&
+    worker !== workerCommand
+  ) {
     throw new CLIError("Setup would overwrite package.json scripts.worker.");
   }
 }
@@ -1099,8 +1107,9 @@ function updateGitignoreForSqlite(): void {
 
 /**
  * Add worker script to package.json.
+ * @param workerCommand - Worker command including any custom config path.
  */
-function addWorkerScriptToPackageJson(): void {
+function addWorkerScriptToPackageJson(workerCommand: string): void {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return;
@@ -1113,7 +1122,7 @@ function addWorkerScriptToPackageJson(): void {
     };
 
     packageJson.scripts ??= {};
-    packageJson.scripts["worker"] = "npx @openworkflow/cli worker start";
+    packageJson.scripts["worker"] = workerCommand;
 
     writeFileSync(
       packageJsonPath,
