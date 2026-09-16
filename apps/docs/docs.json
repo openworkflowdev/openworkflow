@@ -58,16 +58,11 @@
       },
       {
         "group": "Reference",
-        "pages": [
-          "docs/configuration",
-          "docs/cli",
-          "docs/dashboard",
-          "docs/opentelemetry"
-        ]
+        "pages": ["docs/configuration", "docs/cli", "docs/dashboard"]
       },
       {
         "group": "Integrations",
-        "pages": ["docs/standard-schema", "docs/sentry"]
+        "pages": ["docs/standard-schema", "docs/opentelemetry", "docs/sentry"]
       },
       {
         "group": "Comparisons",
