@@ -3219,6 +3219,113 @@ describe("executeWorkflow", () => {
       expect(failWorkflowRun).not.toHaveBeenCalled();
     });
 
+    test("completes workflow with 1000 steps efficiently without per-step cache copies", async () => {
+      const stepNamesByAttemptId = new Map<string, string>();
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: [],
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const createStepAttempt = vi.fn(
+        (params: Parameters<Backend["createStepAttempt"]>[0]) => {
+          const createdId = `created-${params.stepName}`;
+          stepNamesByAttemptId.set(createdId, params.stepName);
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: createdId,
+              stepName: params.stepName,
+              kind: params.kind,
+              status: "running",
+              output: null,
+              finishedAt: null,
+            }),
+          );
+        },
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) => {
+          const stepName = stepNamesByAttemptId.get(params.stepAttemptId);
+          if (!stepName) {
+            throw new Error(`Missing step name for ${params.stepAttemptId}`);
+          }
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              stepName,
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          );
+        },
+      );
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              workerId: params.workerId,
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const failWorkflowRun = vi.fn();
+
+      const workflowFn = vi.fn(
+        async ({
+          step,
+        }: {
+          step: {
+            run: (
+              options: { name: string },
+              fn: () => unknown,
+            ) => Promise<unknown>;
+          };
+        }) => {
+          for (let i = 0; i < WORKFLOW_STEP_LIMIT; i++) {
+            await step.run({ name: `perf-step-${String(i)}` }, () => ({
+              index: i,
+            }));
+          }
+          return "all-1000-steps-completed";
+        },
+      );
+      const workflowRun = createMockWorkflowRun({
+        id: "run-1000-steps-perf",
+        workerId: "worker-1000-perf",
+      });
+
+      const start = performance.now();
+      await executeWorkflow({
+        backend: {
+          listStepAttempts,
+          createStepAttempt,
+          completeStepAttempt,
+          completeWorkflowRun,
+          failWorkflowRun,
+        } as unknown as Backend,
+        workflowRun,
+        workflowFn,
+        workflowVersion: null,
+        workerId: "worker-1000-perf",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+      const durationMs = performance.now() - start;
+
+      expect(workflowFn).toHaveBeenCalledTimes(1);
+      expect(createStepAttempt).toHaveBeenCalledTimes(WORKFLOW_STEP_LIMIT);
+      expect(completeStepAttempt).toHaveBeenCalledTimes(WORKFLOW_STEP_LIMIT);
+      expect(completeWorkflowRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          output: "all-1000-steps-completed",
+        }),
+      );
+      expect(failWorkflowRun).not.toHaveBeenCalled();
+      // Verifying linear fast execution time
+      expect(durationMs).toBeLessThan(5000);
+    });
+
     test("fails terminally when new steps would exceed the step limit", async () => {
       const stepNamesByAttemptId = new Map<string, string>();
       const listStepAttempts = vi.fn(() =>
