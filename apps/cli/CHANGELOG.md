@@ -1,5 +1,10 @@
 # @openworkflow/cli
 
+## 0.5.1
+
+- Telemetry w/ opt-out options: `--no-telemetry`, `DO_NOT_TRACK=1`, or
+  `OPENWORKFLOW_TELEMETRY_DISABLED=1`
+
 ## 0.5.0
 
 - Add non-interactive initialization with `--backend sqlite|postgres|both --yes`
