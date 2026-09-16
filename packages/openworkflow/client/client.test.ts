@@ -15,7 +15,7 @@ import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
 import * as v from "valibot";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   number as yupNumber,
   object as yupObject,
@@ -298,7 +298,7 @@ describe("OpenWorkflow", () => {
     );
   });
 
-  test("result rejects when completion is observed after timeout", async () => {
+  test("result resolves when completion is observed after timeout", async () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-timeout-completed-run",
     });
@@ -323,9 +323,159 @@ describe("OpenWorkflow", () => {
     );
     const handle = await workflow.run({ value: 1 });
 
-    await expect(handle.result({ timeoutMs: 10 })).rejects.toThrow(
-      `Timed out waiting for workflow run ${workflowRun.id} to finish`,
+    // oxlint-disable-next-line typescript/no-confusing-void-expression
+    const result = await handle.result({ timeoutMs: 10 });
+    expect(result).toEqual({ ok: true });
+  });
+
+  test("result returns output when Date.now returns start + timeoutMs for completed run", async () => {
+    const start = 1_000_000;
+    const timeoutMs = 300;
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-boundary-completed-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        Promise.resolve({
+          ...workflowRun,
+          status: "completed" as const,
+          output: { success: true },
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-boundary-completed-run" },
+      noopFn,
     );
+    const handle = await workflow.run({ value: 1 });
+
+    let callCount = 0;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? start : start + timeoutMs;
+    });
+
+    try {
+      // oxlint-disable-next-line typescript/no-confusing-void-expression
+      const result = await handle.result({ timeoutMs });
+      expect(result).toEqual({ success: true });
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  test("result throws timeout error when Date.now returns start + timeoutMs + 1 for running run", async () => {
+    const start = 1_000_000;
+    const timeoutMs = 300;
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-boundary-running-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        Promise.resolve({
+          ...workflowRun,
+          status: "running" as const,
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-boundary-running-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    let callCount = 0;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? start : start + timeoutMs + 1;
+    });
+
+    try {
+      await expect(handle.result({ timeoutMs })).rejects.toThrow(
+        `Timed out waiting for workflow run ${workflowRun.id} to finish`,
+      );
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  test("result throws workflow error when failed run is observed at timeout boundary", async () => {
+    const start = 1_000_000;
+    const timeoutMs = 300;
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-boundary-failed-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        Promise.resolve({
+          ...workflowRun,
+          status: "failed" as const,
+          error: { message: "fatal error" },
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-boundary-failed-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    let callCount = 0;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? start : start + timeoutMs + 1;
+    });
+
+    try {
+      await expect(handle.result({ timeoutMs })).rejects.toThrow(
+        `Workflow ${workflowRun.workflowName} failed: {"message":"fatal error"}`,
+      );
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  test("result throws canceled error when canceled run is observed at timeout boundary", async () => {
+    const start = 1_000_000;
+    const timeoutMs = 300;
+    const workflowRun = createMockWorkflowRun({
+      workflowName: "result-boundary-canceled-run",
+    });
+    const backend = {
+      createWorkflowRun: () => Promise.resolve(workflowRun),
+      getWorkflowRun: () =>
+        Promise.resolve({
+          ...workflowRun,
+          status: "canceled" as const,
+        }),
+    } as unknown as Backend;
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "result-boundary-canceled-run" },
+      noopFn,
+    );
+    const handle = await workflow.run({ value: 1 });
+
+    let callCount = 0;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? start : start + timeoutMs + 1;
+    });
+
+    try {
+      await expect(handle.result({ timeoutMs })).rejects.toThrow(
+        `Workflow ${workflowRun.workflowName} was canceled`,
+      );
+    } finally {
+      dateSpy.mockRestore();
+    }
   });
 
   test("creates workflow run with deadline", async () => {
