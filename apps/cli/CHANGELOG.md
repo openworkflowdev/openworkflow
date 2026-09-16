@@ -1,5 +1,11 @@
 # @openworkflow/cli
 
+## 0.5.2
+
+- Fix generated worker and dashboard commands missing the custom config path
+- Fix broken imports and workflow discovery when the config is in a subdirectory
+- Fix init overwriting PostgreSQL URLs set with `export` in `.env`
+
 ## 0.5.1
 
 - Telemetry w/ opt-out options: `--no-telemetry`, `DO_NOT_TRACK=1`, or
