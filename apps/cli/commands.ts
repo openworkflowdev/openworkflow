@@ -17,7 +17,7 @@ import {
 } from "./templates.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
-import { config as loadDotenv } from "dotenv";
+import { config as loadDotenv, parse as parseDotenv } from "dotenv";
 import { spawn } from "node:child_process";
 import {
   existsSync,
@@ -1138,22 +1138,22 @@ function addWorkerScriptToPackageJson(workerCommand: string): void {
 }
 
 /**
- * Append a line to a file if no existing line matches. Creates the file if it
- * doesn't exist.
+ * Append a line if the file does not already contain the desired entry.
+ * Creates the file if it doesn't exist.
  * @param filePath - Path to the file
  * @param line - Line to append (without a trailing newline)
- * @param matchesExisting - Predicate that returns true when an existing line
- * should be treated as already representing `line`
+ * @param matchesExisting - Predicate that checks whether the file contents
+ * already contain the desired entry
  * @returns Whether the line was appended
  */
 function appendLineIfMissing(
   filePath: string,
   line: string,
-  matchesExisting: (existing: string) => boolean,
+  matchesExisting: (content: string) => boolean,
 ): boolean {
   const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
 
-  if (content.split("\n").some((existing) => matchesExisting(existing))) {
+  if (matchesExisting(content)) {
     return false;
   }
 
@@ -1170,10 +1170,8 @@ function appendLineIfMissing(
  * @returns Whether the entry was appended
  */
 function ensureGitignoreEntry(gitignorePath: string, entry: string): boolean {
-  return appendLineIfMissing(
-    gitignorePath,
-    entry,
-    (line) => line.trim() === entry,
+  return appendLineIfMissing(gitignorePath, entry, (content) =>
+    content.split("\n").some((line) => line.trim() === entry),
   );
 }
 
@@ -1343,10 +1341,9 @@ function hasDependency(
  * @returns Whether the entry was appended
  */
 function ensureEnvEntry(envPath: string, key: string, value: string): boolean {
-  return appendLineIfMissing(envPath, `${key}=${value}`, (line) => {
-    const trimmed = line.trim();
-    return trimmed.startsWith(`${key}=`) || trimmed.startsWith(`${key} =`);
-  });
+  return appendLineIfMissing(envPath, `${key}=${value}`, (content) =>
+    Object.hasOwn(parseDotenv(content), key),
+  );
 }
 
 /**
