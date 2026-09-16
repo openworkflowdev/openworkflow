@@ -8,6 +8,7 @@ import {
   validateDashboardPort,
   init,
 } from "./commands.js";
+import { loadConfigFromPath } from "./config.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -245,6 +246,48 @@ describe("init", () => {
   test("requires a backend with --yes", async () => {
     await expect(init({ yes: true })).rejects.toThrow("--backend is required");
   });
+
+  test.each([
+    ["openworkflow.config.js", false],
+    ["config/custom.js", false],
+    ["config/nested/custom.ts", false],
+    ["openworkflow/custom.js", false],
+    ["config/custom.js", true],
+  ])(
+    "resolves scaffold paths from %s (absolute: %s)",
+    async (file, absolute) => {
+      const configPath = absolute ? path.join(cwd, file) : file;
+      await init({
+        backend: "sqlite",
+        yes: true,
+        skipInstall: true,
+        config: configPath,
+      });
+
+      const clientPath = path.join(cwd, "openworkflow/client.js");
+      expect(fs.existsSync(clientPath)).toBe(true);
+      // Exercise the generated import without opening a database.
+      fs.writeFileSync(clientPath, 'export const backend = { name: "test" };');
+      fs.symlinkSync(
+        path.resolve(import.meta.dirname, "../../node_modules"),
+        path.join(cwd, "node_modules"),
+        "dir",
+      );
+
+      const { config, configFile } = await loadConfigFromPath(configPath, cwd);
+      expect(config.backend).toEqual({ name: "test" });
+      expect(configFile).toBe(path.join(cwd, file));
+      const files = discoverWorkflowFiles(
+        [config.dirs as string],
+        path.dirname(path.resolve(cwd, configPath)),
+        config.ignorePatterns,
+      );
+      expect(files).toContain(path.join(cwd, "openworkflow/hello-world.js"));
+      expect(files).not.toContain(
+        path.join(cwd, "openworkflow/hello-world.run.js"),
+      );
+    },
+  );
 
   test("requires --yes without a terminal", async () => {
     await expect(init({ backend: "sqlite" })).rejects.toThrow(

@@ -8,7 +8,7 @@ import { CLIError, exit } from "./errors.js";
 import { createModuleLoader } from "./module-loader.js";
 import { trackCommand } from "./telemetry.js";
 import {
-  CONFIG,
+  getConfigTemplate,
   HELLO_WORLD_RUNNER,
   HELLO_WORLD_WORKFLOW,
   POSTGRES_CLIENT,
@@ -989,11 +989,20 @@ function createConfigFile(configFileName: string): void {
   const spinner = p.spinner();
   spinner.start("Writing config...");
   const configDestPath = path.resolve(process.cwd(), configFileName);
+  const relativeClientPath = path
+    .relative(
+      path.dirname(configDestPath),
+      path.join(process.cwd(), "openworkflow/client.js"),
+    )
+    .replaceAll(path.sep, "/");
+  const clientImport = relativeClientPath.startsWith("../")
+    ? relativeClientPath
+    : `./${relativeClientPath}`;
 
   // mkdir if the user specified a config file, and they want it in a dir
   mkdirSync(path.dirname(configDestPath), { recursive: true });
 
-  writeFileSync(configDestPath, CONFIG, "utf8");
+  writeFileSync(configDestPath, getConfigTemplate(clientImport), "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 }
 
