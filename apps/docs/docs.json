@@ -67,7 +67,7 @@
       },
       {
         "group": "Integrations",
-        "pages": ["docs/standard-schema"]
+        "pages": ["docs/standard-schema", "docs/sentry"]
       },
       {
         "group": "Comparisons",
