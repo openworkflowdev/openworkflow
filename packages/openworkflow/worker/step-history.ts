@@ -1,8 +1,4 @@
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
-import {
-  addToStepAttemptCache,
-  getCachedStepAttempt,
-} from "../core/step-attempt.js";
 
 /** Maximum number of step attempts allowed for a single workflow run. */
 export const WORKFLOW_STEP_LIMIT = 1000;
@@ -184,7 +180,7 @@ export interface StepHistoryOptions {
  * directly.
  */
 export class StepHistory {
-  private cache: StepAttemptCache;
+  private readonly cache: Map<string, StepAttempt>;
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
@@ -198,7 +194,7 @@ export class StepHistory {
     this.stepCount = options.attempts.length;
 
     const state = createStepExecutionStateFromAttempts(options.attempts);
-    this.cache = state.cache;
+    this.cache = new Map(state.cache);
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
     this.failedByStepName = new Map(state.failedByStepName);
     this.runningByStepName = new Map(state.runningByStepName);
@@ -233,7 +229,7 @@ export class StepHistory {
   }
 
   findCached(stepName: string): StepAttempt | undefined {
-    return getCachedStepAttempt(this.cache, stepName);
+    return this.cache.get(stepName);
   }
 
   findRunning(stepName: string): StepAttempt | undefined {
@@ -358,7 +354,7 @@ export class StepHistory {
    */
   recordCompletion(attempt: Readonly<StepAttempt>): void {
     this.runningByStepName.delete(attempt.stepName);
-    this.cache = addToStepAttemptCache(this.cache, attempt);
+    this.cache.set(attempt.stepName, attempt);
   }
 
   /**

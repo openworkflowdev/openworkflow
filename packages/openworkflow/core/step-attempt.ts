@@ -113,17 +113,15 @@ export function getCachedStepAttempt(
 }
 
 /**
- * Add a step attempt to the cache (returns new cache, original unchanged). This
- * is an immutable operation.
- * @param cache - The existing step attempt cache
+ * Add a step attempt to the cache. Mutates the cache in place.
+ * @param cache - The mutable step attempt cache
  * @param attempt - The attempt to add
- * @returns A new cache with the attempt added
  */
 export function addToStepAttemptCache(
-  cache: StepAttemptCache,
+  cache: Map<string, StepAttempt>,
   attempt: Readonly<StepAttempt>,
-): StepAttemptCache {
-  return new Map([...cache, [attempt.stepName, attempt]]);
+): void {
+  cache.set(attempt.stepName, attempt);
 }
 
 /**

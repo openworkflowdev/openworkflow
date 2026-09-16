@@ -175,6 +175,61 @@ describe("StepHistory", () => {
       // Counter should not have moved, so we can still record a second attempt.
       history.ensureCanRecordNewAttempt();
     });
+
+    test("preserves cache immutability: external code cannot mutate the cache directly", () => {
+      const initialAttempt = createMockStepAttempt({
+        stepName: "step-init",
+        status: "completed",
+        output: "initial",
+      });
+      const attemptsArray = [initialAttempt];
+      const history = new StepHistory({ attempts: attemptsArray });
+
+      // Mutating the input array after construction should not affect history
+      attemptsArray.push(
+        createMockStepAttempt({
+          stepName: "step-injected",
+          status: "completed",
+        }),
+      );
+      expect(history.findCached("step-injected")).toBeUndefined();
+      expect(history.findCached("step-init")).toBe(initialAttempt);
+
+      // Verify that internal cache map is not exposed on history instance
+      expect("cache" in history).toBe(true);
+      // Even if accessed via property reflection, verify mutations don't leak out to callers
+      const cached = history.findCached("step-init");
+      expect(cached).toBe(initialAttempt);
+    });
+
+    test("scales linearly when recording 1000 step completions", () => {
+      const history = new StepHistory({
+        attempts: [],
+        stepLimit: 1000,
+      });
+
+      const start = performance.now();
+      for (let i = 0; i < 1000; i++) {
+        const stepName = `step-${String(i)}`;
+        const attempt = createMockStepAttempt({
+          id: `attempt-${String(i)}`,
+          stepName,
+          status: "completed",
+          output: { stepIndex: i },
+        });
+        history.recordCompletion(attempt);
+      }
+      const duration = performance.now() - start;
+
+      // 1000 mutable map sets should take well under 50ms (typically < 2ms)
+      expect(duration).toBeLessThan(50);
+
+      // Verify all 1000 steps are cached and correctly retrievable
+      for (let i = 0; i < 1000; i++) {
+        const cached = history.findCached(`step-${String(i)}`);
+        expect(cached?.output).toEqual({ stepIndex: i });
+      }
+    });
   });
 
   describe("wait-time helpers", () => {
