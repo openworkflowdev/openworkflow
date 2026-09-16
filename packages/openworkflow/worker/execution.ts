@@ -1150,7 +1150,10 @@ async function executeWorkflowAttempt(
       backend,
       workflowRun.id,
     );
-    const history = new StepHistory({ attempts });
+    const history = new StepHistory({
+      attempts,
+      resumedAt: workflowRun.resumedAt,
+    });
 
     // Complete any elapsed sleep waits first, then park on the earliest
     // remaining running wait (sleep, signal, or child workflow).

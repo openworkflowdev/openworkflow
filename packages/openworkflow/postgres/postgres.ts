@@ -240,6 +240,18 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 6 - resume marker
+    `BEGIN;
+
+    ALTER TABLE ${quotedSchema}."workflow_runs"
+    ADD COLUMN IF NOT EXISTS "resumed_at" TIMESTAMPTZ;
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
+    VALUES (6)
+    ON CONFLICT DO NOTHING;
+
+    COMMIT;`,
   ];
 }
 
