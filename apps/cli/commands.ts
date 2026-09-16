@@ -6,6 +6,7 @@ import {
 } from "./config.js";
 import { CLIError, exit } from "./errors.js";
 import { createModuleLoader } from "./module-loader.js";
+import { trackCommand } from "./telemetry.js";
 import {
   CONFIG,
   HELLO_WORLD_RUNNER,
@@ -89,6 +90,7 @@ export function getVersion(): string {
 /**
  * openworkflow init
  * @param options - Command options
+ * @returns Resolves when setup finishes.
  */
 // oxlint-disable-next-line complexity
 export async function init(options: InitOptions = {}): Promise<void> {
@@ -116,7 +118,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
       initialValue: false,
     });
 
-    if (!shouldOverride || p.isCancel(shouldOverride)) cancelSetup();
+    if (!shouldOverride || p.isCancel(shouldOverride)) return cancelSetup();
 
     configFileToDelete = configFile;
   }
@@ -145,7 +147,8 @@ export async function init(options: InitOptions = {}): Promise<void> {
       initialValue: "sqlite",
     }));
 
-  if (typeof backendChoice === "symbol") cancelSetup();
+  if (typeof backendChoice === "symbol") return cancelSetup();
+  trackCommand(backendChoice);
 
   const spinner = p.spinner();
 
@@ -182,7 +185,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
       initialValue: true,
     }));
 
-  if (p.isCancel(shouldSetup)) cancelSetup();
+  if (p.isCancel(shouldSetup)) return cancelSetup();
 
   if (!shouldSetup) {
     p.outro("Setup skipped.");
@@ -543,11 +546,11 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
 
 /**
  * Show a canceled-setup message and exit the process with status 0.
+ * @returns Never resolves because the process exits.
  */
-function cancelSetup(): never {
+function cancelSetup(): Promise<never> {
   p.cancel("Setup canceled.");
-  // oxlint-disable-next-line unicorn/no-process-exit
-  process.exit(0);
+  return exit(0);
 }
 
 /**
@@ -1203,7 +1206,11 @@ function findConfigWithEnv(options: CommandOptions) {
 async function loadConfigWithEnv(options: CommandOptions) {
   const configPath = findConfigWithEnv(options);
   try {
-    return await loadConfigFromPath(configPath ?? "openworkflow.config.ts");
+    const loaded = await loadConfigFromPath(
+      configPath ?? "openworkflow.config.ts",
+    );
+    trackCommand(loaded.config.backend);
+    return loaded;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CLIError("Failed to load OpenWorkflow config.", message);

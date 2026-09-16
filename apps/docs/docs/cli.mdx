@@ -227,6 +227,15 @@ can pass `--env-file <path>` to load a different .env file.
 OPENWORKFLOW_POSTGRES_URL=postgresql://user:pass@localhost:5432/openworkflow
 ```
 
+## Telemetry
+
+The CLI sends command names, backend types, CLI/Node.js versions, OS,
+architecture, and a random installation ID to PostHog by default. It does not
+send project contents, paths, or error messages.
+
+Disable telemetry with `--no-telemetry` or `DO_NOT_TRACK=1` in your shell.
+Any nonempty `CI` or `OPENWORKFLOW_TELEMETRY_DISABLED` also disables it.
+
 ## Exit Codes
 
 | Code | Meaning                                           |

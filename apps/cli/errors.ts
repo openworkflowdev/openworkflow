@@ -1,4 +1,5 @@
 /* v8 ignore file -- @preserve */
+import { shutdownTelemetry } from "./telemetry.js";
 import { consola } from "consola";
 
 /**
@@ -19,6 +20,7 @@ export class CLIError extends Error {
  * @param code - Process exit code
  */
 export async function exit(code: number): Promise<never> {
+  await shutdownTelemetry();
   await Promise.all(
     [process.stdout, process.stderr].map(
       (stream) =>

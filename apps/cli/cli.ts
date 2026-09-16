@@ -8,15 +8,23 @@ import {
   workerStart,
 } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
-import { Command, Option } from "commander";
+import {
+  initializeTelemetry,
+  shutdownTelemetry,
+  trackCommand,
+} from "./telemetry.js";
+import { Command, CommanderError, Option } from "commander";
 
 // openworkflow
 const program = new Command();
+initializeTelemetry(program);
 program
   .name("openworkflow")
   .description("OpenWorkflow CLI - learn more at https://openworkflow.dev")
   .usage("<command> [options]")
-  .version(getVersion());
+  .exitOverride()
+  .version(getVersion())
+  .option("--no-telemetry", "disable telemetry");
 
 // init
 program
@@ -78,4 +86,12 @@ program
   .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(dashboard));
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+} catch (error) {
+  if (!(error instanceof CommanderError)) throw error;
+  process.exitCode = error.exitCode;
+  trackCommand();
+} finally {
+  await shutdownTelemetry();
+}
