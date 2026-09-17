@@ -11,7 +11,7 @@ examples, see [Quick Start](/docs/quickstart) and the linked detail pages.
 OpenWorkflow has three core building blocks:
 
 - **Workflows**: durable functions that describe your business process
-- **Steps**: durable checkpoints that memoize results and protect side effects
+- **Steps**: durable checkpoints that save results for reuse on replay
 - **Workers**: stateless processes that execute and resume workflow runs
 
 Your application enqueues workflow runs. Workers pick them up. The backend
@@ -35,7 +35,8 @@ work.
 
 ## Why This Is Reliable
 
-- **Memoized steps** prevent duplicate side effects on retries
+- **Memoized steps** replay durably recorded results without rerunning those
+  step functions
 - **Durable sleep** (`step.sleep`) pauses runs without holding worker capacity
 - **Signals** (`step.sendSignal`, `step.waitForSignal`) enable runtime
   communication to & between workflows
