@@ -68,8 +68,7 @@
           "docs/type-safety",
           "docs/versioning",
           "docs/canceling",
-          "docs/production",
-          "docs/prometheus"
+          "docs/production"
         ]
       },
       {
@@ -82,7 +81,12 @@
       },
       {
         "group": "Integrations",
-        "pages": ["docs/standard-schema", "docs/opentelemetry", "docs/sentry"]
+        "pages": [
+          "docs/standard-schema",
+          "docs/opentelemetry",
+          "docs/sentry",
+          "docs/prometheus"
+        ]
       },
       {
         "group": "Resources",
