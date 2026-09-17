@@ -40,7 +40,7 @@ Run the command for the project's package manager:
 
 <CodeGroup>
 ```bash npm
-npx @openworkflow/cli init --backend sqlite --yes
+npx --yes @openworkflow/cli init --backend sqlite --yes
 ```
 
 ```bash pnpm
@@ -61,7 +61,8 @@ and complete any file changes that can proceed while waiting. Resume
 verification once the database is reachable.
 
 Always pass both `--backend` and `--yes` for unattended setup. The default
-command is interactive. Setup installs dependencies and creates a config,
+command is interactive. In the npm command, the first `--yes` also skips the
+package-install prompt. Setup installs dependencies and creates a config,
 client, example workflow, and runner. File extensions depend on the project.
 It also adds a `worker` script and updates `.gitignore` or `.env` for the backend.
 
