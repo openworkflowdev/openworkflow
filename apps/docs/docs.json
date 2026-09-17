@@ -36,6 +36,11 @@
           "href": "https://github.com/openworkflowdev/openworkflow"
         },
         {
+          "anchor": "npm",
+          "icon": "npm",
+          "href": "https://www.npmjs.com/package/openworkflow"
+        },
+        {
           "anchor": "Join Discord 👾",
           "icon": "discord",
           "href": "https://discord.openworkflow.dev"
@@ -93,8 +98,6 @@
         "pages": [
           "docs/roadmap",
           "docs/llms",
-          "npm",
-          "github",
           {
             "group": "Agent Skills",
             "expanded": false,
@@ -121,6 +124,14 @@
     }
   },
   "redirects": [
+    {
+      "source": "/github",
+      "destination": "https://github.com/openworkflowdev/openworkflow"
+    },
+    {
+      "source": "/npm",
+      "destination": "https://www.npmjs.com/package/openworkflow"
+    },
     {
       "source": "/docs",
       "destination": "/"
