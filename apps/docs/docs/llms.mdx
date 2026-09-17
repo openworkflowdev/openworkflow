@@ -1,6 +1,6 @@
 ---
 title: Building with LLMs
-description: Use LLMs to build OpenWorkflow workflows with the setup guide, plain-text Markdown docs, and the llms.txt index
+description: Use OpenWorkflow with a coding assistant through the setup guide, agent skill, Markdown docs, and MCP
 ---
 
 ## Set up OpenWorkflow with an assistant
@@ -11,9 +11,9 @@ Open your project in your AI coding assistant and paste this prompt:
 Read and follow https://openworkflow.dev/skills/setup.md to set up OpenWorkflow.
 ```
 
-The [agent setup guide](/skills/setup) walks your assistant through
-inspecting the project, installing OpenWorkflow, and running an example
-workflow to verify the setup.
+The [agent setup guide](/skills/setup) walks your assistant through inspecting
+the project, installing OpenWorkflow, and running an example workflow to verify
+the setup.
 
 ## Plain-text docs for LLMs
 
@@ -21,6 +21,33 @@ Append `.md` to any docs URL to retrieve the page as plain-text Markdown. For
 example, this page is available at
 [https://openworkflow.dev/docs/llms.md](https://openworkflow.dev/docs/llms.md).
 
-OpenWorkflow also provides `/llms.txt` at the root of the docs site. It follows
-the emerging standard and maps the documentation so agents can find each
-page's plain-text version.
+OpenWorkflow also provides [/llms.txt](https://openworkflow.dev/llms.txt) at the
+root of the docs site. It follows the emerging standard and maps the
+documentation so agents can find each page's plain-text version.
+
+For tools that need the entire documentation in one request, you can use
+[/llms-full.txt](https://openworkflow.dev/llms-full.txt).
+
+## Search the docs with MCP
+
+Add this URL as an HTTP MCP server in an assistant that supports remote MCP:
+
+```text
+https://openworkflow.dev/mcp
+```
+
+Use this server to search and read the docs. To run workflows in your project,
+use the [SDK](/docs/workflows) and [CLI](/docs/cli).
+
+## Install the OpenWorkflow skill
+
+Run this command from your project and select your coding assistant:
+
+```bash
+npx skills add https://openworkflow.dev
+```
+
+The [OpenWorkflow skill](https://openworkflow.dev/skill.md) includes setup
+instructions and links to the SDK docs. The [skills
+index](https://openworkflow.dev/.well-known/agent-skills/index.json) lets agents
+discover and fetch it.
