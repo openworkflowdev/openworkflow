@@ -99,6 +99,7 @@
           "docs/roadmap",
           "docs/llms",
           "about",
+          "contact",
           {
             "group": "Agent Skills",
             "expanded": false,
