@@ -1,0 +1,47 @@
+---
+title: Inngest alternative for self-hosted workflows
+sidebarTitle: OpenWorkflow vs Inngest
+description: Compare OpenWorkflow and Inngest for event triggers, concurrency controls, and self-hosting with your own workers and database.
+---
+
+## TL;DR
+
+Inngest provides event-triggered functions with throttling, debouncing, and
+concurrency limits. Its server tracks workflow progress while your functions
+run in your hosting environment.
+
+OpenWorkflow runs workflows in workers backed by PostgreSQL or SQLite. Your
+app adds a run to the database, and a worker picks it up.
+
+## What This Looks Like in Practice
+
+Both systems save step results so workflows can recover after failures.
+Inngest can call your functions through HTTP endpoints, including serverless
+functions, or dispatch work to persistent workers through its Connect API.
+Connect uses an outbound WebSocket connection to the Inngest service.
+
+You can use Inngest Cloud or self-host the Inngest server and its storage.
+Either way, your functions communicate with that server to save progress and
+schedule work.
+
+OpenWorkflow [workers](/docs/workers) claim runs and save step results directly
+in your database. You run the workers and database without a separate
+orchestration server.
+
+## When OpenWorkflow is the Better Fit
+
+- **Direct database access**: You want your app to enqueue work with
+  `ow.runWorkflow`. Workers use the same database to pick up runs and save
+  progress.
+- **SQLite**: You want a local database file for development or a single-server
+  app, with PostgreSQL available when you need multiple servers.
+
+## When Inngest is the Right Call
+
+- **Event routing**: You want one event to trigger several functions.
+- **Flow controls**: You need concurrency limits by customer or resource,
+  throttling around API limits, or debouncing when events arrive in bursts.
+  OpenWorkflow's worker concurrency setting does not yet provide those
+  controls.
+- **Managed orchestration**: You want functions to stay in your existing
+  serverless deployments. Inngest Cloud handles the orchestration server.

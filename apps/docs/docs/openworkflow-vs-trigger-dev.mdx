@@ -1,0 +1,49 @@
+---
+title: Trigger.dev alternative for self-hosted tasks
+sidebarTitle: OpenWorkflow vs Trigger.dev
+description: Compare OpenWorkflow and Trigger.dev for task hosting, retries, and durable waits in self-hosted deployments.
+---
+
+## TL;DR
+
+Trigger.dev is a platform for building, deploying, and running background
+tasks. On Trigger.dev Cloud, Trigger.dev runs your task code. You can also
+self-host the platform.
+
+OpenWorkflow is a workflow library for workers you run yourself. PostgreSQL or
+SQLite stores workflow state, and you deploy worker code through your existing
+deployment process.
+
+## What This Looks Like in Practice
+
+In Trigger.dev, you define tasks and deploy them through its CLI. A failed task
+can retry as a unit. You can split work into smaller tasks with their own retry
+policies, or retry individual operations within a task.
+
+In OpenWorkflow, you wrap each operation in `step.run` to save its result.
+If a document-processing workflow extracts text and then fails while indexing
+it, the retry reuses the saved text and tries indexing again. See
+[Steps](/docs/steps).
+
+## When OpenWorkflow is the Better Fit
+
+- **Your existing deployment**: You want to run workers next to your app using
+  the same database and deployment tools.
+- **Self-hosting**: You want PostgreSQL or SQLite as the only backing service.
+  Self-hosted Trigger.dev includes its web application, PostgreSQL, Redis, and
+  task execution workers.
+- **Durable waits**: You need workflows to pause without holding a worker
+  slot in a self-hosted setup. OpenWorkflow's [sleeping workflows](/docs/sleeping)
+  save their wake time and release the worker slot. Trigger.dev lists its
+  checkpoint feature for
+  non-blocking waits as Cloud-only.
+
+## When Trigger.dev is the Right Call
+
+- **Managed execution**: You want a service to build, deploy, and run your
+  task code.
+- **Task runtimes**: Your jobs need different machine sizes or system
+  dependencies, such as video processing tools, and you want Trigger.dev to
+  manage them.
+- **Autoscaling**: You want Trigger.dev Cloud to scale task execution and
+  handle checkpointing alongside deployment and monitoring.

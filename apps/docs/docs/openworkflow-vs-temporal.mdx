@@ -1,69 +1,52 @@
 ---
-title: OpenWorkflow vs Temporal
-description: A comparison of OpenWorkflow and Temporal for durable workflow orchestration
+title: Temporal alternative for TypeScript workflows
+sidebarTitle: OpenWorkflow vs Temporal
+description: Compare OpenWorkflow and Temporal for self-hosting, TypeScript workflow APIs, and recovery after failures.
 ---
-
-import ComparisonDurableWorkflow from "/snippets/comparison-durable-workflow.mdx";
 
 ## TL;DR
 
-Temporal is a distributed workflow platform with mature multi-language SDKs.
-Running it yourself means operating Temporal Server and its persistence backend.
+Temporal is a workflow platform with SDKs for several languages. You can run
+Temporal Server yourself or use Temporal Cloud.
 
 OpenWorkflow gives you durable workflows without a separate orchestration
-service. Workers coordinate directly through PostgreSQL or SQLite.
+server. Your workers connect directly to PostgreSQL or SQLite.
 
 ## What This Looks Like in Practice
 
-In Temporal, a multi-step process requires a workflow definition, separate
-Activity implementations, and a running Temporal Server connected to a
-persistence backend.
+In Temporal, you put work such as API calls in Activity functions and call them
+from a workflow. In OpenWorkflow, you wrap each operation in `step.run`. Both
+run your code in workers, but the services you operate differ:
 
-With OpenWorkflow, you write one function:
+| Deployment           | What your team operates                                                          |
+| -------------------- | -------------------------------------------------------------------------------- |
+| Self-hosted Temporal | Application workers, Temporal Server, and its persistence and Visibility stores  |
+| Temporal Cloud       | Application workers; Temporal operates the orchestration service and its storage |
+| OpenWorkflow         | Application workers and PostgreSQL or SQLite                                     |
 
-<ComparisonDurableWorkflow />
+Temporal uses a Visibility store for listing and filtering workflows.
+Supported PostgreSQL and MySQL versions provide Advanced Visibility;
+Elasticsearch is not required.
 
 ## When OpenWorkflow is the Better Fit
 
-### No separate orchestration service
-
-Self-hosted Temporal typically requires running multiple services and a
-persistence backend:
-
-- **Frontend Service** - gRPC gateway
-- **History Service** - workflow state and event history
-- **Matching Service** - task routing
-- **Worker Service** - internal Temporal system workflows
-- **Persistence** - MySQL or PostgreSQL with Temporal schema
-- **Optional visibility store** - Elasticsearch or similar for advanced queries
-
-Operating those pieces adds monitoring, capacity, upgrade, and incident
-response work.
-
-OpenWorkflow uses your existing PostgreSQL or SQLite. Your workers talk directly
-to your database. There are no intermediary services to scale, monitor, or
-debug.
-
-### Smaller API surface for common TypeScript use cases
-
-Temporal exposes multiple timeout classes and retry options per workflow and
-activity. That flexibility is useful when you need it.
-
-OpenWorkflow keeps the default surface smaller (`step.run`, `step.sleep`,
-retries with backoff, optional `deadlineAt`) for TypeScript teams that want
-fewer moving parts.
-
-### Tradeoff: happy-path overhead vs resume-path replay CPU
-
-OpenWorkflow uses fewer orchestration hops on the common path and accepts
-higher replay CPU when runs resume after retries, crashes, sleeps, or deploys.
+- **Self-hosting**: You already run PostgreSQL or SQLite and want workers to
+  use that database directly. You manage the workers and database without
+  deploying a separate orchestration server.
+- **TypeScript workflows**: You need saved step results, retries, long waits,
+  and deadlines. OpenWorkflow provides these through `step.run`, `step.sleep`,
+  retry policies, and `deadlineAt`.
 
 ## When Temporal is the Right Call
 
-- **Polyglot platform**: You need one orchestration platform across multiple
+- **Multiple languages**: You need one workflow platform across multiple
   languages.
-- **Advanced runtime interaction**: You need Signals, Queries, Updates, or
-  Activity heartbeats. These are coming to OpenWorkflow but are available right
-  now in Temporal.
-- **Dedicated platform ownership**: Your team can operate Temporal Server as
-  shared infrastructure.
+- **Queries and Updates**: You need to read workflow state or submit changes
+  and await a response. OpenWorkflow has [Signals](/docs/signals), but no
+  equivalent Query or Update APIs. Its signals only reach workflows already
+  waiting for them; they aren't buffered.
+- **Long-running Activities**: You need Activity heartbeats to save progress
+  for the next attempt. OpenWorkflow's worker heartbeats renew run leases;
+  they don't save progress inside a `step.run` function.
+- **Managed orchestration**: You want Temporal Cloud to operate the service
+  that stores workflow history and schedules work.

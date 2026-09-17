@@ -1,50 +1,49 @@
 ---
-title: OpenWorkflow vs BullMQ
-description: A comparison of OpenWorkflow and BullMQ for durable background processing
+title: BullMQ alternative for multi-step background jobs
+sidebarTitle: OpenWorkflow vs BullMQ
+description: Compare OpenWorkflow and BullMQ for job retries, saved step results, and database support in TypeScript applications.
 ---
-
-import ComparisonDurableWorkflow from "/snippets/comparison-durable-workflow.mdx";
 
 ## TL;DR
 
-BullMQ is a Redis queue library. OpenWorkflow is a durable workflow engine.
+BullMQ is a job queue library with retries, delayed jobs, and parent/child
+dependencies through Flows. It uses Redis by default and also supports
+PostgreSQL.
 
-If your flow is a chain of dependent jobs with delays and retries, you usually
-end up assembling workflow behavior on top of queue primitives. OpenWorkflow
-provides that behavior directly, backed by PostgreSQL or SQLite.
+OpenWorkflow runs multi-step processes as functions backed by PostgreSQL or
+SQLite. Wrap each operation in a step, and OpenWorkflow saves its result so
+completed steps aren't re-run after a failure.
 
 ## What This Looks Like in Practice
 
-With BullMQ, a multi-step process means Flows, parent/child job dependencies,
-manual state tracking, and delayed jobs.
+An order process reserves inventory, charges a payment, and sends a receipt.
+If sending the receipt fails, here's what happens on retry:
 
-With OpenWorkflow, you write one function:
+| Implementation                                   | What happens on retry                                                                                |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| One BullMQ job for all three operations          | The processor runs again. Your code must track progress to skip earlier operations.                  |
+| BullMQ Flows with one job per operation          | The failed job retries. Completed dependency jobs don't need to run again.                           |
+| One OpenWorkflow run with three `step.run` calls | Steps with saved results return those results. The failed step retries within the same workflow run. |
 
-<ComparisonDurableWorkflow />
+In either system, a process can crash after a payment succeeds but before
+saving that success. Use an idempotency key with the payment provider so a
+retry can't charge twice.
+
+See [Steps](/docs/steps) for how OpenWorkflow saves results and replays a run.
 
 ## When OpenWorkflow is the Better Fit
 
-### Native workflow semantics
-
-With BullMQ, complex business flows require composing jobs into graphs and
-managing orchestration state yourself.
-
-OpenWorkflow treats the flow as one workflow run with durable step history and
-replay.
-
-### No separate queue infrastructure
-
-BullMQ requires Redis, a separate service to run alongside your application.
-OpenWorkflow uses PostgreSQL or SQLite, so teams that already run one of those
-databases have one fewer service to provision and monitor.
+- **Multi-step workflows**: You want to write one function and track its steps
+  as one workflow run, with saved results and retries for each step.
+- **SQLite**: You want a local database file for development or a single-server
+  app. Use PostgreSQL when you need workers across multiple machines.
 
 ## When BullMQ is the Right Call
 
 - **Simple fire-and-forget jobs**: If you're sending emails or processing
   uploads with no dependencies between jobs, a queue is the right tool. You
   don't need workflows for that.
-- **Existing Redis investment**: If your team already runs Redis and your jobs
-  are straightforward, the adoption cost of BullMQ is genuinely low.
-- **Independent job throughput**: BullMQ on Redis is a better fit when
-  throughput for independent, short-lived jobs matters more than workflow
-  orchestration.
+- **Existing Redis setup**: If your team already runs Redis and your jobs
+  are straightforward, the adoption cost of BullMQ is low.
+- **Job dependency trees**: Your process fits a tree of parent/child jobs,
+  and BullMQ Flows provide the coordination you need.
