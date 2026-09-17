@@ -28,10 +28,10 @@ bunx @openworkflow/cli init
 
 ## What is OpenWorkflow?
 
-OpenWorkflow is a TypeScript framework that makes multi-step operations durable.
-Wrap each operation in a step, and OpenWorkflow remembers which steps already
-finished. If anything crashes, the workflow picks up right where it left off —
-completed steps are never re-run.
+OpenWorkflow is an open-source durable workflow engine for TypeScript, backed by
+PostgreSQL or SQLite. Wrap each operation in a step and OpenWorkflow saves its
+result. After a crash or deploy, the worker resumes the workflow using those
+saved results so they aren't re-run.
 
 Use it for background jobs, multi-step integrations, data processing, and AI
 workflows that need retries, long waits, or coordination between tasks.
