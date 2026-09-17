@@ -98,6 +98,7 @@
         "pages": [
           "docs/roadmap",
           "docs/llms",
+          "about",
           {
             "group": "Agent Skills",
             "expanded": false,
