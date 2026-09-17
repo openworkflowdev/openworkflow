@@ -35,6 +35,23 @@ bunx @openworkflow/cli init
 
 </CodeGroup>
 
+For unattended setup from a script or agent, pass both `--backend` and `--yes`:
+
+<CodeGroup>
+```bash npm
+npx --yes @openworkflow/cli init --backend sqlite --yes
+```
+
+```bash pnpm
+pnpx @openworkflow/cli init --backend sqlite --yes
+```
+
+```bash bun
+bunx @openworkflow/cli init --backend sqlite --yes
+```
+
+</CodeGroup>
+
 ## 2. Start a worker
 
 A worker is a process that watches for new workflow runs and executes them.

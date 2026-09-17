@@ -56,6 +56,16 @@ bunx @openworkflow/cli init
 The CLI will guide you through setup and generate everything you need to get
 started.
 
+Alternatively, for unattended setup:
+
+```bash
+# SQLite
+npx --yes @openworkflow/cli init --backend sqlite --yes
+
+# PostgreSQL
+npx --yes @openworkflow/cli init --backend postgres --yes
+```
+
 ## Documentation
 
 - [Documentation](https://openworkflow.dev/docs)
