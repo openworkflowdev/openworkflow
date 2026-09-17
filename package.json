@@ -14,6 +14,7 @@
     "ci:bun": "bun run build && bun run test:bun",
     "db:migrate": "tsx ./packages/openworkflow/postgres/scripts/db-migrate.ts",
     "db:reset": "tsx ./packages/openworkflow/postgres/scripts/db-reset.ts",
+    "dev:docs": "npm run dev --workspace=@openworkflow/docs --",
     "format": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
     "format:fix": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore",
     "knip": "knip",
