@@ -18,7 +18,7 @@
       "",
       "### How to use OpenWorkflow",
       "",
-      "Read https://openworkflow.dev/skills/setup.md and follow its setup instructions to add OpenWorkflow to this project. Use the project's existing package manager and verify that an example workflow completes.",
+      "Read and follow https://openworkflow.dev/skills/setup.md to set up OpenWorkflow.",
       "",
       "Define workflows with `defineWorkflow`, wrap operations in `step.run`, and enqueue runs with `ow.runWorkflow(workflow.spec, input)`. Start a worker with `npx @openworkflow/cli worker start` to execute them. See [Workflows](https://openworkflow.dev/docs/workflows.md), [Steps](https://openworkflow.dev/docs/steps.md), and [Signals](https://openworkflow.dev/docs/signals.md) for the APIs."
     ]
