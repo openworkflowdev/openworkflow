@@ -85,22 +85,29 @@
         "pages": ["docs/standard-schema", "docs/opentelemetry", "docs/sentry"]
       },
       {
-        "group": "Comparisons",
-        "pages": [
-          "docs/openworkflow-vs-temporal",
-          "docs/openworkflow-vs-bullmq",
-          "docs/openworkflow-vs-inngest",
-          "docs/openworkflow-vs-trigger-dev",
-          "docs/openworkflow-vs-vercel-workflow"
-        ]
-      },
-      {
-        "group": "Agent Skills",
-        "pages": ["skills/setup"]
-      },
-      {
         "group": "Resources",
-        "pages": ["docs/roadmap", "docs/llms", "npm", "github"]
+        "pages": [
+          "docs/roadmap",
+          "docs/llms",
+          "npm",
+          "github",
+          {
+            "group": "Agent Skills",
+            "expanded": false,
+            "pages": ["skills/setup"]
+          },
+          {
+            "group": "Comparisons",
+            "expanded": false,
+            "pages": [
+              "docs/openworkflow-vs-temporal",
+              "docs/openworkflow-vs-bullmq",
+              "docs/openworkflow-vs-inngest",
+              "docs/openworkflow-vs-trigger-dev",
+              "docs/openworkflow-vs-vercel-workflow"
+            ]
+          }
+        ]
       }
     ]
   },
