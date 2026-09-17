@@ -36,11 +36,6 @@
           "href": "https://github.com/openworkflowdev/openworkflow"
         },
         {
-          "anchor": "npm",
-          "icon": "npm",
-          "href": "https://www.npmjs.com/package/openworkflow"
-        },
-        {
           "anchor": "Join Discord 👾",
           "icon": "discord",
           "href": "https://discord.openworkflow.dev"
@@ -98,8 +93,6 @@
         "pages": [
           "docs/roadmap",
           "docs/llms",
-          "about",
-          "contact",
           {
             "group": "Agent Skills",
             "expanded": false,
@@ -115,6 +108,30 @@
               "docs/openworkflow-vs-trigger-dev",
               "docs/openworkflow-vs-vercel-workflow"
             ]
+          }
+        ]
+      },
+      {
+        "group": "Project",
+        "hidden": true,
+        "searchable": true,
+        "pages": ["about", "contact"]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/openworkflowdev/openworkflow",
+      "discord": "https://discord.openworkflow.dev"
+    },
+    "links": [
+      {
+        "items": [
+          { "label": "About", "href": "/about" },
+          { "label": "Contact", "href": "/contact" },
+          {
+            "label": "npm",
+            "href": "https://www.npmjs.com/package/openworkflow"
           }
         ]
       }
