@@ -120,7 +120,7 @@ export async function validateInput<RunInput, Input>(
   if (!schema) {
     return {
       success: true,
-      value: input as unknown as Input,
+      value: input as Input,
     };
   }
 

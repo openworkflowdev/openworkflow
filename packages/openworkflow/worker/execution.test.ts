@@ -6,8 +6,8 @@ import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowFunctionParams } from "../core/workflow-function.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 import type { BackendPostgres } from "../postgres.js";
-import type { Postgres } from "../postgres/postgres.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import {
   WORKFLOW_STEP_LIMIT,
   STEP_LIMIT_EXCEEDED_ERROR_CODE,
@@ -2950,11 +2950,7 @@ describe("StepExecutor", () => {
     await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
 
     // force re-execution by resetting availableAt to now via direct SQL.
-    const pg = (
-      backend as unknown as {
-        pg: Postgres;
-      }
-    ).pg;
+    const pg = backend["pg"];
     await pg.unsafe(
       `UPDATE "openworkflow"."workflow_runs" SET "available_at" = NOW() WHERE "id" = $1`,
       [handle.workflowRun.id],
@@ -3123,10 +3119,10 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3194,11 +3190,11 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           completeWorkflowRun,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3284,13 +3280,13 @@ describe("executeWorkflow", () => {
 
       const start = performance.now();
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           createStepAttempt,
           completeStepAttempt,
           completeWorkflowRun,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3387,12 +3383,12 @@ describe("executeWorkflow", () => {
       );
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           createStepAttempt,
           completeStepAttempt,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3448,11 +3444,11 @@ describe("executeWorkflow", () => {
 
       await expect(
         executeWorkflow({
-          backend: {
+          backend: createStubBackend({
             listStepAttempts,
             failWorkflowRun,
             getWorkflowRun,
-          } as unknown as Backend,
+          }),
           workflowRun,
           workflowFn,
           workflowVersion: null,
@@ -3938,12 +3934,12 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           sendSignal: sendSignalMock,
           completeStepAttempt,
           completeWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn: async ({ step }) => {
           const result = await step.sendSignal({

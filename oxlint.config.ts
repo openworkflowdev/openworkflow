@@ -45,7 +45,6 @@ export default defineConfig({
       Object.keys(antiSlop.rules).map((name) => [`anti-slop/${name}`, "error"]),
     ),
     // to enable
-    "anti-slop/no-chained-type-assertions": "allow",
     "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
     "anti-slop/require-readable-spacing": "allow",
     "anti-slop/require-safety-comment-for-type-assertion": "allow",
@@ -185,6 +184,10 @@ export default defineConfig({
         "eslint/no-throw-literal": "allow",
         "eslint/no-useless-return": "allow",
         "unicorn/consistent-function-scoping": "allow",
+        "typescript/dot-notation": [
+          "error",
+          { allowPrivateClassPropertyAccess: true },
+        ],
       },
     },
     {

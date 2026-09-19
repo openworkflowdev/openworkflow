@@ -1,4 +1,3 @@
-import type { Backend } from "../core/backend.js";
 import { DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS } from "../core/backend.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
@@ -11,6 +10,7 @@ import {
   newPostgresMaxOne,
 } from "../postgres/postgres.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
 import { randomUUID } from "node:crypto";
@@ -256,10 +256,10 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "missing-result-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () => Promise.resolve(null),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -277,14 +277,14 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-timeout-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         Promise.resolve({
           ...workflowRun,
           status: "pending" as const,
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -302,7 +302,7 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-timeout-completed-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         new Promise<WorkflowRun>((resolve) => {
@@ -314,7 +314,7 @@ describe("OpenWorkflow", () => {
             });
           }, 50);
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -334,7 +334,7 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-boundary-completed-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         Promise.resolve({
@@ -342,7 +342,7 @@ describe("OpenWorkflow", () => {
           status: "completed" as const,
           output: { success: true },
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -372,14 +372,14 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-boundary-running-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         Promise.resolve({
           ...workflowRun,
           status: "running" as const,
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -409,7 +409,7 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-boundary-failed-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         Promise.resolve({
@@ -417,7 +417,7 @@ describe("OpenWorkflow", () => {
           status: "failed" as const,
           error: { message: "fatal error" },
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(
@@ -447,14 +447,14 @@ describe("OpenWorkflow", () => {
     const workflowRun = createMockWorkflowRun({
       workflowName: "result-boundary-canceled-run",
     });
-    const backend = {
+    const backend = createStubBackend({
       createWorkflowRun: () => Promise.resolve(workflowRun),
       getWorkflowRun: () =>
         Promise.resolve({
           ...workflowRun,
           status: "canceled" as const,
         }),
-    } as unknown as Backend;
+    });
     const client = new OpenWorkflow({ backend });
 
     const workflow = client.defineWorkflow(

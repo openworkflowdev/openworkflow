@@ -7,14 +7,10 @@ import {
 } from "../core/workflow-definition.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import { Worker, resolveRetryPolicy } from "./worker.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
-
-interface WorkerSlots {
-  workerIds: string[];
-  activeExecutions: Set<{ workerId: string }>;
-}
 
 describe("Worker", () => {
   test("passes workflow input to handlers", async () => {
@@ -523,18 +519,25 @@ describe("Worker", () => {
     const claimWorkflowRun = vi.fn().mockResolvedValue(null);
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
       concurrency: 3,
     });
 
-    const internalWorker = worker as unknown as WorkerSlots;
-
-    internalWorker.workerIds = ["slot-0", "slot-1", "slot-2"];
-    internalWorker.activeExecutions.add({ workerId: "slot-0" });
-    internalWorker.activeExecutions.add({ workerId: "slot-2" });
+    worker["workerIds"].splice(
+      0,
+      worker["workerIds"].length,
+      "slot-0",
+      "slot-1",
+      "slot-2",
+    );
+    type ActiveExecution = Parameters<
+      (typeof worker)["activeExecutions"]["add"]
+    >[0];
+    worker["activeExecutions"].add({ workerId: "slot-0" } as ActiveExecution);
+    worker["activeExecutions"].add({ workerId: "slot-2" } as ActiveExecution);
 
     const claimed = await worker.tick();
 
@@ -1478,9 +1481,9 @@ describe("Worker", () => {
     const claimWorkflowRun = vi.fn().mockResolvedValue(null);
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
     });
 
@@ -1515,9 +1518,9 @@ describe("Worker", () => {
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
     });
 

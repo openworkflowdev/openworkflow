@@ -156,12 +156,11 @@ export class BackendPostgres implements Backend {
     callback: (transaction: Postgres) => Promise<Result>,
   ): Promise<Result> {
     const reserved = await this.pg.reserve();
-    const transaction = reserved as unknown as Postgres;
     let connectionClosed = false;
 
     try {
       await reserved.unsafe("BEGIN ISOLATION LEVEL READ COMMITTED");
-      const result = await callback(transaction);
+      const result = await callback(reserved);
       await reserved.unsafe("COMMIT");
       return result;
     } catch (error) {

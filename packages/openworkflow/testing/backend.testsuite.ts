@@ -127,8 +127,9 @@ export function testBackend(options: TestBackendOptions): void {
           context: null,
           availableAt: null,
           deadlineAt: null,
-        } as unknown as Parameters<Backend["createWorkflowRun"]>[0];
+        };
 
+        // @ts-expect-error legacy callers omit the parent linkage fields
         const created = await backend.createWorkflowRun(legacyParams);
 
         expect(created.parentStepAttemptNamespaceId).toBeNull();

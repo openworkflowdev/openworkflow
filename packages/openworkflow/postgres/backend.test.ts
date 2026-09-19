@@ -280,71 +280,86 @@ describe("BackendPostgres idempotency advisory locks", () => {
     const connectionError = Object.assign(new Error("connection closed"), {
       errno: "CONNECTION_CLOSED",
     });
-    const reserved = {
-      unsafe: vi.fn((query: string) =>
-        query.startsWith("SELECT")
-          ? Promise.reject(connectionError)
-          : Promise.resolve([]),
-      ),
-      release: vi.fn(),
-    };
-    const pg = {
-      reserve: () => Promise.resolve(reserved),
-    } as unknown as Postgres;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const reserved = await pg.reserve();
+    const unsafe = reserved.unsafe.bind(reserved);
+    const executeQuery = vi
+      .spyOn(reserved, "unsafe")
+      .mockImplementation((query, ...args) => {
+        if (query.startsWith("SELECT")) throw connectionError;
+        return unsafe(query, ...args);
+      });
+    const release = vi.spyOn(reserved, "release");
+    vi.spyOn(pg, "reserve").mockResolvedValue(reserved);
     const backend = BackendPostgres.fromPool(pg);
 
-    await expect(
-      backend.createWorkflowRun({
-        workflowName: randomUUID(),
-        version: null,
-        idempotencyKey: randomUUID(),
-        input: null,
-        config: {},
-        context: null,
-        parentStepAttemptNamespaceId: null,
-        parentStepAttemptId: null,
-        availableAt: null,
-        deadlineAt: null,
-      }),
-    ).rejects.toBe(connectionError);
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toBe(connectionError);
 
-    expect(reserved.unsafe).not.toHaveBeenCalledWith("ROLLBACK");
-    expect(reserved.release).not.toHaveBeenCalled();
+      expect(executeQuery).not.toHaveBeenCalledWith("ROLLBACK");
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      executeQuery.mockRestore();
+      await reserved.unsafe("ROLLBACK");
+      reserved.release();
+      await pg.end();
+    }
   });
 
   test("does not release a reserved connection after a rollback error", async () => {
     const transactionError = new Error("transaction failed");
     const rollbackError = new Error("rollback failed");
-    const reserved = {
-      unsafe: vi.fn((query: string) => {
-        if (query.startsWith("SELECT")) return Promise.reject(transactionError);
-        if (query === "ROLLBACK") return Promise.reject(rollbackError);
-        return Promise.resolve([]);
-      }),
-      release: vi.fn(),
-    };
-    const pg = {
-      reserve: () => Promise.resolve(reserved),
-    } as unknown as Postgres;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const reserved = await pg.reserve();
+    const unsafe = reserved.unsafe.bind(reserved);
+    const executeQuery = vi
+      .spyOn(reserved, "unsafe")
+      .mockImplementation((query, ...args) => {
+        if (query.startsWith("SELECT")) throw transactionError;
+        if (query === "ROLLBACK") throw rollbackError;
+        return unsafe(query, ...args);
+      });
+    const release = vi.spyOn(reserved, "release");
+    vi.spyOn(pg, "reserve").mockResolvedValue(reserved);
     const backend = BackendPostgres.fromPool(pg);
 
-    await expect(
-      backend.createWorkflowRun({
-        workflowName: randomUUID(),
-        version: null,
-        idempotencyKey: randomUUID(),
-        input: null,
-        config: {},
-        context: null,
-        parentStepAttemptNamespaceId: null,
-        parentStepAttemptId: null,
-        availableAt: null,
-        deadlineAt: null,
-      }),
-    ).rejects.toBe(transactionError);
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toBe(transactionError);
 
-    expect(reserved.unsafe).toHaveBeenCalledWith("ROLLBACK");
-    expect(reserved.release).not.toHaveBeenCalled();
+      expect(executeQuery).toHaveBeenCalledWith("ROLLBACK");
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      executeQuery.mockRestore();
+      await reserved.unsafe("ROLLBACK");
+      reserved.release();
+      await pg.end();
+    }
   });
 });
 

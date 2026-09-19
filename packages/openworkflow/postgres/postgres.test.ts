@@ -76,7 +76,7 @@ describe("postgres", () => {
           executedMigrations.push(query);
           return Promise.resolve([]);
         },
-      } as unknown as Postgres;
+      } as Postgres;
 
       await migrate(fakePg, schema);
 

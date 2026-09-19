@@ -66,7 +66,7 @@ describe("encodeCursor", () => {
       createdAt: new Date("2026-01-15T12:34:56.789Z"),
       id: "abc123",
       extra: "ignored",
-    } as unknown as Cursor;
+    };
     const encoded = encodeCursor(cursor);
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
     const parsed: unknown = JSON.parse(decoded);

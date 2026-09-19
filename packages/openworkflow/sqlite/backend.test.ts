@@ -1,5 +1,3 @@
-import type { CreateWorkflowRunParams } from "../core/backend.js";
-import type { WorkflowRun } from "../core/workflow-run.js";
 import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendSqlite } from "./backend.js";
 import { Database } from "./sqlite.js";
@@ -78,12 +76,9 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
     const backend = BackendSqlite.connect(":memory:", {
       namespaceId: randomUUID(),
     });
-    const internalBackend = backend as unknown as {
-      insertWorkflowRun: (params: CreateWorkflowRunParams) => WorkflowRun;
-    };
-    const originalInsertWorkflowRun = internalBackend.insertWorkflowRun;
+    const originalInsertWorkflowRun = backend["insertWorkflowRun"];
 
-    internalBackend.insertWorkflowRun = () => {
+    backend["insertWorkflowRun"] = () => {
       throw new Error("insert failed");
     };
 
@@ -103,17 +98,12 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
         }),
       ).rejects.toThrow("insert failed");
     } finally {
-      internalBackend.insertWorkflowRun = originalInsertWorkflowRun;
+      backend["insertWorkflowRun"] = originalInsertWorkflowRun;
       await backend.stop();
     }
   });
 
   test("swallows rollback failures and wraps non-Error thrown values", async () => {
-    type BackendSqliteCtor = new (
-      db: Database,
-      namespaceId: string,
-    ) => BackendSqlite;
-
     const calls: string[] = [];
     const fakeDb: Database = {
       exec(sql: string) {
@@ -132,10 +122,8 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
       },
     };
 
-    const backend = new (BackendSqlite as unknown as BackendSqliteCtor)(
-      fakeDb,
-      randomUUID(),
-    );
+    // @ts-expect-error inject the failing database through the private constructor
+    const backend = new BackendSqlite(fakeDb, randomUUID());
 
     await expect(
       backend.createWorkflowRun({
@@ -258,11 +246,8 @@ describe("BackendSqlite legacy sleeping compatibility", () => {
         deadlineAt: null,
       });
 
-      const internalBackend = backend as unknown as {
-        db: Database;
-      };
       const past = new Date(Date.now() - 1000).toISOString();
-      internalBackend.db
+      backend["db"]
         .prepare(
           `
           UPDATE "workflow_runs"
@@ -526,11 +511,8 @@ describe("BackendSqlite workflow wake-up reconciliation", () => {
         throw new Error("Expected workflow run to be claimed");
       }
 
-      const internalBackend = backend as unknown as {
-        db: Database;
-      };
       const past = new Date(Date.now() - 1000).toISOString();
-      internalBackend.db
+      backend["db"]
         .prepare(
           `
           UPDATE "workflow_runs"
@@ -571,11 +553,8 @@ describe("BackendSqlite.sendSignal error handling", () => {
     });
 
     try {
-      const internalBackend = backend as unknown as {
-        db: Database;
-      };
       // Make prepare throw to trigger the catch/rollback path.
-      vi.spyOn(internalBackend.db, "prepare").mockImplementation(() => {
+      vi.spyOn(backend["db"], "prepare").mockImplementation(() => {
         // Restore immediately so the rollback can work
         vi.restoreAllMocks();
         throw new Error("simulated prepare failure");

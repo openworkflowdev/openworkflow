@@ -145,7 +145,7 @@ function getEmptyLoadedConfig(): LoadedConfig {
     // not great, but meant to match the c12 api since that is what was used in
     // the initial implementation of loadConfig
     // this can be easily refactored later
-    config: {} as unknown as OpenWorkflowConfig,
+    config: {} as OpenWorkflowConfig,
     configFile: undefined, // no config found
   };
 }

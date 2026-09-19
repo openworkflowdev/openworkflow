@@ -1,5 +1,4 @@
 import { parseDuration } from "./duration.js";
-import type { DurationString } from "./duration.js";
 import { ok, err } from "./result.js";
 import { describe, expect, test } from "vitest";
 
@@ -328,35 +327,40 @@ describe("parseDuration", () => {
     });
 
     test("returns error on non-string types", () => {
-      expect(parseDuration(undefined as unknown as DurationString)).toEqual(
+      // @ts-expect-error testing non-string input from JS callers
+      expect(parseDuration()).toEqual(
         err(
           new TypeError(
             "Invalid duration format: expected a string but received undefined",
           ),
         ),
       );
-      expect(parseDuration(null as unknown as DurationString)).toEqual(
+      // @ts-expect-error testing non-string input from JS callers
+      expect(parseDuration(null)).toEqual(
         err(
           new TypeError(
             "Invalid duration format: expected a string but received object",
           ),
         ),
       );
-      expect(parseDuration([] as unknown as DurationString)).toEqual(
+      // @ts-expect-error testing non-string input from JS callers
+      expect(parseDuration([])).toEqual(
         err(
           new TypeError(
             "Invalid duration format: expected a string but received object",
           ),
         ),
       );
-      expect(parseDuration({} as unknown as DurationString)).toEqual(
+      // @ts-expect-error testing non-string input from JS callers
+      expect(parseDuration({})).toEqual(
         err(
           new TypeError(
             "Invalid duration format: expected a string but received object",
           ),
         ),
       );
-      expect(parseDuration(Number.NaN as unknown as DurationString)).toEqual(
+      // @ts-expect-error testing non-string input from JS callers
+      expect(parseDuration(Number.NaN)).toEqual(
         err(
           new TypeError(
             "Invalid duration format: expected a string but received number",
@@ -364,7 +368,8 @@ describe("parseDuration", () => {
         ),
       );
       expect(
-        parseDuration(Number.POSITIVE_INFINITY as unknown as DurationString),
+        // @ts-expect-error testing non-string input from JS callers
+        parseDuration(Number.POSITIVE_INFINITY),
       ).toEqual(
         err(
           new TypeError(
@@ -373,7 +378,8 @@ describe("parseDuration", () => {
         ),
       );
       expect(
-        parseDuration(Number.NEGATIVE_INFINITY as unknown as DurationString),
+        // @ts-expect-error testing non-string input from JS callers
+        parseDuration(Number.NEGATIVE_INFINITY),
       ).toEqual(
         err(
           new TypeError(
