@@ -32,6 +32,7 @@ describe("encodeCursor", () => {
     };
     const encoded = encodeCursor(cursor);
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    // safety: the payload was just produced by encodeCursor from this test fixture.
     const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
     expect(parsed.createdAt).toBe("2026-01-15T12:34:56.789Z");
     expect(parsed.id).toBe("abc123");
@@ -128,6 +129,18 @@ describe("decodeCursor", () => {
 
   test("throws on empty string", () => {
     expect(() => decodeCursor("")).toThrow();
+  });
+
+  test.each([
+    null,
+    42,
+    {},
+    { createdAt: 42 },
+    { createdAt: "2026-01-15" },
+    { createdAt: "2026-01-15", id: 42 },
+  ])("rejects malformed cursor payload %j", (payload) => {
+    const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
+    expect(() => decodeCursor(encoded)).toThrow("Invalid cursor payload");
   });
 
   test("throws on base64 of invalid JSON", () => {

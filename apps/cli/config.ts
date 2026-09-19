@@ -123,6 +123,7 @@ async function importConfigFile(filePath: string): Promise<LoadedConfig> {
       throw new Error("Config must export an object.");
     }
     return {
+      // safety: config modules are trusted application code; command entrypoints handle missing backend configuration.
       config: config as OpenWorkflowConfig,
       configFile: filePath,
     };
@@ -145,6 +146,7 @@ function getEmptyLoadedConfig(): LoadedConfig {
     // not great, but meant to match the c12 api since that is what was used in
     // the initial implementation of loadConfig
     // this can be easily refactored later
+    // safety: the empty object is the legacy no-config sentinel; callers handle missing backend configuration.
     config: {} as OpenWorkflowConfig,
     configFile: undefined, // no config found
   };

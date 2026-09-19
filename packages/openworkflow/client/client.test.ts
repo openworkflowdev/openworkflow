@@ -114,7 +114,8 @@ describe("OpenWorkflow", () => {
         );
 
         await expect(
-          workflow.run({ name: "Riley", platform: "web" } as never),
+          // @ts-expect-error deliberately invalid input tests runtime validation
+          workflow.run({ name: "Riley", platform: "web" }),
         ).rejects.toThrow();
       });
     });
@@ -152,7 +153,8 @@ describe("OpenWorkflow", () => {
         );
 
         await expect(
-          workflow.run({ key1: "value", key2: "oops" } as never),
+          // @ts-expect-error deliberately invalid input tests runtime validation
+          workflow.run({ key1: "value", key2: "oops" }),
         ).rejects.toThrow();
       });
     });

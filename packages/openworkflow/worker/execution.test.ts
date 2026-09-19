@@ -1,6 +1,5 @@
 import { OpenWorkflow } from "../client/client.js";
 import type { Backend } from "../core/backend.js";
-import type { DurationString } from "../core/duration.js";
 import type { StepAttempt } from "../core/step-attempt.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowFunctionParams } from "../core/workflow-function.js";
@@ -731,7 +730,7 @@ describe("StepExecutor", () => {
           { name: `workflow-child-invalid-timeout-duration-${randomUUID()}` },
           undefined,
           {
-            timeout: "not-a-duration" as DurationString,
+            timeout: "not-a-duration",
           },
         );
         return "never";
@@ -4123,6 +4122,7 @@ async function tickUntilParked(
       run.workerId === null &&
       run.availableAt !== null
     ) {
+      // safety: the checks above establish running status, no worker, and a non-null availableAt.
       return run as ParkedWorkflowRun;
     }
     if (claimedCount === 0) {
@@ -4149,6 +4149,7 @@ async function waitForParkedWorkflowRun(
       latest.workerId === null &&
       latest.availableAt !== null
     ) {
+      // safety: the checks above establish running status, no worker, and a non-null availableAt.
       return latest as ParkedWorkflowRun;
     }
     await sleep(10);

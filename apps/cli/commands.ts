@@ -84,6 +84,7 @@ export function getVersion(): string {
   for (const pkgPath of paths) {
     if (existsSync(pkgPath)) {
       try {
+        // safety: this is the installed CLI package manifest; its version is supplied by the package build.
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
           version?: string;
         };
@@ -276,6 +277,7 @@ function validateInitManifest(
     throw new CLIError("Invalid package.json: expected an object.");
   }
 
+  // safety: the object check above permits reading these optional fields as unknown before validating them.
   const fields = manifest as {
     scripts?: unknown;
     dependencies?: unknown;
@@ -298,6 +300,7 @@ function validateInitManifest(
     }
   }
 
+  // safety: the loop above checked every present scripts and dependency entry is a string.
   const { scripts } = manifest as PackageJsonForDoctor;
   const worker = scripts?.["worker"];
   if (
@@ -1156,6 +1159,7 @@ function addWorkerScriptToPackageJson(workerCommand: string): void {
   const spinner = p.spinner();
   spinner.start("Adding worker script to package.json...");
   try {
+    // safety: init validates script values before setup; the dependency installer preserves the manifest format.
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
       scripts?: Record<string, string>;
     };
@@ -1289,6 +1293,7 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
   }
 
   try {
+    // safety: the loader preserves the project manifest shape; init validates fields before mutation and doctor reports configuration issues.
     return JSON.parse(
       readFileSync(packageJsonPath, "utf8"),
     ) as PackageJsonForDoctor;
@@ -1409,8 +1414,8 @@ function assertPositiveInteger(name: string, value: number): void {
 function mergeDefinedOptions<T extends Record<string, unknown>>(
   base: T | undefined,
   overrides: Partial<T>,
-): T {
-  const merged = base ? { ...base } : ({} as T);
+): Partial<T> {
+  const merged: Partial<T> = base ? { ...base } : {};
 
   for (const key in overrides) {
     if (!Object.hasOwn(overrides, key)) continue;

@@ -805,6 +805,7 @@ export class BackendPostgres implements Backend {
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
 
+    // safety: every StepAttemptContext variant contains only JSON-compatible fields.
     const [stepAttempt] = await this.pg<StepAttempt[]>`
       WITH owned_workflow_run AS (
         ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}

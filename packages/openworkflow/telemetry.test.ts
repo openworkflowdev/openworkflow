@@ -1,5 +1,4 @@
 import { OpenWorkflow } from "./client/client.js";
-import type { DurationString } from "./core/duration.js";
 import {
   DEFAULT_WORKFLOW_RETRY_POLICY,
   type Workflow,
@@ -886,7 +885,8 @@ describe("native OpenTelemetry instrumentation", () => {
       "unavailable",
     );
     await expect(
-      workflow.run(undefined, { availableAt: "invalid" as DurationString }),
+      // @ts-expect-error deliberately invalid input tests runtime validation
+      workflow.run(undefined, { availableAt: "invalid" }),
     ).rejects.toThrow();
     const spans = exporter.getFinishedSpans();
     const callback = spans.find(

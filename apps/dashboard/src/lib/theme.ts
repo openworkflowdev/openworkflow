@@ -6,8 +6,8 @@ const postThemeValidator = z.union([z.literal("light"), z.literal("dark")]);
 export type T = z.infer<typeof postThemeValidator>;
 const storageKey = "_preferred-theme";
 
-export const getThemeServerFn = createServerFn().handler(
-  () => (getCookie(storageKey) ?? "light") as T,
+export const getThemeServerFn = createServerFn().handler(() =>
+  postThemeValidator.catch("light").parse(getCookie(storageKey)),
 );
 
 export const setThemeServerFn = createServerFn({ method: "POST" })

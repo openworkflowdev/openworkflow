@@ -536,7 +536,9 @@ describe("Worker", () => {
     type ActiveExecution = Parameters<
       (typeof worker)["activeExecutions"]["add"]
     >[0];
+    // safety: this tick receives no claimed run and only reads workerId from these occupied-slot fixtures.
     worker["activeExecutions"].add({ workerId: "slot-0" } as ActiveExecution);
+    // safety: this tick receives no claimed run and only reads workerId from these occupied-slot fixtures.
     worker["activeExecutions"].add({ workerId: "slot-2" } as ActiveExecution);
 
     const claimed = await worker.tick();
@@ -2034,8 +2036,9 @@ describe("resolveRetryPolicy", () => {
     const result = resolveRetryPolicy({
       maximumAttempts: Number.NaN,
       backoffCoefficient: -1,
-      initialInterval: "-1s" as "1s",
-      maximumInterval: "invalid" as "1s",
+      initialInterval: "-1s",
+      // @ts-expect-error deliberately invalid duration tests runtime validation
+      maximumInterval: "invalid",
     });
 
     expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);

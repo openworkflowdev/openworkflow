@@ -7,6 +7,7 @@ import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
 describe("defineConfig", () => {
   test("returns the same config", () => {
+    // safety: defineConfig only returns this object; the test never calls backend methods.
     const backend = {} as Backend; // Mock backend for testing
     const config = { backend };
     const result = defineConfig(config);

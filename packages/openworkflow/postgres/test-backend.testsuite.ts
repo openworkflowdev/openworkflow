@@ -21,6 +21,7 @@ type ProcessWithSharedTestPool = NodeJS.Process & {
  * @returns Shared Postgres pool
  */
 function getSharedPool(): Postgres {
+  // safety: this module owns the optional pool stored on process under this symbol.
   const processWithSharedTestPool = process as ProcessWithSharedTestPool;
   const sharedPool = processWithSharedTestPool[SHARED_POOL];
 
@@ -52,6 +53,7 @@ export async function createTestBackend(): Promise<BackendPostgres> {
  * @returns Promise resolved when the pool is closed
  */
 export async function teardownSharedTestPool(): Promise<void> {
+  // safety: this module owns the optional pool stored on process under this symbol.
   const processWithSharedTestPool = process as ProcessWithSharedTestPool;
   const sharedPool = processWithSharedTestPool[SHARED_POOL];
 

@@ -34,12 +34,14 @@ export function newDatabase(path: string): Database {
 
   if (isBun) {
     /* v8 ignore start -- Bun tests are run separately */
+    // safety: the bun runtime exports this constructor; we only use the shared SQLite driver methods.
     const { Database: BunDatabase } = require("bun:sqlite") as {
       Database: new (path: string) => Database;
     };
     db = new BunDatabase(path);
     /* v8 ignore stop */
   } else {
+    // safety: node:sqlite exports DatabaseSync; we only use the shared SQLite driver methods.
     const { DatabaseSync: NodeDatabase } = require("node:sqlite") as {
       DatabaseSync: new (path: string) => Database;
     };
@@ -256,6 +258,7 @@ function getCurrentMigrationVersion(db: Database): number {
     FROM sqlite_master
     WHERE type = 'table' AND name = 'openworkflow_migrations'
   `);
+  // safety: COUNT(*) returns a numeric count column for this query.
   const existsResult = existsStmt.get() as { count: number } | undefined;
   if (!existsResult || existsResult.count === 0) return -1;
 
@@ -263,7 +266,9 @@ function getCurrentMigrationVersion(db: Database): number {
   const versionStmt = db.prepare(
     `SELECT MAX("version") AS "version" FROM "openworkflow_migrations";`,
   );
-  const versionResult = versionStmt.get() as { version: number } | undefined;
+  // safety: MAX(version) returns an integer, or null when the migration table is empty.
+  const versionResult = versionStmt.get() as
+    { version: number | null } | undefined;
   return versionResult?.version ?? -1;
 }
 
@@ -311,7 +316,7 @@ export function toJSON(value: unknown): string | null {
  * @returns Parsed value
  */
 export function fromJSON(value: string | null): JsonValue {
-  // JSON.parse can only return values representable in JSON.
+  // safety: JSON.parse returns only JSON values when no reviver is supplied.
   return value === null ? null : (JSON.parse(value) as JsonValue);
 }
 

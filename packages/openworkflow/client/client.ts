@@ -86,6 +86,7 @@ export class OpenWorkflow {
       fn,
     };
 
+    // safety: the registry stores heterogeneous workflows; each typed registration keeps its matching spec and function together.
     this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
   }
 
@@ -178,6 +179,7 @@ export class OpenWorkflow {
   > {
     const workflow = defineWorkflow(spec, fn);
 
+    // safety: the registry stores heterogeneous workflows; each typed registration keeps its matching spec and function together.
     this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
 
     return new RunnableWorkflow(this, workflow);
@@ -375,6 +377,7 @@ class WorkflowRunHandle<Output> {
 
       // 'succeeded' status is deprecated
       if (latest.status === "succeeded" || latest.status === "completed") {
+        // safety: the completed run belongs to this typed workflow handle and uses its declared output contract.
         return latest.output as Output;
       }
 

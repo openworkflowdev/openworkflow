@@ -246,6 +246,7 @@ export function toWorkflowRunCounts(
     }
 
     if (Object.hasOwn(counts, row.status)) {
+      // safety: Object.hasOwn above confirms that the status is a key of the counts object.
       counts[row.status as keyof WorkflowRunCounts] += Number(row.count);
     }
   }

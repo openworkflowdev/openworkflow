@@ -81,7 +81,7 @@ async function main() {
   await worker.start();
 
   console.log(`Running ${String(n)} workflows...`);
-  const runCreatePromises = [] as Promise<unknown>[];
+  const runCreatePromises: ReturnType<typeof summarizeDoc.run>[] = [];
   for (let i = 0; i < n; i++) {
     runCreatePromises.push(
       summarizeDoc.run({
@@ -93,9 +93,7 @@ async function main() {
   }
 
   // wait for all run handles to be created
-  const runHandles = (await Promise.all(runCreatePromises)) as {
-    result: () => ReturnType<typeof summarizeDoc.run>;
-  }[];
+  const runHandles = await Promise.all(runCreatePromises);
 
   // collect result promises, attach logging to each
   const resultPromises = runHandles.map((h, idx) =>

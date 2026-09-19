@@ -261,6 +261,7 @@ export function recordError(span: Span | undefined, cause: unknown): void {
     [ATTRIBUTE_NAMES.ERROR_TYPE]: type,
   });
   observe(() => {
+    // safety: this module owns the context key and stores only a Set of recorded failures under it.
     const recorded = otel?.context.active().getValue(RECORDED_EXCEPTIONS) as
       Set<unknown> | undefined;
     if (!recorded?.has(cause)) {

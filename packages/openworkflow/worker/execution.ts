@@ -233,6 +233,7 @@ function resolveWaitTimeoutAt(
     return new Date(Date.now() + timeout);
   }
 
+  // safety: the duration parser validates this string and returns an error for malformed durations.
   const result = calculateDateFromDuration(timeout as DurationString);
   if (!result.ok) {
     throw result.error;
@@ -466,6 +467,7 @@ class StepExecutor implements StepApi {
 
     const existingAttempt = this.history.findCached(stepName);
     if (existingAttempt) {
+      // safety: this output belongs to the current typed workflow or step; output types must stay compatible across replays.
       return existingAttempt.output as Output;
     }
 
@@ -486,6 +488,7 @@ class StepExecutor implements StepApi {
         attempt,
         normalizeStepOutput(result),
       );
+      // safety: this output belongs to the current typed workflow or step; output types must stay compatible across replays.
       return savedAttempt.output as Output;
     } catch (error) {
       return this.failStepWithError(
@@ -539,6 +542,7 @@ class StepExecutor implements StepApi {
 
     const existingAttempt = this.history.findCached(stepName);
     if (existingAttempt) {
+      // safety: this output belongs to the current typed workflow or step; output types must stay compatible across replays.
       return existingAttempt.output as Output;
     }
 
@@ -651,6 +655,7 @@ class StepExecutor implements StepApi {
         workflowAttempt,
         childRun.output,
       );
+      // safety: this output belongs to the current typed workflow or step; output types must stay compatible across replays.
       return completed.output as Output;
     }
 
@@ -821,6 +826,7 @@ class StepExecutor implements StepApi {
 
     const existingAttempt = this.history.findCached(stepName);
     if (existingAttempt) {
+      // safety: this signal-send step persists the backend result containing workflowRunIds.
       return existingAttempt.output as { workflowRunIds: string[] };
     }
 
@@ -874,6 +880,7 @@ class StepExecutor implements StepApi {
       const completed = await this.completeStepAttemptAndRecord(attempt, {
         ...result,
       });
+      // safety: this signal-send step persists the backend result containing workflowRunIds.
       return completed.output as { workflowRunIds: string[] };
     } catch (error) {
       return await this.failStepWithError(
@@ -901,6 +908,7 @@ class StepExecutor implements StepApi {
 
     const existingAttempt = this.history.findCached(stepName);
     if (existingAttempt) {
+      // safety: signal-wait steps persist either null or the data accepted by this wait operation.
       return existingAttempt.output as { data: Output } | null;
     }
 
@@ -966,6 +974,7 @@ class StepExecutor implements StepApi {
       }
 
       return await this.completeSignalWaitStep<Output>(attempt, {
+        // safety: this output belongs to the current typed workflow or step; output types must stay compatible across replays.
         data: normalizeStepOutput(outputValue) as Output,
       });
     }
@@ -991,10 +1000,12 @@ class StepExecutor implements StepApi {
     attempt: Readonly<StepAttempt>,
     output: { data: Output } | null,
   ): Promise<{ data: Output } | null> {
+    // safety: workflow and step outputs must be JSON-compatible; persistence serializes them and maps undefined to null.
     const completed = await this.completeStepAttemptAndRecord(
       attempt,
       output as JsonValue | null,
     );
+    // safety: signal-wait steps persist either null or the data accepted by this wait operation.
     return completed.output as { data: Output } | null;
   }
 }
@@ -1207,6 +1218,7 @@ async function executeWorkflowAttempt(
       backend.completeWorkflowRun({
         workflowRunId: workflowRun.id,
         workerId,
+        // safety: workflow and step outputs must be JSON-compatible; persistence serializes them and maps undefined to null.
         output: (output ?? null) as JsonValue,
       }),
     );

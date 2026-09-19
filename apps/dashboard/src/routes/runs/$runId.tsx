@@ -44,11 +44,7 @@ import {
   useHydrated,
   useRouter,
 } from "@tanstack/react-router";
-import type {
-  StepAttempt,
-  WorkflowRun,
-  WorkflowRunStatus,
-} from "openworkflow/internal";
+import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -103,14 +99,17 @@ export const Route = createFileRoute("/runs/$runId")({
 
     const childRunsById = Object.fromEntries(
       await Promise.all(
-        childRunIds.map(async (childRunId) => [
-          childRunId,
-          await getWorkflowRunServerFn({
-            data: { workflowRunId: childRunId },
-          }),
-        ]),
+        childRunIds.map(
+          async (childRunId) =>
+            [
+              childRunId,
+              await getWorkflowRunServerFn({
+                data: { workflowRunId: childRunId },
+              }),
+            ] as const,
+        ),
       ),
-    ) as Record<string, WorkflowRun | null>;
+    );
 
     return {
       run,
@@ -972,7 +971,7 @@ function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
 }
 
 function getRunStatusHelp(status: string): string {
-  switch (status as WorkflowRunStatus) {
+  switch (status) {
     case "pending": {
       return "Queued and waiting for an available worker to claim it.";
     }

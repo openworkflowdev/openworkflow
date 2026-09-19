@@ -34,7 +34,10 @@ export function encodeCursor(item: Readonly<Cursor>): string {
  */
 export function decodeCursor(cursor: string): Cursor {
   const decoded = Buffer.from(cursor, "base64").toString("utf8");
-  const parsed = JSON.parse(decoded) as { createdAt: string; id: string };
+  const parsed: unknown = JSON.parse(decoded);
+  if (!isCursorPayload(parsed)) {
+    throw new TypeError("Invalid cursor payload");
+  }
   return {
     createdAt: new Date(parsed.createdAt),
     id: parsed.id,
@@ -115,4 +118,17 @@ function trimOverflow<T>(
 ): T[] {
   if (!overflow) return [...rows];
   return hasBefore ? rows.slice(1) : rows.slice(0, -1);
+}
+
+function isCursorPayload(
+  value: unknown,
+): value is { createdAt: string; id: string } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "createdAt" in value &&
+    typeof value.createdAt === "string" &&
+    "id" in value &&
+    typeof value.id === "string"
+  );
 }

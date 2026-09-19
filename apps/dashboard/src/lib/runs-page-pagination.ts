@@ -31,11 +31,10 @@ export function validateRunsPaginationSearch(
 }
 
 export function resolveRunsPageSize(limit?: number): RunsPageSize {
-  if (RUNS_PAGE_SIZE_OPTIONS.includes(limit as RunsPageSize)) {
-    return limit as RunsPageSize;
-  }
-
-  return DEFAULT_RUNS_PAGE_SIZE;
+  return (
+    RUNS_PAGE_SIZE_OPTIONS.find((size) => size === limit) ??
+    DEFAULT_RUNS_PAGE_SIZE
+  );
 }
 
 export const STEP_ATTEMPTS_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;

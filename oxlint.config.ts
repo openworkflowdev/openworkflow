@@ -47,7 +47,10 @@ export default defineConfig({
     // to enable
     "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
     "anti-slop/require-readable-spacing": "allow",
-    "anti-slop/require-safety-comment-for-type-assertion": "allow",
+    "anti-slop/require-safety-comment-for-type-assertion": [
+      "error",
+      { markers: ["safety"] },
+    ],
 
     "eslint/max-lines": ["error", 500],
     "eslint/max-lines-per-function": ["error", 80],

@@ -44,7 +44,10 @@ describe("validateInput", () => {
 
   test("validates input successfully against schema", async () => {
     const schema = createMockSchema<{ name: string }>({
-      validate: (input) => ({ value: input as { name: string } }),
+      validate: (input) => ({
+        // safety: this mock validator receives the matching literal fixture supplied by this test.
+        value: input as { name: string },
+      }),
     });
     const input = { name: "test" };
 
@@ -58,7 +61,10 @@ describe("validateInput", () => {
 
   test("transforms input using schema", async () => {
     const schema = createMockSchema<string, number>({
-      validate: (input) => ({ value: Number.parseInt(input as string, 10) }),
+      validate: (input) => ({
+        // safety: this mock validator receives the matching literal fixture supplied by this test.
+        value: Number.parseInt(input as string, 10),
+      }),
     });
 
     const result = await validateInput(schema, "42");
@@ -126,7 +132,10 @@ describe("validateInput", () => {
         await new Promise((resolve) => {
           setTimeout(resolve, 1);
         });
-        return { value: (input as string).toUpperCase() };
+        return {
+          // safety: this mock validator receives the matching literal fixture supplied by this test.
+          value: (input as string).toUpperCase(),
+        };
       },
     });
 

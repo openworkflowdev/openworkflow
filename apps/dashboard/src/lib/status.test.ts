@@ -29,16 +29,19 @@ describe("status ui config", () => {
     expect(succeededConfig.label).toBe(completedConfig.label);
   });
 
-  it("falls back to pending styles for unknown statuses", () => {
-    const unknownConfig = getRunStatusConfig("unknown-status");
+  it.each(["unknown-status", "toString", "constructor"])(
+    "falls back to pending styles for %s",
+    (status) => {
+      const unknownConfig = getRunStatusConfig(status);
 
-    expect(unknownConfig.label).toBe("Pending");
-    expect(getStatusColor("unknown-status")).toBe("text-warning");
-    expect(getStatusBadgeClass("unknown-status")).toBe(
-      "bg-warning/10 border-warning/20 text-warning",
-    );
-    expect(getStatusStatCardClass("unknown-status")).toBe(
-      "bg-warning/10 ring-warning/20",
-    );
-  });
+      expect(unknownConfig.label).toBe("Pending");
+      expect(getStatusColor(status)).toBe("text-warning");
+      expect(getStatusBadgeClass(status)).toBe(
+        "bg-warning/10 border-warning/20 text-warning",
+      );
+      expect(getStatusStatCardClass(status)).toBe(
+        "bg-warning/10 ring-warning/20",
+      );
+    },
+  );
 });

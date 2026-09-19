@@ -154,6 +154,7 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
     let parsedInput: WorkflowRun["input"] = null;
     if (normalizedInputValue) {
       try {
+        // safety: JSON.parse without a reviver returns the JSON values accepted by workflow input.
         parsedInput = JSON.parse(normalizedInputValue) as WorkflowRun["input"];
       } catch {
         throw new TypeError("Input must be valid JSON");

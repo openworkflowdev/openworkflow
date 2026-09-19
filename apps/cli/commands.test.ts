@@ -264,6 +264,7 @@ describe("init", () => {
     async (config) => {
       const note = dependencies.note.mockClear();
       await init({ backend: "sqlite", yes: true, skipInstall: true, config });
+      // safety: init just generated this manifest with a worker script for this test.
       const manifest = JSON.parse(
         fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
       ) as { scripts: { worker: string } };
@@ -329,6 +330,7 @@ describe("init", () => {
       const { config, configFile } = await loadConfigFromPath(configPath, cwd);
       expect(config.backend).toEqual({ name: "test" });
       expect(configFile).toBe(path.join(cwd, file));
+      // safety: this generated config fixture sets dirs to a single directory string.
       const files = discoverWorkflowFiles(
         [config.dirs as string],
         path.dirname(path.resolve(cwd, configPath)),

@@ -16,7 +16,7 @@ describe("useStepSelection", () => {
         { id: "failed", status: "failed" },
         { id: "running", status: "running" },
         { id: "last", status: "completed" },
-      ] as SelectableStep[],
+      ] satisfies SelectableStep[],
     });
     expect(result.current[0]).toBe("failed");
 
@@ -75,8 +75,9 @@ describe("useStepSelection", () => {
   });
 
   it("does not restore a discarded selection when that step returns", () => {
+    const steps: SelectableStep[] = [{ id: "old", status: "failed" }];
     const { result, rerender } = renderHook(useStepSelection, {
-      initialProps: [{ id: "old", status: "failed" }] as SelectableStep[],
+      initialProps: steps,
     });
     rerender([{ id: "replacement", status: "completed" }]);
     rerender([

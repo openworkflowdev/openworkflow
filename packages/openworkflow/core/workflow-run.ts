@@ -120,6 +120,7 @@ export async function validateInput<RunInput, Input>(
   if (!schema) {
     return {
       success: true,
+      // safety: without a schema, the workflow contract uses the same input type before and after validation.
       value: input as Input,
     };
   }
