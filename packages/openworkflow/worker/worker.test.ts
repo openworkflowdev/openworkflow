@@ -389,16 +389,18 @@ describe("Worker", () => {
       async ({ step }) => {
         attemptCount++;
 
-        const [a, b] = await Promise.all([
-          step.run({ name: "step-a" }, () => {
-            if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
-            return "a";
-          }),
-          step.run({ name: "step-b" }, () => {
-            if (attemptCount === 1) throw new Error("Simulated crash");
-            return "b";
-          }),
-        ]);
+        const aPromise = step.run({ name: "step-a" }, () => {
+          if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
+          return "a";
+        });
+        const bPromise = step.run({ name: "step-b" }, async () => {
+          // wait for step-a's completion to be persisted before crashing.
+          await aPromise;
+          if (attemptCount === 1) throw new Error("Simulated crash");
+          return "b";
+        });
+
+        const [a, b] = await Promise.all([aPromise, bPromise]);
 
         return { a, b, attempts: attemptCount };
       },
