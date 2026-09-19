@@ -10,7 +10,6 @@ import {
 } from "./postgres.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
-import { z } from "zod";
 
 interface StepMutationContext {
   backend: BackendPostgres;
@@ -619,12 +618,6 @@ describe("BackendPostgres JSON key preservation", () => {
         OPENAI_REASONING_EFFORT: "medium",
       },
     };
-    const transformedModelKey = "OPENAI_MODEL".replaceAll("_", "");
-    const transformedBaseUrlKey = "OPENAI_BASE_URL".replaceAll("_", "");
-    const transformedReasoningEffortKey = "OPENAI_REASONING_EFFORT".replaceAll(
-      "_",
-      "",
-    );
 
     try {
       const workflowRun = await backend.createWorkflowRun({
@@ -640,30 +633,12 @@ describe("BackendPostgres JSON key preservation", () => {
         deadlineAt: null,
       });
 
-      const { env: createEnv } = z
-        .object({
-          env: z.record(z.string(), z.string()),
-        })
-        .parse(workflowRun.input);
-      expect(createEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
-      expect(createEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
-      expect(createEnv["OPENAI_REASONING_EFFORT"]).toBe(
-        input.env.OPENAI_REASONING_EFFORT,
-      );
-      expect(createEnv[transformedModelKey]).toBeUndefined();
-      expect(createEnv[transformedBaseUrlKey]).toBeUndefined();
-      expect(createEnv[transformedReasoningEffortKey]).toBeUndefined();
+      expect(workflowRun.input).toEqual(input);
 
       const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
       try {
         const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
-        const [record] = await pg<
-          {
-            input: {
-              env?: Record<string, string>;
-            };
-          }[]
-        >`
+        const [record] = await pg<{ input: typeof input }[]>`
           SELECT "input"
           FROM ${workflowRunsTable}
           WHERE "namespace_id" = ${namespaceId}
@@ -671,16 +646,7 @@ describe("BackendPostgres JSON key preservation", () => {
           LIMIT 1
         `;
 
-        const persistedEnv = record?.input.env;
-        if (!persistedEnv) throw new Error("Expected persisted workflow input");
-        expect(persistedEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
-        expect(persistedEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
-        expect(persistedEnv["OPENAI_REASONING_EFFORT"]).toBe(
-          input.env.OPENAI_REASONING_EFFORT,
-        );
-        expect(persistedEnv[transformedModelKey]).toBeUndefined();
-        expect(persistedEnv[transformedBaseUrlKey]).toBeUndefined();
-        expect(persistedEnv[transformedReasoningEffortKey]).toBeUndefined();
+        expect(record?.input).toEqual(input);
       } finally {
         await pg.end();
       }
