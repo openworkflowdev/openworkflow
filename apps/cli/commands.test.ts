@@ -228,8 +228,9 @@ describe("init", () => {
     const output = execFileSync(
       process.execPath,
       [
-        "--import",
-        import.meta.resolve("tsx"),
+        ...(process.versions["bun"]
+          ? [] // bun runs typescript natively
+          : ["--import", import.meta.resolve("tsx")]),
         path.join(import.meta.dirname, "cli.ts"),
         "--no-telemetry",
         "init",
