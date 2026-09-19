@@ -34,6 +34,11 @@
     "typecheck": "tsc --noEmit",
     "worker": "npm run openworkflow worker start"
   },
+  "overrides": {
+    "oxlint-plugin-anti-slop": {
+      "@oxlint/plugins": "$oxlint"
+    }
+  },
   "dependencies": {
     "openworkflow": "^0.10.1"
   },
@@ -52,6 +57,7 @@
     "jscpd": "^5.2.1",
     "knip": "^6.35.1",
     "oxlint": "^1.83.0",
+    "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
     "prettier-plugin-packagejson": "^3.0.2",

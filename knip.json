@@ -17,7 +17,8 @@
   "ignoreFiles": [
     "**/openworkflow.config.*",
     "openworkflow/**/*.ts",
-    "apps/dashboard/src/components/ui/*.tsx"
+    "apps/dashboard/src/components/ui/*.tsx",
+    "tools/oxlint/anti-slop.d.mts"
   ],
   "ignoreIssues": {
     "apps/dashboard/src/components/ui/*.tsx": ["exports"],

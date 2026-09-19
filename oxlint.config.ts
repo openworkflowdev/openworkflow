@@ -1,3 +1,4 @@
+import antiSlop from "./tools/oxlint/anti-slop.mjs";
 import { defineConfig } from "oxlint";
 
 // cspell:ignore activedescendant
@@ -19,6 +20,7 @@ export default defineConfig({
     "apps/dashboard/src/routeTree.gen.ts",
     "commitlint.config.js",
   ],
+  jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop.mjs" }],
   options: {
     denyWarnings: true,
     reportUnusedDisableDirectives: "error",
@@ -38,6 +40,23 @@ export default defineConfig({
     "vitest",
   ],
   rules: {
+    // https://github.com/dmmulroy/anti-slop
+    ...Object.fromEntries(
+      Object.keys(antiSlop.rules).map((name) => [`anti-slop/${name}`, "error"]),
+    ),
+    // to enable
+    "anti-slop/no-chained-type-assertions": "allow",
+    "anti-slop/no-conditional-empty-object-spread": "allow",
+    "anti-slop/no-known-value-widening": "allow",
+    "anti-slop/no-module-mocking": "allow",
+    "anti-slop/no-runtime-typeof": "allow",
+    "anti-slop/no-shape-in-symbol-names": "allow",
+    "anti-slop/no-unknown-parameters": "allow",
+    "anti-slop/no-unknown-returns": "allow",
+    "anti-slop/no-unsafe-dictionary-type": "allow",
+    "anti-slop/require-readable-spacing": "allow",
+    "anti-slop/require-safety-comment-for-type-assertion": "allow",
+
     "eslint/max-lines": ["error", 500],
     "eslint/max-lines-per-function": ["error", 80],
     "eslint/max-statements": ["error", 35],

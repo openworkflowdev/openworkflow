@@ -26,6 +26,7 @@ updates:
       oxlint:
         patterns:
           - "oxlint"
+          - "oxlint-plugin-anti-slop"
           - "oxlint-tsgolint"
       react:
         patterns:
