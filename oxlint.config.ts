@@ -1,28 +1,30 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "categories": {
-    "correctness": "error",
-    "nursery": "error",
-    "pedantic": "error",
-    "perf": "error",
-    "restriction": "error",
-    "style": "error",
-    "suspicious": "error"
+import { defineConfig } from "oxlint";
+
+// cspell:ignore activedescendant
+export default defineConfig({
+  categories: {
+    correctness: "error",
+    nursery: "error",
+    pedantic: "error",
+    perf: "error",
+    restriction: "error",
+    style: "error",
+    suspicious: "error",
   },
-  "env": {
-    "browser": true,
-    "node": true
+  env: {
+    browser: true,
+    node: true,
   },
-  "ignorePatterns": [
+  ignorePatterns: [
     "apps/dashboard/src/routeTree.gen.ts",
-    "commitlint.config.js"
+    "commitlint.config.js",
   ],
-  "options": {
-    "denyWarnings": true,
-    "reportUnusedDisableDirectives": "error",
-    "typeAware": true
+  options: {
+    denyWarnings: true,
+    reportUnusedDisableDirectives: "error",
+    typeAware: true,
   },
-  "plugins": [
+  plugins: [
     "eslint",
     "typescript",
     "unicorn",
@@ -33,9 +35,9 @@
     "jsdoc",
     "react",
     "jsx-a11y",
-    "vitest"
+    "vitest",
   ],
-  "rules": {
+  rules: {
     "eslint/max-lines": ["error", 500],
     "eslint/max-lines-per-function": ["error", 80],
     "eslint/max-statements": ["error", 35],
@@ -43,14 +45,14 @@
     "eslint/func-style": [
       "error",
       "declaration",
-      { "allowArrowFunctions": true }
+      { allowArrowFunctions: true },
     ],
     "eslint/max-classes-per-file": ["error", 4],
     "eslint/arrow-body-style": "allow",
     "eslint/capitalized-comments": "allow",
     "eslint/curly": "allow",
     "eslint/default-case": "allow",
-    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+    "eslint/eqeqeq": ["error", "always", { null: "ignore" }],
     "eslint/id-length": "allow",
     "eslint/init-declarations": "allow",
     "eslint/max-params": "allow",
@@ -69,7 +71,7 @@
     "eslint/no-underscore-dangle": "allow",
     "eslint/no-use-before-define": [
       "error",
-      { "classes": false, "functions": false }
+      { classes: false, functions: false },
     ],
     "eslint/no-void": "allow",
     "eslint/one-var": "allow",
@@ -119,7 +121,7 @@
     "typescript/explicit-module-boundary-types": "allow",
     "typescript/explicit-member-accessibility": [
       "error",
-      { "accessibility": "no-public" }
+      { accessibility: "no-public" },
     ],
     "typescript/method-signature-style": "allow",
     "typescript/no-invalid-void-type": "allow",
@@ -151,28 +153,28 @@
     "vitest/require-hook": "allow",
     "vitest/require-mock-type-parameters": "allow",
     "vitest/require-to-throw-message": "allow",
-    "vitest/require-test-timeout": "allow"
+    "vitest/require-test-timeout": "allow",
   },
-  "overrides": [
+  overrides: [
     {
-      "files": [
+      files: [
         "**/*.test.ts",
         "**/*.test.tsx",
         "**/*.testsuite.ts",
         "benchmarks/**/*.ts",
-        "examples/**/*.ts"
+        "examples/**/*.ts",
       ],
-      "rules": {
+      rules: {
         "eslint/max-lines": "allow",
         "eslint/max-lines-per-function": "allow",
         "eslint/max-statements": "allow",
         "eslint/no-throw-literal": "allow",
         "eslint/no-useless-return": "allow",
-        "unicorn/consistent-function-scoping": "allow"
-      }
+        "unicorn/consistent-function-scoping": "allow",
+      },
     },
     {
-      "files": [
+      files: [
         "apps/cli/commands.ts",
         "apps/dashboard/src/components/create-run-form.tsx",
         "apps/dashboard/src/components/run-cancel-action.tsx",
@@ -183,57 +185,57 @@
         "packages/openworkflow/postgres/postgres.ts",
         "packages/openworkflow/sqlite/backend.ts",
         "packages/openworkflow/sqlite/sqlite.ts",
-        "packages/openworkflow/worker/execution.ts"
+        "packages/openworkflow/worker/execution.ts",
       ],
-      "rules": {
+      rules: {
         "eslint/max-classes-per-file": "allow",
         "eslint/max-lines": "allow",
         "eslint/max-lines-per-function": "allow",
-        "eslint/max-statements": "allow"
-      }
+        "eslint/max-statements": "allow",
+      },
     },
     {
-      "files": ["packages/openworkflow/core/**/*.ts"],
-      "excludeFiles": ["**/*.test.ts", "**/*.testsuite.ts"],
-      "rules": {
-        "typescript/prefer-readonly": "error"
-      }
+      files: ["packages/openworkflow/core/**/*.ts"],
+      excludeFiles: ["**/*.test.ts", "**/*.testsuite.ts"],
+      rules: {
+        "typescript/prefer-readonly": "error",
+      },
     },
     {
-      "files": ["**/*.mjs"],
-      "rules": {
+      files: ["**/*.mjs"],
+      rules: {
         "typescript/no-unsafe-assignment": "allow",
         "typescript/no-unsafe-call": "allow",
-        "typescript/no-unsafe-member-access": "allow"
-      }
+        "typescript/no-unsafe-member-access": "allow",
+      },
     },
     {
-      "files": ["apps/dashboard/src/components/ui/**/*.{ts,tsx}"],
-      "rules": {
+      files: ["apps/dashboard/src/components/ui/**/*.{ts,tsx}"],
+      rules: {
         "jsx-a11y/click-events-have-key-events": "allow",
         "jsx-a11y/label-has-associated-control": "allow",
         "jsx-a11y/no-noninteractive-element-interactions": "allow",
         "jsx-a11y/prefer-tag-over-role": "allow",
-        "react/no-array-index-key": "allow"
-      }
+        "react/no-array-index-key": "allow",
+      },
     },
     {
-      "files": ["apps/dashboard/src/routes/runs/$runId.tsx"],
-      "rules": {
+      files: ["apps/dashboard/src/routes/runs/$runId.tsx"],
+      rules: {
         "jsx-a11y/aria-activedescendant-has-tabindex": "allow",
         "jsx-a11y/control-has-associated-label": "allow",
         "jsx-a11y/interactive-supports-focus": "allow",
         "jsx-a11y/prefer-tag-over-role": "allow",
-        "unicorn/filename-case": "allow"
-      }
+        "unicorn/filename-case": "allow",
+      },
     },
     {
-      "files": ["packages/openworkflow/core/standard-schema.ts"],
-      "rules": {
+      files: ["packages/openworkflow/core/standard-schema.ts"],
+      rules: {
         "eslint/no-redeclare": "allow",
         "typescript/no-useless-empty-export": "allow",
-        "unicorn/require-module-specifiers": "allow"
-      }
-    }
-  ]
-}
+        "unicorn/require-module-specifiers": "allow",
+      },
+    },
+  ],
+});
