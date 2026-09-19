@@ -307,12 +307,16 @@ export class BackendSqlite implements Backend {
         }
       }
       const waitersStmt = this.db.prepare(`
-        SELECT "id", "workflow_run_id"
-        FROM "step_attempts"
-        WHERE "namespace_id" = ?
-          AND "kind" = 'signal-wait'
-          AND "status" = 'running'
-          AND json_extract("context", '$.signal') = ?
+        SELECT sa."id", sa."workflow_run_id"
+        FROM "workflow_runs" wr
+        JOIN "step_attempts" sa
+          ON sa."namespace_id" = wr."namespace_id"
+          AND sa."workflow_run_id" = wr."id"
+        WHERE sa."namespace_id" = ?
+          AND sa."kind" = 'signal-wait'
+          AND sa."status" = 'running'
+          AND json_extract(sa."context", '$.signal') = ?
+          AND wr."status" IN ('pending', 'running', 'sleeping')
       `);
       // safety: the query selects these non-null text identifiers from the signal and step tables.
       const waiters = waitersStmt.all(this.namespaceId, params.signal) as {

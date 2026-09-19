@@ -330,13 +330,17 @@ export class BackendPostgres implements Backend {
       const workflowRunsTable = this.workflowRunsTable(tx);
 
       const waiters = await tx<{ id: string; workflowRunId: string }[]>`
-          SELECT "id", "workflow_run_id" AS "workflowRunId"
-          FROM ${stepAttemptsTable}
-          WHERE "namespace_id" = ${this.namespaceId}
-            AND "kind" = 'signal-wait'
-            AND "status" = 'running'
-            AND "context"->>'signal' = ${params.signal}
-          FOR UPDATE
+          SELECT sa."id", sa."workflow_run_id" AS "workflowRunId"
+          FROM ${workflowRunsTable} wr
+          JOIN ${stepAttemptsTable} sa
+            ON sa."namespace_id" = wr."namespace_id"
+            AND sa."workflow_run_id" = wr."id"
+          WHERE sa."namespace_id" = ${this.namespaceId}
+            AND sa."kind" = 'signal-wait'
+            AND sa."status" = 'running'
+            AND sa."context"->>'signal' = ${params.signal}
+            AND wr."status" IN ('pending', 'running', 'sleeping')
+          FOR UPDATE OF wr, sa
         `;
 
       if (waiters.length === 0) {

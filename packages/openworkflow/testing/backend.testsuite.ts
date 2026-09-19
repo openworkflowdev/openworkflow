@@ -1,3 +1,4 @@
+import { OpenWorkflow } from "../client/client.js";
 import {
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   type Backend,
@@ -2584,6 +2585,82 @@ export function testBackend(options: TestBackendOptions): void {
         expect(result.workflowRunIds).toEqual([]);
       });
 
+      test.each([false, true])(
+        "excludes canceled waiters with an active waiter present: %s",
+        async (includeActiveWaiter) => {
+          const isolatedBackend = await setup();
+          const client = new OpenWorkflow({ backend: isolatedBackend });
+          const signal = `canceled-waiter-${randomUUID()}`;
+          const workflow = client.defineWorkflow(
+            { name: "signal-waiter" },
+            async ({ step }) =>
+              await step.waitForSignal({ signal, timeout: "1h" }),
+          );
+          const worker = client.newWorker({ concurrency: 2 });
+
+          try {
+            const canceledHandle = await workflow.run();
+            const activeHandle = includeActiveWaiter
+              ? await workflow.run()
+              : null;
+
+            await worker.tick();
+            await worker.stop();
+
+            for (const handle of [canceledHandle, activeHandle]) {
+              if (!handle) continue;
+              await expect(
+                isolatedBackend.getWorkflowRun({
+                  workflowRunId: handle.workflowRun.id,
+                }),
+              ).resolves.toMatchObject({ status: "running", workerId: null });
+            }
+
+            const steps = await isolatedBackend.listStepAttempts({
+              workflowRunId: canceledHandle.workflowRun.id,
+            });
+            const waitStep = steps.data.find(
+              (attempt) => attempt.kind === "signal-wait",
+            );
+            if (!waitStep) throw new Error("Expected a persisted signal wait");
+
+            await canceledHandle.cancel();
+            const result = await client.sendSignal({
+              signal,
+              data: { approved: true },
+            });
+
+            expect(result.workflowRunIds).toEqual(
+              activeHandle ? [activeHandle.workflowRun.id] : [],
+            );
+            await expect(
+              isolatedBackend.getSignalDelivery({ stepAttemptId: waitStep.id }),
+            ).resolves.toBeUndefined();
+
+            await worker.tick();
+            await worker.stop();
+
+            if (activeHandle) {
+              await expect(activeHandle.result()).resolves.toEqual({
+                data: { approved: true },
+              });
+            }
+            await expect(
+              isolatedBackend.getWorkflowRun({
+                workflowRunId: canceledHandle.workflowRun.id,
+              }),
+            ).resolves.toMatchObject({
+              status: "canceled",
+              workerId: null,
+              availableAt: null,
+            });
+          } finally {
+            await worker.stop();
+            await teardown(isolatedBackend);
+          }
+        },
+      );
+
       test("delivers to one active waiter and wakes run", async () => {
         const run = await createClaimedWorkflowRun(backend);
         const signalString = `test-signal-${randomUUID()}`;
@@ -2670,7 +2747,7 @@ export function testBackend(options: TestBackendOptions): void {
         }
       });
 
-      test("idempotent send returns same result", async () => {
+      test("idempotent send returns same result after recipient cancellation", async () => {
         const run = await createClaimedWorkflowRun(backend);
         const signalString = `idempotent-${randomUUID()}`;
         const idempotencyKey = randomUUID();
@@ -2698,6 +2775,9 @@ export function testBackend(options: TestBackendOptions): void {
           data: { val: 1 },
           idempotencyKey,
         });
+
+        expect(first.workflowRunIds).toEqual([run.id]);
+        await backend.cancelWorkflowRun({ workflowRunId: run.id });
 
         const second = await backend.sendSignal({
           signal: signalString,
