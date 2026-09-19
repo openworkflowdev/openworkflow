@@ -6,6 +6,7 @@ import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowFunctionParams } from "../core/workflow-function.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 import type { BackendPostgres } from "../postgres.js";
+import type { Postgres } from "../postgres/postgres.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import {
   WORKFLOW_STEP_LIMIT,
@@ -2954,7 +2955,7 @@ describe("StepExecutor", () => {
     // force re-execution by resetting availableAt to now via direct SQL.
     const pg = (
       backend as unknown as {
-        pg: { unsafe: (q: string, p?: unknown[]) => Promise<unknown> };
+        pg: Postgres;
       }
     ).pg;
     await pg.unsafe(
@@ -3273,16 +3274,7 @@ describe("executeWorkflow", () => {
       const failWorkflowRun = vi.fn();
 
       const workflowFn = vi.fn(
-        async ({
-          step,
-        }: {
-          step: {
-            run: (
-              options: { name: string },
-              fn: () => unknown,
-            ) => Promise<unknown>;
-          };
-        }) => {
+        async ({ step }: WorkflowFunctionParams<unknown>) => {
           for (let i = 0; i < WORKFLOW_STEP_LIMIT; i++) {
             await step.run({ name: `perf-step-${String(i)}` }, () => ({
               index: i,

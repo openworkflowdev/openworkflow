@@ -1,3 +1,4 @@
+import type { StepAttempt } from "../core/step-attempt.js";
 import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
@@ -21,7 +22,7 @@ interface StepMutationContext {
 
 interface StepMutationCase {
   name: string;
-  mutate: (context: StepMutationContext) => Promise<unknown>;
+  mutate: (context: StepMutationContext) => Promise<StepAttempt>;
 }
 
 const STEP_MUTATION_CASES: StepMutationCase[] = [

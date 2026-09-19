@@ -1,3 +1,5 @@
+import type { CreateWorkflowRunParams } from "../core/backend.js";
+import type { WorkflowRun } from "../core/workflow-run.js";
 import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendSqlite } from "./backend.js";
 import { Database } from "./sqlite.js";
@@ -77,7 +79,7 @@ describe("BackendSqlite.createWorkflowRun error handling", () => {
       namespaceId: randomUUID(),
     });
     const internalBackend = backend as unknown as {
-      insertWorkflowRun: (params: unknown) => unknown;
+      insertWorkflowRun: (params: CreateWorkflowRunParams) => WorkflowRun;
     };
     const originalInsertWorkflowRun = internalBackend.insertWorkflowRun;
 

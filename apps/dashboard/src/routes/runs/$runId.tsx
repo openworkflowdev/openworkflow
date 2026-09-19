@@ -1017,11 +1017,19 @@ function shouldUseStructuredEditor(
   return serializedValue.includes("\n");
 }
 
-function normalizeDebugValue(value: unknown): unknown {
+type DebugValue =
+  | string
+  | number
+  | boolean
+  | null
+  | DebugValue[]
+  | { [key: string]: DebugValue | undefined };
+
+function normalizeDebugValue(value: unknown): DebugValue {
   return normalizeValue(value, new WeakSet());
 }
 
-function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
+function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   if (value instanceof Error) {
     return {
       name: value.name,
@@ -1058,20 +1066,24 @@ function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
     return value.map((item) => normalizeValue(item, seen));
   }
 
-  if (typeof value === "object") {
-    const objectValue = value as Record<string, unknown>;
-    if (seen.has(objectValue)) {
-      return "[circular]";
-    }
-    seen.add(objectValue);
-
-    const normalizedEntries = Object.entries(objectValue).map(
-      ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
-    );
-    return Object.fromEntries(normalizedEntries);
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
   }
 
-  return value;
+  const objectValue = value as Record<string, unknown>;
+  if (seen.has(objectValue)) {
+    return "[circular]";
+  }
+  seen.add(objectValue);
+
+  const normalizedEntries = Object.entries(objectValue).map(
+    ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
+  );
+  return Object.fromEntries(normalizedEntries);
 }
 
 function stringifyDebugValue(value: unknown): string {

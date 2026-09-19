@@ -1,5 +1,7 @@
+import type { JsonValue } from "../core/json.js";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import type { SQLOutputValue } from "node:sqlite";
 
 /**
  * Common database interface that both Node and Bun SQLite drivers satisfy.
@@ -8,8 +10,8 @@ export interface Database {
   exec(sql: string): void;
   prepare(sql: string): {
     run(...params: unknown[]): { changes: number };
-    get(...params: unknown[]): unknown;
-    all(...params: unknown[]): unknown[];
+    get(...params: unknown[]): Record<string, SQLOutputValue> | undefined;
+    all(...params: unknown[]): Record<string, SQLOutputValue>[];
   };
   close(): void;
 }
@@ -307,8 +309,9 @@ export function toJSON(value: unknown): string | null {
  * @param value - JSON string or null
  * @returns Parsed value
  */
-export function fromJSON(value: string | null): unknown {
-  return value === null ? null : JSON.parse(value);
+export function fromJSON(value: string | null): JsonValue {
+  // JSON.parse can only return values representable in JSON.
+  return value === null ? null : (JSON.parse(value) as JsonValue);
 }
 
 /**
