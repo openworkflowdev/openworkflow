@@ -224,6 +224,27 @@ describe("init", () => {
     fs.rmSync(cwd, { recursive: true, force: true });
   });
 
+  test("scaffolds through the CLI with default dependencies", () => {
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--import",
+        import.meta.resolve("tsx"),
+        path.join(import.meta.dirname, "cli.ts"),
+        "--no-telemetry",
+        "init",
+        "--backend",
+        "sqlite",
+        "--yes",
+        "--skip-install",
+      ],
+      { cwd, encoding: "utf8", timeout: 10_000 },
+    );
+
+    expect(output).toContain("Setup complete!");
+    expect(fs.existsSync(path.join(cwd, "openworkflow.config.js"))).toBe(true);
+  });
+
   test.each(["sqlite", "postgres", "both"] as const)(
     "scaffolds %s without prompts or installation",
     async (backend) => {

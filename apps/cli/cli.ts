@@ -47,7 +47,9 @@ program
   )
   .option("--config <path>", "path to OpenWorkflow config file")
   .option("--env-file <path>", "load environment variables from file")
-  .action(withErrorHandling(init));
+  .action(
+    withErrorHandling((options: Parameters<typeof init>[0]) => init(options)),
+  );
 
 // doctor
 program
