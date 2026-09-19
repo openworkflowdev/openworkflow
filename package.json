@@ -59,7 +59,7 @@
     "oxlint": "^1.83.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
     "oxlint-tsgolint": "^7.0.2001",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.7",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tsx": "^4.23.13",
