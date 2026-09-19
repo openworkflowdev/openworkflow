@@ -3835,7 +3835,6 @@ describe("executeWorkflow", () => {
     test("keeps run metadata frozen at runtime", async () => {
       const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
-      let mutationError: unknown = null;
 
       const workflow = client.defineWorkflow(
         { name: "run-frozen" },
@@ -3846,7 +3845,7 @@ describe("executeWorkflow", () => {
                 id: "mutated",
               });
             } catch (error) {
-              mutationError = error;
+              expect(error).toBeInstanceOf(TypeError);
             }
             return null;
           });
@@ -3860,9 +3859,6 @@ describe("executeWorkflow", () => {
 
       const result = await handle.result();
       expect(result).toBe(handle.workflowRun.id);
-      if (mutationError !== null) {
-        expect(mutationError).toBeInstanceOf(TypeError);
-      }
     });
 
     test("keeps id and timestamps stable across replay", async () => {

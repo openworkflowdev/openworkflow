@@ -451,20 +451,22 @@ export async function workerStart(
   }
 }
 
+interface DashboardSpawnOptions {
+  command: string;
+  args: string[];
+  spawnOptions: {
+    stdio: "inherit";
+    env: NodeJS.ProcessEnv;
+  };
+}
+
 /**
  * openworkflow dashboard
  * Starts the dashboard by delegating to `@openworkflow/dashboard` via npx.
  * @param port - Optional dashboard port.
  * @returns Spawn configuration for launching the dashboard process.
  */
-export function getDashboardSpawnOptions(port?: number): {
-  command: string;
-  args: string[];
-  spawnOptions: {
-    stdio: "inherit";
-    env?: NodeJS.ProcessEnv;
-  };
-} {
+export function getDashboardSpawnOptions(port?: number): DashboardSpawnOptions {
   return {
     command: "npx",
     args: ["@openworkflow/dashboard"],
@@ -729,16 +731,18 @@ function escapeRegexChar(char: string): string {
   return /[-/\\^$+?.()|[\]{}]/.test(char) ? `\\${char}` : char;
 }
 
+interface GlobToken {
+  regexFragment: string;
+  nextIndex: number;
+}
+
 /**
  * Handle "*" and "**" glob tokens.
  * @param pattern - Glob pattern
  * @param index - Current index
  * @returns Regex fragment and next index
  */
-function handleAsteriskToken(
-  pattern: string,
-  index: number,
-): { regexFragment: string; nextIndex: number } {
+function handleAsteriskToken(pattern: string, index: number): GlobToken {
   const next = pattern[index + 1];
   if (next === "*") {
     const nextIndex = pattern[index + 2] === "/" ? index + 3 : index + 2;

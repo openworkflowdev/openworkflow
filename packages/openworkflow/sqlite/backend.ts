@@ -1133,6 +1133,12 @@ interface StepAttemptRow {
 }
 
 // Conversion functions
+interface ParsedRowFields {
+  createdAt: Date;
+  updatedAt: Date;
+  config: Exclude<JsonValue, null>;
+}
+
 /**
  * Parse and validate the `created_at`, `updated_at`, and `config` fields
  * shared by workflow run and step attempt rows.
@@ -1142,7 +1148,7 @@ interface StepAttemptRow {
  */
 function parseRequiredRowFields(
   row: Readonly<{ created_at: string; updated_at: string; config: string }>,
-): { createdAt: Date; updatedAt: Date; config: unknown } {
+): ParsedRowFields {
   const createdAt = fromISO(row.created_at);
   const updatedAt = fromISO(row.updated_at);
   const config = fromJSON(row.config);
@@ -1170,7 +1176,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     version: row.version,
     status: row.status as WorkflowRun["status"],
     idempotencyKey: row.idempotency_key,
-    config: config as WorkflowRun["config"],
+    config,
     context: fromJSON(row.context),
     input: fromJSON(row.input),
     output: fromJSON(row.output),
@@ -1204,7 +1210,7 @@ function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
     stepName: row.step_name,
     kind: row.kind as StepAttempt["kind"],
     status: row.status as StepAttempt["status"],
-    config: config as StepAttempt["config"],
+    config,
     context: fromJSON(row.context) as StepAttempt["context"],
     output: fromJSON(row.output),
     error: fromJSON(row.error),

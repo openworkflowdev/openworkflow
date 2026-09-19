@@ -176,13 +176,10 @@ const TERMINAL_STEP_RETRY_POLICY: RetryPolicy = {
  */
 function serializeStepLimitExceededError(
   error: Readonly<StepLimitExceededError>,
-): {
-  name: string;
-  message: string;
-  code: string;
-  limit: number;
-  stepCount: number;
-} {
+): Pick<
+  StepLimitExceededError,
+  "name" | "message" | "code" | "limit" | "stepCount"
+> {
   return {
     name: error.name,
     message: error.message,

@@ -11,6 +11,11 @@ import { Worker, resolveRetryPolicy } from "./worker.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 
+interface WorkerSlots {
+  workerIds: string[];
+  activeExecutions: Set<{ workerId: string }>;
+}
+
 describe("Worker", () => {
   test("passes workflow input to handlers", async () => {
     const backend = await createTestBackend();
@@ -525,10 +530,7 @@ describe("Worker", () => {
       concurrency: 3,
     });
 
-    const internalWorker = worker as unknown as {
-      workerIds: string[];
-      activeExecutions: Set<{ workerId: string }>;
-    };
+    const internalWorker = worker as unknown as WorkerSlots;
 
     internalWorker.workerIds = ["slot-0", "slot-1", "slot-2"];
     internalWorker.activeExecutions.add({ workerId: "slot-0" });

@@ -46,7 +46,6 @@ export default defineConfig({
     ),
     // to enable
     "anti-slop/no-chained-type-assertions": "allow",
-    "anti-slop/no-known-value-widening": "allow",
     "anti-slop/no-runtime-typeof": "allow",
     "anti-slop/no-unknown-parameters": "allow",
     "anti-slop/no-unsafe-dictionary-type": "allow",
