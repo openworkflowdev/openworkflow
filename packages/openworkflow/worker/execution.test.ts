@@ -1772,6 +1772,103 @@ describe("StepExecutor", () => {
     expect(lateAttempts[0]?.status).toBe("completed");
   });
 
+  test("fences child completion from a parked execution during replay", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const linkStarted = Promise.withResolvers<void>();
+    const releaseLink = Promise.withResolvers<void>();
+    const lateBranchFinished = Promise.withResolvers<void>();
+
+    const child = client.defineWorkflow(
+      { name: `workflow-child-late-link-${randomUUID()}` },
+      () => 42,
+    );
+    const parent = client.defineWorkflow(
+      { name: `workflow-parent-late-link-${randomUUID()}` },
+      async ({ step }) => {
+        const [result] = await Promise.all([
+          step.runWorkflow(child.workflow.spec).finally(() => {
+            lateBranchFinished.resolve();
+          }),
+          (async () => {
+            await linkStarted.promise;
+            await step.sleep("park", "0ms");
+          })(),
+        ]);
+        return result;
+      },
+    );
+
+    const originalLink = backend.setStepAttemptChildWorkflowRun.bind(backend);
+    const linkSpy = vi
+      .spyOn(backend, "setStepAttemptChildWorkflowRun")
+      .mockImplementationOnce(async (params) => {
+        linkStarted.resolve();
+        await releaseLink.promise;
+        return await originalLink(params);
+      });
+
+    try {
+      const handle = await parent.run();
+      const workerId = randomUUID();
+      const claimedParent = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 5000,
+      });
+      if (!claimedParent) throw new Error("Expected parent to be claimed");
+      expect(claimedParent.id).toBe(handle.workflowRun.id);
+
+      await executeWorkflow({
+        backend,
+        workflowRun: claimedParent,
+        workflowFn: parent.workflow.fn,
+        workflowVersion: null,
+        workerId,
+        retryPolicy: { ...DEFAULT_WORKFLOW_RETRY_POLICY, maximumAttempts: 1 },
+      });
+
+      const childWorkerId = randomUUID();
+      const claimedChild = await backend.claimWorkflowRun({
+        workerId: childWorkerId,
+        leaseDurationMs: 5000,
+      });
+      if (!claimedChild) throw new Error("Expected child to be claimed");
+      expect(claimedChild.workflowName).toBe(child.workflow.spec.name);
+      await backend.completeWorkflowRun({
+        workflowRunId: claimedChild.id,
+        workerId: childWorkerId,
+        output: 42,
+      });
+
+      // Reuse the worker slot while the previous pass still has a pending write.
+      const replay = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 5000,
+      });
+      if (!replay) throw new Error("Expected parent replay to be claimed");
+      expect(replay.id).toBe(handle.workflowRun.id);
+
+      await executeWorkflow({
+        backend,
+        workflowRun: replay,
+        workflowFn: async (params) => {
+          // History has been loaded without the pending child linkage.
+          releaseLink.resolve();
+          await lateBranchFinished.promise;
+          return await parent.workflow.fn(params);
+        },
+        workflowVersion: null,
+        workerId,
+        retryPolicy: { ...DEFAULT_WORKFLOW_RETRY_POLICY, maximumAttempts: 1 },
+      });
+
+      await expect(handle.result()).resolves.toBe(42);
+    } finally {
+      releaseLink.resolve();
+      linkSpy.mockRestore();
+    }
+  });
+
   test("supports parallel workflows via Promise.all", async () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });

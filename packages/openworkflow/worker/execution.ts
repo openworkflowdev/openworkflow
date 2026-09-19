@@ -446,6 +446,7 @@ class StepExecutor implements StepApi {
     attempt: Readonly<StepAttempt>,
     output: JsonValue | null,
   ): Promise<StepAttempt> {
+    this.assertExecutionActive();
     const completed = await this.backend.completeStepAttempt({
       workflowRunId: this.workflowRunId,
       stepAttemptId: attempt.id,
