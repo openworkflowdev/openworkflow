@@ -2,6 +2,11 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "treatConfigHintsAsErrors": true,
 
+  "workspaces": {
+    "packages/openworkflow": {
+      "entry": ["testing/telemetry-optional.testsuite.ts"]
+    }
+  },
   "ignoreDependencies": [
     "@openworkflow/cli",
     "@tanstack/react-router-ssr-query",
