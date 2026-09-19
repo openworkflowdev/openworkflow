@@ -383,7 +383,9 @@ describe("init", () => {
   });
 
   test.each([
+    "null",
     "[]",
+    '{"scripts":null}',
     '{"scripts":"invalid"}',
     '{"dependencies":[]}',
     '{"devDependencies":{"typescript":true}}',
@@ -398,7 +400,28 @@ describe("init", () => {
     );
   });
 
-  test("installs runtime and development dependencies", async () => {
+  test("installs dependencies and preserves manifest fields", async () => {
+    const manifest = {
+      name: "example-project",
+      type: "module",
+      private: true,
+      scripts: { test: "vitest" },
+      custom: { enabled: true },
+    };
+    const installedManifest = {
+      ...manifest,
+      dependencies: { openworkflow: "^0.10.1", postgres: "^3.4.9" },
+      devDependencies: { "@openworkflow/cli": "^0.5.2" },
+    };
+    const manifestPath = path.join(cwd, "package.json");
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    dependencies.addDependency
+      .mockResolvedValueOnce({})
+      .mockImplementationOnce(() => {
+        fs.writeFileSync(manifestPath, JSON.stringify(installedManifest));
+        return Promise.resolve({});
+      });
+
     await init({ backend: "postgres", yes: true });
     expect(dependencies.addDependency).toHaveBeenCalledWith(
       ["openworkflow", "postgres"],
@@ -415,5 +438,12 @@ describe("init", () => {
         packageManager: "npm",
       },
     );
+    expect(JSON.parse(fs.readFileSync(manifestPath, "utf8"))).toEqual({
+      ...installedManifest,
+      scripts: {
+        ...manifest.scripts,
+        worker: "npx @openworkflow/cli worker start",
+      },
+    });
   });
 });

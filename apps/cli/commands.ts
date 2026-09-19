@@ -173,7 +173,7 @@ export async function init(
   const packageManager = pm?.name ?? "npm";
   spinner.stop(`Using ${packageManager}`);
 
-  const packageJson = readPackageJsonForDoctor();
+  const packageJson = readPackageJson();
   if (!packageJson) {
     throw new CLIError(
       "No package.json found.",
@@ -185,8 +185,7 @@ export async function init(
     ? ` --config '${options.config.replaceAll("'", String.raw`'\''`)}'`
     : "";
   const workerCommand = `npx @openworkflow/cli worker start${configArg}`;
-  // oxlint-disable-next-line anti-slop/no-known-value-widening -- the JSON loader asserts its type without validating these fields
-  validateInitManifest(packageJson, workerCommand);
+  assertWorkerScriptCanBeUpdated(packageJson, workerCommand);
 
   const configFileName = options.config ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
@@ -268,40 +267,11 @@ export async function init(
   p.outro("✅ Setup complete!");
 }
 
-// Validate the manifest fields that init reads or updates.
-function validateInitManifest(
-  manifest: unknown,
+function assertWorkerScriptCanBeUpdated(
+  manifest: Readonly<PackageJson>,
   workerCommand: string,
-): asserts manifest is PackageJsonForDoctor {
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-    throw new CLIError("Invalid package.json: expected an object.");
-  }
-
-  // safety: the object check above permits reading these optional fields as unknown before validating them.
-  const fields = manifest as {
-    scripts?: unknown;
-    dependencies?: unknown;
-    devDependencies?: unknown;
-  };
-  for (const key of ["scripts", "dependencies", "devDependencies"] as const) {
-    const field = fields[key];
-    if (field === undefined) continue;
-    if (
-      field === null ||
-      typeof field !== "object" ||
-      Array.isArray(field) ||
-      !Object.values(field).every(
-        (value): value is string => typeof value === "string",
-      )
-    ) {
-      throw new CLIError(
-        `Invalid package.json: ${key} must be an object containing string values.`,
-      );
-    }
-  }
-
-  // safety: the loop above checked every present scripts and dependency entry is a string.
-  const { scripts } = manifest as PackageJsonForDoctor;
+): void {
+  const { scripts } = manifest;
   const worker = scripts?.["worker"];
   if (
     worker !== undefined &&
@@ -1159,10 +1129,7 @@ function addWorkerScriptToPackageJson(workerCommand: string): void {
   const spinner = p.spinner();
   spinner.start("Adding worker script to package.json...");
   try {
-    // safety: init validates script values before setup; the dependency installer preserves the manifest format.
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-      scripts?: Record<string, string>;
-    };
+    const packageJson = parsePackageJson(readFileSync(packageJsonPath, "utf8"));
 
     packageJson.scripts ??= {};
     packageJson.scripts["worker"] = workerCommand;
@@ -1276,31 +1243,67 @@ async function loadConfigWithEnv(options: CommandOptions) {
   }
 }
 
-interface PackageJsonForDoctor {
+interface PackageJson {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
 
 /**
- * Load package.json for doctor checks.
+ * Load and validate package.json for project setup.
  * @returns Parsed package.json or null if unavailable.
  */
-function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
+function readPackageJson(): PackageJson | null {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return null;
   }
 
   try {
-    // safety: the loader preserves the project manifest shape; init validates fields before mutation and doctor reports configuration issues.
-    return JSON.parse(
-      readFileSync(packageJsonPath, "utf8"),
-    ) as PackageJsonForDoctor;
-  } catch {
-    consola.warn("Could not read package.json for dependency checks.");
+    return parsePackageJson(readFileSync(packageJsonPath, "utf8"));
+  } catch (error) {
+    if (error instanceof CLIError) throw error;
+    consola.warn("Could not read package.json for project setup.");
     return null;
   }
+}
+
+function parsePackageJson(contents: string): PackageJson {
+  const manifest: unknown = JSON.parse(contents);
+  assertPackageJson(manifest);
+  return manifest;
+}
+
+function assertPackageJson(manifest: unknown): asserts manifest is PackageJson {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new CLIError("Invalid package.json: expected an object.");
+  }
+
+  const fields = {
+    scripts: "scripts" in manifest ? manifest.scripts : undefined,
+    dependencies:
+      "dependencies" in manifest ? manifest.dependencies : undefined,
+    devDependencies:
+      "devDependencies" in manifest ? manifest.devDependencies : undefined,
+  };
+  for (const [key, field] of Object.entries(fields)) {
+    if (field !== undefined && !isStringRecord(field)) {
+      throw new CLIError(
+        `Invalid package.json: ${key} must be an object containing string values.`,
+      );
+    }
+  }
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every(
+      (entry): entry is string => typeof entry === "string",
+    )
+  );
 }
 
 /**
@@ -1310,7 +1313,7 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
  * @returns ".ts" when TypeScript is a dependency, otherwise ".js"
  */
 function getScriptExtension(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): ".ts" | ".js" {
   return packageJson && hasDependency(packageJson, "typescript")
     ? ".ts"
@@ -1323,7 +1326,7 @@ function getScriptExtension(
  * @returns The config file name to create
  */
 export function getConfigFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `openworkflow.config${getScriptExtension(packageJson)}`;
 }
@@ -1334,7 +1337,7 @@ export function getConfigFileName(
  * @returns The example workflow file name to create
  */
 export function getExampleWorkflowFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `hello-world${getScriptExtension(packageJson)}`;
 }
@@ -1345,7 +1348,7 @@ export function getExampleWorkflowFileName(
  * @returns The runner file name to create
  */
 export function getRunFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `hello-world.run${getScriptExtension(packageJson)}`;
 }
@@ -1356,7 +1359,7 @@ export function getRunFileName(
  * @returns The client file name to create
  */
 export function getClientFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `client${getScriptExtension(packageJson)}`;
 }
@@ -1368,7 +1371,7 @@ export function getClientFileName(
  * @returns True when the dependency is listed.
  */
 function hasDependency(
-  packageJson: Readonly<PackageJsonForDoctor>,
+  packageJson: Readonly<PackageJson>,
   name: string,
 ): boolean {
   return Boolean(
