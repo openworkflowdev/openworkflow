@@ -272,8 +272,13 @@ function validateInitManifest(manifest: unknown, workerCommand: string): void {
     throw new CLIError("Invalid package.json: expected an object.");
   }
 
-  for (const key of ["scripts", "dependencies", "devDependencies"]) {
-    const field = (manifest as Record<string, unknown>)[key];
+  const fields = manifest as {
+    scripts?: unknown;
+    dependencies?: unknown;
+    devDependencies?: unknown;
+  };
+  for (const key of ["scripts", "dependencies", "devDependencies"] as const) {
+    const field = fields[key];
     if (field === undefined) continue;
     if (
       field === null ||
@@ -894,7 +899,7 @@ async function importWorkflows(
 
   for (const file of files) {
     // import the module
-    let module: Record<string, unknown>;
+    let module: object;
     try {
       const jiti = createModuleLoader(file);
       module = await jiti.import(pathToFileURL(file).href);
@@ -1394,9 +1399,11 @@ function mergeDefinedOptions<T extends Record<string, unknown>>(
 ): T {
   const merged = base ? { ...base } : ({} as T);
 
-  for (const [key, value] of Object.entries(overrides)) {
+  for (const key in overrides) {
+    if (!Object.hasOwn(overrides, key)) continue;
+    const value = overrides[key];
     if (value !== undefined) {
-      (merged as Record<string, unknown>)[key] = value;
+      merged[key] = value;
     }
   }
 

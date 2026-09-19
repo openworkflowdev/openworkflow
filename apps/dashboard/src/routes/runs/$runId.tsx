@@ -1074,13 +1074,12 @@ function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
     return value;
   }
 
-  const objectValue = value as Record<string, unknown>;
-  if (seen.has(objectValue)) {
+  if (seen.has(value)) {
     return "[circular]";
   }
-  seen.add(objectValue);
+  seen.add(value);
 
-  const normalizedEntries = Object.entries(objectValue).map(
+  const normalizedEntries = Object.entries(value).map(
     ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
   );
   return Object.fromEntries(normalizedEntries);

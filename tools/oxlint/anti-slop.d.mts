@@ -1,5 +1,8 @@
 declare const antiSlop: {
-  rules: Record<string, unknown>;
+  rules: Record<
+    string,
+    { meta: { type: "problem" | "suggestion" | "layout" } }
+  >;
 };
 
 export default antiSlop;

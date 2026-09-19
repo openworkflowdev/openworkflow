@@ -3841,7 +3841,7 @@ describe("executeWorkflow", () => {
         async ({ run, step }) => {
           await step.run({ name: "mutate-run" }, () => {
             try {
-              Object.assign(run as unknown as Record<string, unknown>, {
+              Object.assign(run, {
                 id: "mutated",
               });
             } catch (error) {

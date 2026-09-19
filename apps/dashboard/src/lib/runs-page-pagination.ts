@@ -13,7 +13,7 @@ const runsPaginationSearchSchema = z.object({
 export type RunsPaginationSearch = z.infer<typeof runsPaginationSearchSchema>;
 
 export function validateRunsPaginationSearch(
-  search: Record<string, unknown>,
+  search: unknown,
 ): RunsPaginationSearch {
   const parsed = runsPaginationSearchSchema.safeParse(search);
   if (!parsed.success) {
@@ -42,7 +42,7 @@ export type StepAttemptsPageSize =
   (typeof STEP_ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
 
 export function validateStepAttemptsPaginationSearch(
-  search: Record<string, unknown>,
+  search: unknown,
 ): RunsPaginationSearch {
   return validateRunsPaginationSearch(search);
 }

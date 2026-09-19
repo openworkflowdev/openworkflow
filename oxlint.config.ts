@@ -48,7 +48,6 @@ export default defineConfig({
     "anti-slop/no-chained-type-assertions": "allow",
     "anti-slop/no-runtime-typeof": "allow",
     "anti-slop/no-unknown-parameters": "allow",
-    "anti-slop/no-unsafe-dictionary-type": "allow",
     "anti-slop/require-readable-spacing": "allow",
     "anti-slop/require-safety-comment-for-type-assertion": "allow",
 

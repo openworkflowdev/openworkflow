@@ -69,12 +69,12 @@ describe("encodeCursor", () => {
     } as unknown as Cursor;
     const encoded = encodeCursor(cursor);
     const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const parsed = JSON.parse(decoded) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(decoded);
     expect(parsed).toEqual({
       createdAt: "2026-01-15T12:34:56.789Z",
       id: "abc123",
     });
-    expect(parsed["extra"]).toBeUndefined();
+    expect(parsed).not.toHaveProperty("extra");
   });
 
   test.each<[string, string]>([
