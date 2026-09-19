@@ -15,7 +15,7 @@ function getMigrationVersion(db: Database): number {
     WHERE type = 'table' AND name = 'openworkflow_migrations'
   `);
   // safety: COUNT(*) returns a numeric count column for this query.
-  const existsResult = existsStmt.get() as { count: number } | undefined;
+  const existsResult = existsStmt.get() as { count: number } | null | undefined;
   if (!existsResult || existsResult.count === 0) return -1;
 
   const versionStmt = db.prepare(
@@ -23,7 +23,7 @@ function getMigrationVersion(db: Database): number {
   );
   // safety: MAX(version) returns an integer, or null when the migration table is empty.
   const versionResult = versionStmt.get() as
-    { version: number | null } | undefined;
+    { version: number | null } | null | undefined;
   return versionResult?.version ?? -1;
 }
 
