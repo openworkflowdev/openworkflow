@@ -31,7 +31,7 @@
     "test:coverage": "vitest run --coverage",
     "test:coverage:browse": "open ./coverage/index.html",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --build",
     "worker": "npm run openworkflow worker start"
   },
   "overrides": {

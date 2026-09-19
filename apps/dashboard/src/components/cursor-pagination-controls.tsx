@@ -33,7 +33,8 @@ export function CursorPaginationControls({
   pageSize,
   pageSizeOptions,
 }: CursorPaginationControlsProps) {
-  function handlePageSizeChange(value: string) {
+  function handlePageSizeChange(value: string | null) {
+    if (value === null) return;
     const parsed = Number.parseInt(value, 10);
     if (!Number.isNaN(parsed)) {
       onPageSizeChange(parsed);
