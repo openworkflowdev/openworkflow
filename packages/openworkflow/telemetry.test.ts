@@ -1048,11 +1048,9 @@ describe("native OpenTelemetry instrumentation", () => {
       vi.spyOn(
         provider.getTracer("openworkflow"),
         "startActiveSpan",
-      ).mockImplementation((...args) => {
+      ).mockImplementation((_name, _options, _context, callback) => {
         if (when === "after") {
-          const callback = args.at(-1);
-          assert.equal(typeof callback, "function");
-          if (typeof callback === "function") void callback(span);
+          void callback(span);
         }
         throw new Error("broken provider");
       });
@@ -1095,11 +1093,9 @@ describe("native OpenTelemetry instrumentation", () => {
     vi.spyOn(
       provider.getTracer("openworkflow"),
       "startActiveSpan",
-    ).mockImplementation((...args) => {
-      const callback = args.at(-1);
-      assert.equal(typeof callback, "function");
-      return typeof callback === "function" ? callback(span) : undefined;
-    });
+    ).mockImplementation((_name, _options, _context, callback) =>
+      callback(span),
+    );
     await expect(
       traceOperation(SPAN_NAMES.WORKFLOW_RUN_CREATE, {}, (activeSpan) => {
         setAttributes(activeSpan, {

@@ -46,7 +46,7 @@ export default defineConfig({
     ),
     // to enable
     "anti-slop/no-chained-type-assertions": "allow",
-    "anti-slop/no-runtime-typeof": "allow",
+    "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
     "anti-slop/require-readable-spacing": "allow",
     "anti-slop/require-safety-comment-for-type-assertion": "allow",
 

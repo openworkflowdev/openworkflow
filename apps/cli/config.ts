@@ -118,6 +118,7 @@ async function importConfigFile(filePath: string): Promise<LoadedConfig> {
       default: true,
     });
 
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- imported JS configs need a runtime object check
     if (typeof config !== "object" || config === null) {
       throw new Error("Config must export an object.");
     }

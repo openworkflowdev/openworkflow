@@ -161,7 +161,7 @@ export async function init(
       initialValue: "sqlite",
     }));
 
-  if (typeof backendChoice === "symbol") return cancelSetup();
+  if (p.isCancel(backendChoice)) return cancelSetup();
   trackCommand(backendChoice);
 
   const spinner = p.spinner();
@@ -184,6 +184,7 @@ export async function init(
     ? ` --config '${options.config.replaceAll("'", String.raw`'\''`)}'`
     : "";
   const workerCommand = `npx @openworkflow/cli worker start${configArg}`;
+  // oxlint-disable-next-line anti-slop/no-known-value-widening -- the JSON loader asserts its type without validating these fields
   validateInitManifest(packageJson, workerCommand);
 
   const configFileName = options.config ?? getConfigFileName(packageJson);
@@ -267,8 +268,10 @@ export async function init(
 }
 
 // Validate the manifest fields that init reads or updates.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this validates the raw package.json input
-function validateInitManifest(manifest: unknown, workerCommand: string): void {
+function validateInitManifest(
+  manifest: unknown,
+  workerCommand: string,
+): asserts manifest is PackageJsonForDoctor {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new CLIError("Invalid package.json: expected an object.");
   }
@@ -285,7 +288,9 @@ function validateInitManifest(manifest: unknown, workerCommand: string): void {
       field === null ||
       typeof field !== "object" ||
       Array.isArray(field) ||
-      Object.values(field).some((value) => typeof value !== "string")
+      !Object.values(field).every(
+        (value): value is string => typeof value === "string",
+      )
     ) {
       throw new CLIError(
         `Invalid package.json: ${key} must be an object containing string values.`,
@@ -350,9 +355,7 @@ export async function doctor(options: CommandOptions = {}): Promise<void> {
     assertNoDuplicateWorkflows(workflows);
     printDiscoveredWorkflows(workflows);
   } finally {
-    // Imported configs can omit the backend despite the declared config type.
-    // oxlint-disable-next-line typescript/no-unnecessary-condition
-    if (typeof backend?.stop === "function") {
+    if (hasBackendStop(backend)) {
       try {
         await backend.stop();
       } catch (error) {
@@ -586,6 +589,18 @@ function cancelSetup(): Promise<never> {
   return exit(0);
 }
 
+function hasBackendStop(backend: Backend | undefined): backend is Backend {
+  return typeof backend?.stop === "function";
+}
+
+function hasBackendConnectionMethods(
+  backend: Backend | undefined,
+): backend is Backend {
+  return (
+    hasBackendStop(backend) && typeof backend.listWorkflowRuns === "function"
+  );
+}
+
 /**
  * Exercise backend initialization, connectivity, and workflow table access.
  * @param backend - Configured backend
@@ -593,10 +608,7 @@ function cancelSetup(): Promise<never> {
 async function checkBackendConnection(
   backend: Backend | undefined,
 ): Promise<void> {
-  if (
-    typeof backend?.listWorkflowRuns !== "function" ||
-    typeof backend.stop !== "function"
-  ) {
+  if (!hasBackendConnectionMethods(backend)) {
     throw new CLIError(
       "Missing or invalid backend.",
       "Set config.backend to a connected OpenWorkflow backend.",

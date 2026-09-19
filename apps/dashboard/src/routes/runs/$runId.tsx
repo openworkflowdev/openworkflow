@@ -1007,6 +1007,7 @@ function shouldUseStructuredEditor(
   value: unknown,
   serializedValue: string,
 ): boolean {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- objects use the structured debug editor
   if (typeof value === "object" && value !== null) {
     return true;
   }
@@ -1031,6 +1032,7 @@ function normalizeDebugValue(value: unknown): DebugValue {
   return normalizeValue(value, new WeakSet());
 }
 
+/* oxlint-disable anti-slop/no-runtime-typeof -- this serializer intentionally handles each JS runtime type */
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- recursively normalize arbitrary payloads, including errors and cycles
 function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   if (value instanceof Error) {
@@ -1087,6 +1089,8 @@ function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   );
   return Object.fromEntries(normalizedEntries);
 }
+
+/* oxlint-enable anti-slop/no-runtime-typeof */
 
 // oxlint-disable-next-line anti-slop/no-unknown-parameters -- stringify arbitrary payloads without crashing the debug view
 function stringifyDebugValue(value: unknown): string {

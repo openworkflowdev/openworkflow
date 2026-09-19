@@ -80,9 +80,11 @@ function isDurationUnit(value: string): value is Unit {
  * @returns Milliseconds
  */
 export function parseDuration(str: DurationString): Result<number> {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- JS callers can pass non-string input to this parser
   if (typeof str !== "string") {
     return err(
       new TypeError(
+        // oxlint-disable-next-line anti-slop/no-runtime-typeof -- report the actual type of invalid input
         `Invalid duration format: expected a string but received ${typeof str}`,
       ),
     );

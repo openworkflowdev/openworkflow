@@ -10,6 +10,7 @@ import {
 } from "./postgres.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 
 interface StepMutationContext {
   backend: BackendPostgres;
@@ -624,17 +625,11 @@ describe("BackendPostgres JSON key preservation", () => {
         deadlineAt: null,
       });
 
-      if (
-        !workflowRun.input ||
-        typeof workflowRun.input !== "object" ||
-        Array.isArray(workflowRun.input)
-      ) {
-        throw new Error("Expected workflow run input object");
-      }
-
-      const createEnv = (workflowRun.input as { env?: Record<string, string> })
-        .env;
-      if (!createEnv) throw new Error("Expected workflow run input env");
+      const { env: createEnv } = z
+        .object({
+          env: z.record(z.string(), z.string()),
+        })
+        .parse(workflowRun.input);
       expect(createEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
       expect(createEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
       expect(createEnv["OPENAI_REASONING_EFFORT"]).toBe(

@@ -88,6 +88,7 @@ export function trackCommand(
       command = child;
     }
     const backendName =
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- telemetry accepts either a backend name or a backend instance
       typeof backend === "string" ? backend : backend?.constructor.name;
     const commandName = command.parent?.parent
       ? `${command.parent.name()} ${command.name()}`

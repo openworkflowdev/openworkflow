@@ -51,6 +51,7 @@ export function formatRelativeTime(
   }
 
   const now =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- this API accepts either a timestamp or a Date
     typeof referenceNow === "number" ? referenceNow : referenceNow.getTime();
   const diffMs = now - date.getTime();
 

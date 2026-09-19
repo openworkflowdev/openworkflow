@@ -189,6 +189,15 @@ function serializeStepLimitExceededError(
   };
 }
 
+function hasErrorMessage(value: JsonValue): value is { message: string } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value["message"] === "string"
+  );
+}
+
 /**
  * Resolve a partial step retry policy by merging it with step defaults.
  * @param partial - Optional partial retry policy
@@ -216,6 +225,7 @@ function resolveWaitTimeoutAt(
     return timeout;
   }
 
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- numeric timeouts are milliseconds, strings are duration expressions
   if (typeof timeout === "number") {
     if (!Number.isFinite(timeout) || timeout < 0) {
       throw new Error("Timeout must be a non-negative number");
@@ -539,13 +549,9 @@ class StepExecutor implements StepApi {
       this.history.findTerminallyFailedWorkflow(stepName);
     if (terminallyFailedAttempt) {
       const serializedFailedError = terminallyFailedAttempt.error;
-      const failedError =
-        serializedFailedError &&
-        typeof serializedFailedError === "object" &&
-        "message" in serializedFailedError &&
-        typeof serializedFailedError["message"] === "string"
-          ? deserializeError(serializedFailedError as SerializedError)
-          : new Error(`Workflow step "${stepName}" previously failed`);
+      const failedError = hasErrorMessage(serializedFailedError)
+        ? deserializeError(serializedFailedError)
+        : new Error(`Workflow step "${stepName}" previously failed`);
       throw new StepError({
         stepName,
         stepFailedAttempts: this.history.failedAttemptCount(stepName),

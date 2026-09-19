@@ -182,6 +182,7 @@ export function linkToCreationSpan(
     if (
       origin &&
       otel?.isSpanContextValid(origin) &&
+      // oxlint-disable-next-line anti-slop/no-runtime-typeof -- older providers may not implement addLink
       typeof span?.addLink === "function"
     ) {
       span.addLink({ context: origin });
@@ -253,6 +254,7 @@ export function recordError(span: Span | undefined, cause: unknown): void {
     observe(() => (cause instanceof Error ? cause.message : String(cause))) ??
     "Unknown error";
   const type =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- telemetry records the runtime type of non-Error failures
     observe(() => (cause instanceof Error ? cause.name : typeof cause)) ??
     "unknown";
   setAttributes(span, {
@@ -294,17 +296,28 @@ export function extractTraceContext(
 ): Context | undefined {
   if (!otel) return undefined;
   const { ROOT_CONTEXT, propagation } = otel;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+  if (!hasTraceCarrier(metadata)) {
     return ROOT_CONTEXT;
   }
   const carrier = metadata[TRACE_CONTEXT_KEY];
-  if (!carrier || typeof carrier !== "object" || Array.isArray(carrier)) {
-    return ROOT_CONTEXT;
-  }
-  if (!Object.values(carrier).every((value) => typeof value === "string")) {
-    return ROOT_CONTEXT;
-  }
   return (
     observe(() => propagation.extract(ROOT_CONTEXT, carrier)) ?? ROOT_CONTEXT
+  );
+}
+
+function hasTraceCarrier(
+  metadata: JsonValue | null,
+): metadata is { [TRACE_CONTEXT_KEY]: Record<string, string> } {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+  const carrier = metadata[TRACE_CONTEXT_KEY];
+  return (
+    !!carrier &&
+    typeof carrier === "object" &&
+    !Array.isArray(carrier) &&
+    Object.values(carrier).every(
+      (value): value is string => typeof value === "string",
+    )
   );
 }

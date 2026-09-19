@@ -179,10 +179,7 @@ describe("StepExecutor", () => {
 
     const stepNameByOutput = Object.fromEntries(
       steps.data.map((stepAttempt): readonly [string, string] => {
-        if (typeof stepAttempt.output !== "string") {
-          throw new TypeError("Expected string output for chaos naming test");
-        }
-        return [stepAttempt.output, stepAttempt.stepName];
+        return [z.string().parse(stepAttempt.output), stepAttempt.stepName];
       }),
     );
 
@@ -3152,9 +3149,6 @@ describe("executeWorkflow", () => {
       expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
       expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
       expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT + 1);
-      if (typeof failCall.error.message !== "string") {
-        throw new TypeError("Expected step-limit message to be a string");
-      }
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
     });
 
@@ -3421,9 +3415,6 @@ describe("executeWorkflow", () => {
       expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
       expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
       expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT);
-      if (typeof failCall.error.message !== "string") {
-        throw new TypeError("Expected step-limit message to be a string");
-      }
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
     });
 
