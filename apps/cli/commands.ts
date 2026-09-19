@@ -57,6 +57,16 @@ interface InitOptions extends CommandOptions {
   skipInstall?: boolean;
 }
 
+interface InitDependencies {
+  addDependency: typeof addDependency;
+  note: typeof p.note;
+}
+
+const DEFAULT_INIT_DEPENDENCIES: InitDependencies = {
+  addDependency,
+  note: p.note,
+};
+
 interface DashboardOptions extends CommandOptions {
   port?: number;
 }
@@ -90,10 +100,14 @@ export function getVersion(): string {
 /**
  * openworkflow init
  * @param options - Command options
+ * @param services - Package installer and setup instructions output
  * @returns Resolves when setup finishes.
  */
 // oxlint-disable-next-line complexity
-export async function init(options: InitOptions = {}): Promise<void> {
+export async function init(
+  options: InitOptions = {},
+  services: InitDependencies = DEFAULT_INIT_DEPENDENCIES,
+): Promise<void> {
   if (options.yes && !options.backend) {
     throw new CLIError("--backend is required with --yes.");
   }
@@ -199,7 +213,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   const dependencies = getDependenciesToInstall(backendChoice);
   const devDependencies = getDevDependenciesToInstall();
   if (options.skipInstall) {
-    p.note(
+    services.note(
       [
         addDependencyCommand(packageManager, dependencies),
         addDependencyCommand(packageManager, devDependencies, { dev: true }),
@@ -208,10 +222,13 @@ export async function init(options: InitOptions = {}): Promise<void> {
     );
   } else {
     spinner.start(`Installing ${dependencies.join(", ")}...`);
-    await addDependency(dependencies, { silent: true, packageManager });
+    await services.addDependency(dependencies, {
+      silent: true,
+      packageManager,
+    });
     spinner.stop(`Installed ${dependencies.join(", ")}`);
     spinner.start(`Installing ${devDependencies.join(", ")}...`);
-    await addDependency(devDependencies, {
+    await services.addDependency(devDependencies, {
       silent: true,
       dev: true,
       packageManager,
@@ -242,7 +259,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   createConfigFile(configFileName);
 
   // wrap up
-  p.note(
+  services.note(
     `➡️ Start a worker:\n$ ${workerCommand}\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard${configArg}`,
     "Next steps",
   );

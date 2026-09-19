@@ -1,14 +1,17 @@
 import { getBackend } from "./backend";
-import type { WorkflowRunCounts } from "openworkflow/internal";
+import type { Backend, WorkflowRunCounts } from "openworkflow/internal";
 import { Gauge, Registry } from "prom-client";
 
 /**
  * Build the Prometheus response for the dashboard metrics endpoint.
+ * @param loadBackend - Backend provider for each scrape
  * @returns Prometheus response for /metrics
  */
-export async function getMetricsResponse(): Promise<Response> {
+export async function getMetricsResponse(
+  loadBackend: () => Promise<Pick<Backend, "countWorkflowRuns">> = getBackend,
+): Promise<Response> {
   try {
-    const backend = await getBackend();
+    const backend = await loadBackend();
     const workflowRunCounts = await backend.countWorkflowRuns();
 
     const registry = new Registry();

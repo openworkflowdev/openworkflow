@@ -6,26 +6,16 @@ import {
   getExampleWorkflowFileName,
   getRunFileName,
   validateDashboardPort,
-  init,
+  init as initializeProject,
 } from "./commands.js";
 import { loadConfigFromPath } from "./config.js";
-import * as p from "@clack/prompts";
+import type * as p from "@clack/prompts";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { addDependency } from "nypm";
+import type { addDependency } from "nypm";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
-vi.mock(import("nypm"), async (importOriginal) => ({
-  ...(await importOriginal()),
-  addDependency: vi.fn(),
-}));
-
-vi.mock(import("@clack/prompts"), async (importOriginal) => ({
-  ...(await importOriginal()),
-  note: vi.fn(),
-}));
 
 describe("getConfigFileName", () => {
   test("prefers TypeScript when it is in devDependencies", () => {
@@ -206,6 +196,17 @@ describe("validateDashboardPort", () => {
 });
 
 describe("init", () => {
+  const dependencies = {
+    addDependency: vi.fn<typeof addDependency>(),
+    note: vi.fn<typeof p.note>(),
+  };
+
+  function init(
+    options: Parameters<typeof initializeProject>[0],
+  ): Promise<void> {
+    return initializeProject(options, dependencies);
+  }
+
   let cwd: string;
   const isTTY = process.stdin.isTTY;
 
@@ -213,7 +214,7 @@ describe("init", () => {
     cwd = fs.mkdtempSync(path.join(os.tmpdir(), "ow-init-"));
     fs.writeFileSync(path.join(cwd, "package.json"), '{"type":"module"}');
     vi.spyOn(process, "cwd").mockReturnValue(cwd);
-    vi.mocked(addDependency).mockReset().mockResolvedValue({});
+    dependencies.addDependency.mockReset().mockResolvedValue({});
     process.stdin.isTTY = false;
   });
 
@@ -240,7 +241,7 @@ describe("init", () => {
       expect(fs.existsSync(path.join(cwd, "openworkflow.config.js"))).toBe(
         true,
       );
-      expect(addDependency).not.toHaveBeenCalled();
+      expect(dependencies.addDependency).not.toHaveBeenCalled();
       expect(
         JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")),
       ).toEqual({
@@ -261,7 +262,7 @@ describe("init", () => {
   ])(
     "includes the literal config path in generated commands: %s",
     async (config) => {
-      const note = vi.mocked(p.note).mockClear();
+      const note = dependencies.note.mockClear();
       await init({ backend: "sqlite", yes: true, skipInstall: true, config });
       const manifest = JSON.parse(
         fs.readFileSync(path.join(cwd, "package.json"), "utf8"),
@@ -354,7 +355,7 @@ describe("init", () => {
     await expect(init({ backend: "sqlite", yes: true })).rejects.toThrow(
       "overwrite",
     );
-    expect(addDependency).not.toHaveBeenCalled();
+    expect(dependencies.addDependency).not.toHaveBeenCalled();
     expect(fs.readFileSync(path.join(cwd, file), "utf8")).toBe(contents);
   });
 
@@ -376,14 +377,20 @@ describe("init", () => {
 
   test("installs runtime and development dependencies", async () => {
     await init({ backend: "postgres", yes: true });
-    expect(addDependency).toHaveBeenCalledWith(["openworkflow", "postgres"], {
-      silent: true,
-      packageManager: "npm",
-    });
-    expect(addDependency).toHaveBeenCalledWith(["@openworkflow/cli"], {
-      silent: true,
-      dev: true,
-      packageManager: "npm",
-    });
+    expect(dependencies.addDependency).toHaveBeenCalledWith(
+      ["openworkflow", "postgres"],
+      {
+        silent: true,
+        packageManager: "npm",
+      },
+    );
+    expect(dependencies.addDependency).toHaveBeenCalledWith(
+      ["@openworkflow/cli"],
+      {
+        silent: true,
+        dev: true,
+        packageManager: "npm",
+      },
+    );
   });
 });
