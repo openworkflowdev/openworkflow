@@ -1,4 +1,4 @@
-import type { Backend } from "../core/backend.js";
+import type { Backend, ListStepAttemptsParams } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import {
   deserializeError,
@@ -316,11 +316,12 @@ async function listAllStepAttemptsForWorkflowRun(
   const attempts: StepAttempt[] = [];
   let cursor: string | undefined;
   do {
-    const response = await backend.listStepAttempts({
+    const params: ListStepAttemptsParams = {
       workflowRunId,
-      ...(cursor ? { after: cursor } : {}),
       limit: WORKFLOW_STEP_LIMIT,
-    });
+    };
+    if (cursor) params.after = cursor;
+    const response = await backend.listStepAttempts(params);
     attempts.push(...response.data);
     if (attempts.length > WORKFLOW_STEP_LIMIT) {
       throw new StepLimitExceededError(WORKFLOW_STEP_LIMIT, attempts.length);

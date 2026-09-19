@@ -122,14 +122,15 @@ export function setAttribute(
 
 // Workflow identity for run spans.
 export function workflowRunAttributes(run: Readonly<WorkflowRun>): Attributes {
-  return {
+  const attributes: Attributes = {
     [ATTRIBUTE_NAMES.WORKFLOW_NAME]: run.workflowName,
     [ATTRIBUTE_NAMES.WORKFLOW_RUN_ID]: run.id,
     [ATTRIBUTE_NAMES.NAMESPACE_ID]: run.namespaceId,
-    ...(run.version === null
-      ? {}
-      : { [ATTRIBUTE_NAMES.WORKFLOW_VERSION]: run.version }),
   };
+  if (run.version !== null) {
+    attributes[ATTRIBUTE_NAMES.WORKFLOW_VERSION] = run.version;
+  }
+  return attributes;
 }
 
 /**
@@ -205,7 +206,8 @@ export async function traceOperation<T>(
   const api = await getOtelApi();
   if (!api) return fn();
   const { kind, ...rest } = options;
-  const spanOptions = { ...rest, ...(kind === undefined ? {} : { kind }) };
+  const spanOptions: SpanOptions = rest;
+  if (kind !== undefined) spanOptions.kind = kind;
   let operation: Promise<T> | undefined;
   const run = (span?: Span): Promise<T> => {
     operation ??= (async () => {
