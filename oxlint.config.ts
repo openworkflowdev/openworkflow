@@ -47,7 +47,6 @@ export default defineConfig({
     // to enable
     "anti-slop/no-chained-type-assertions": "allow",
     "anti-slop/no-runtime-typeof": "allow",
-    "anti-slop/no-unknown-parameters": "allow",
     "anti-slop/require-readable-spacing": "allow",
     "anti-slop/require-safety-comment-for-type-assertion": "allow",
 
@@ -145,6 +144,8 @@ export default defineConfig({
     "typescript/return-await": ["error", "error-handling-correctness-only"],
     "typescript/strict-boolean-expressions": "allow",
     "typescript/strict-void-return": "allow",
+    // anti-slop allows unknown error inputs named cause
+    "unicorn/catch-error-name": ["error", { ignore: ["^cause$"] }],
     "unicorn/no-null": "allow",
     "unicorn/max-nested-calls": "allow",
     "unicorn/prefer-number-coercion": "allow",

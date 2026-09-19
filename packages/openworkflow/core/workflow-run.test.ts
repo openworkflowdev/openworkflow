@@ -207,9 +207,7 @@ describe("resolveCancelWorkflowRunConflict", () => {
 });
 
 function createMockSchema<I, O = I>(options: {
-  validate: (
-    input: unknown,
-  ) => StandardSchemaV1.Result<O> | Promise<StandardSchemaV1.Result<O>>;
+  validate: StandardSchemaV1.Props<I, O>["validate"];
 }): StandardSchemaV1<I, O> {
   return {
     "~standard": {

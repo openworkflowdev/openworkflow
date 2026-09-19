@@ -117,9 +117,9 @@ async function main() {
         );
         return { status: "fulfilled" as const, value: output };
       })
-      .catch((error: unknown) => {
-        console.error(`❌ Workflow run ${String(idx + 1)} failed:`, error);
-        return { status: "rejected" as const, reason: error };
+      .catch((cause: unknown) => {
+        console.error(`❌ Workflow run ${String(idx + 1)} failed:`, cause);
+        return { status: "rejected" as const, reason: cause };
       }),
   );
 
@@ -135,8 +135,8 @@ async function main() {
   console.log("Done.");
 }
 
-await main().catch((error: unknown) => {
-  console.error(error);
+await main().catch((cause: unknown) => {
+  console.error(cause);
   process.exitCode = 1;
 });
 

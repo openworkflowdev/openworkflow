@@ -267,6 +267,7 @@ export async function init(
 }
 
 // Validate the manifest fields that init reads or updates.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- this validates the raw package.json input
 function validateInitManifest(manifest: unknown, workerCommand: string): void {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new CLIError("Invalid package.json: expected an object.");

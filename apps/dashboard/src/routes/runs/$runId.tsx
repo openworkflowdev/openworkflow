@@ -998,11 +998,12 @@ function getRunStatusHelp(status: string): string {
   }
 }
 
-function hasDebugValue(value: unknown): boolean {
+function hasDebugValue<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
 }
 
 function shouldUseStructuredEditor(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the debug view accepts arbitrary workflow payloads
   value: unknown,
   serializedValue: string,
 ): boolean {
@@ -1025,10 +1026,12 @@ type DebugValue =
   | DebugValue[]
   | { [key: string]: DebugValue | undefined };
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- normalize arbitrary payloads for the debug view
 function normalizeDebugValue(value: unknown): DebugValue {
   return normalizeValue(value, new WeakSet());
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- recursively normalize arbitrary payloads, including errors and cycles
 function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   if (value instanceof Error) {
     return {
@@ -1085,6 +1088,7 @@ function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   return Object.fromEntries(normalizedEntries);
 }
 
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- stringify arbitrary payloads without crashing the debug view
 function stringifyDebugValue(value: unknown): string {
   try {
     return JSON.stringify(normalizeDebugValue(value), null, 2);

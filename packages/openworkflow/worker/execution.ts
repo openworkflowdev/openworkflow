@@ -576,8 +576,8 @@ class StepExecutor implements StepApi {
       attempt,
       request,
     ).catch(
-      async (error: unknown) =>
-        await this.failWorkflowStepUnlessStale(stepName, attempt.id, error),
+      async (cause: unknown) =>
+        await this.failWorkflowStepUnlessStale(stepName, attempt.id, cause),
     );
 
     return await this.resolveRunningWorkflow(stepName, linkedAttempt, request);
@@ -747,13 +747,13 @@ class StepExecutor implements StepApi {
    * validation failures.
    * @param stepName - Step name
    * @param stepAttemptId - Step attempt id
-   * @param error - Error that caused the failure
+   * @param cause - Error that caused the failure
    * @param retryPolicy - Retry policy for this failure
    */
   private async failStepWithError(
     stepName: string,
     stepAttemptId: string,
-    error: unknown,
+    cause: unknown,
     retryPolicy: RetryPolicy,
   ): Promise<never> {
     this.assertExecutionActive();
@@ -764,7 +764,7 @@ class StepExecutor implements StepApi {
         workflowRunId: this.workflowRunId,
         stepAttemptId,
         workerId: this.workerId,
-        error: serializeError(error),
+        error: serializeError(cause),
       });
     } catch (stepFailError) {
       this.assertExecutionActive();
@@ -777,17 +777,17 @@ class StepExecutor implements StepApi {
       stepName,
       stepFailedAttempts,
       retryPolicy,
-      error,
+      error: cause,
     });
   }
 
   private async failWorkflowStepUnlessStale(
     stepName: string,
     stepAttemptId: string,
-    error: unknown,
+    cause: unknown,
   ): Promise<never> {
-    if (error instanceof StaleExecutionBranchError) {
-      throw error;
+    if (cause instanceof StaleExecutionBranchError) {
+      throw cause;
     }
 
     this.assertExecutionActive();
@@ -795,7 +795,7 @@ class StepExecutor implements StepApi {
     return await this.failStepWithError(
       stepName,
       stepAttemptId,
-      error,
+      cause,
       TERMINAL_STEP_RETRY_POLICY,
     );
   }

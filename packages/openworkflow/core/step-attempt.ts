@@ -130,6 +130,7 @@ export function addToStepAttemptCache(
  * @param result - The result from a step function
  * @returns A JSON-serializable value
  */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- workflow callbacks can return arbitrary values before persistence
 export function normalizeStepOutput(result: unknown): JsonValue {
   return (result ?? null) as JsonValue;
 }

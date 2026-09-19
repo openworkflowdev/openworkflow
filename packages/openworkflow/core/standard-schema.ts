@@ -14,6 +14,7 @@ export declare namespace StandardSchemaV1 {
     readonly vendor: string;
     /** Validates unknown input values. */
     readonly validate: (
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- standard schema validators must accept input before validation
       value: unknown,
     ) => Result<Output> | Promise<Result<Output>>;
     /** Inferred types associated with the schema. */

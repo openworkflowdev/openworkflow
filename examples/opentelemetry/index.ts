@@ -24,8 +24,8 @@ const server = createServer((request, response) => {
           JSON.stringify({ workflowRunId: handle.workflowRun.id }),
         );
       })
-      .catch((error: unknown) => {
-        console.error(error);
+      .catch((cause: unknown) => {
+        console.error(cause);
         response.writeHead(500);
         response.end("Internal server error");
       });

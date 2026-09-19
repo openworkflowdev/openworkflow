@@ -51,6 +51,7 @@ import {
   toISO,
   fromISO,
 } from "./sqlite.js";
+import type { SQLOutputValue } from "node:sqlite";
 
 interface BackendSqliteOptions {
   namespaceId?: string;
@@ -898,7 +899,7 @@ export class BackendSqlite implements Backend {
       readonly naturalOrder: "ASC" | "DESC";
       readonly baseWhere: string;
       readonly baseParams: readonly unknown[];
-      readonly mapRow: (row: unknown) => T;
+      readonly mapRow: (row: Record<string, SQLOutputValue>) => T;
     },
   ): Promise<PaginatedResponse<T>> {
     const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
@@ -1089,7 +1090,7 @@ export class BackendSqlite implements Backend {
 }
 
 // Row types for SQLite results
-interface WorkflowRunRow {
+interface WorkflowRunRow extends Record<string, SQLOutputValue> {
   namespace_id: string;
   id: string;
   workflow_name: string;
@@ -1113,7 +1114,7 @@ interface WorkflowRunRow {
   updated_at: string;
 }
 
-interface StepAttemptRow {
+interface StepAttemptRow extends Record<string, SQLOutputValue> {
   namespace_id: string;
   id: string;
   workflow_run_id: string;

@@ -244,16 +244,16 @@ export async function traceOperation<T>(
 /**
  * Record an operation failure without changing the thrown value.
  * @param span - Span for the failed operation
- * @param error - Original failure
+ * @param cause - Original failure
  */
-export function recordError(span: Span | undefined, error: unknown): void {
+export function recordError(span: Span | undefined, cause: unknown): void {
   if (!span || !otel || !observe(() => span.isRecording())) return;
   const errorStatus = otel.SpanStatusCode.ERROR;
   const message =
-    observe(() => (error instanceof Error ? error.message : String(error))) ??
+    observe(() => (cause instanceof Error ? cause.message : String(cause))) ??
     "Unknown error";
   const type =
-    observe(() => (error instanceof Error ? error.name : typeof error)) ??
+    observe(() => (cause instanceof Error ? cause.name : typeof cause)) ??
     "unknown";
   setAttributes(span, {
     [ATTRIBUTE_NAMES.ERROR_TYPE]: type,
@@ -261,9 +261,9 @@ export function recordError(span: Span | undefined, error: unknown): void {
   observe(() => {
     const recorded = otel?.context.active().getValue(RECORDED_EXCEPTIONS) as
       Set<unknown> | undefined;
-    if (!recorded?.has(error)) {
-      span.recordException(error instanceof Error ? error : message);
-      recorded?.add(error);
+    if (!recorded?.has(cause)) {
+      span.recordException(cause instanceof Error ? cause : message);
+      recorded?.add(cause);
     }
   });
   observe(() => span.setStatus({ code: errorStatus, message }));

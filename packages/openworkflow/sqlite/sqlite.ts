@@ -300,6 +300,7 @@ export function addMilliseconds(date: string, ms: number): string {
  * @param value - Value to serialize
  * @returns JSON string or null
  */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- JSON.stringify owns the serialization of arbitrary input
 export function toJSON(value: unknown): string | null {
   return value === null || value === undefined ? null : JSON.stringify(value);
 }

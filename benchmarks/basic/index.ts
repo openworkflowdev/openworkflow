@@ -103,7 +103,7 @@ async function main() {
   await backend.stop();
 }
 
-await main().catch((error: unknown) => {
-  console.error("Benchmark failed:", error);
-  throw error;
+await main().catch((cause: unknown) => {
+  console.error("Benchmark failed:", cause);
+  throw cause;
 });

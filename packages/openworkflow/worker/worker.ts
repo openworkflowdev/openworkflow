@@ -281,8 +281,8 @@ class WorkflowExecution {
             workerId: this.workerId,
             leaseDurationMs,
           })
-          .catch((error: unknown) => {
-            console.error("Heartbeat failed:", error);
+          .catch((cause: unknown) => {
+            console.error("Heartbeat failed:", cause);
           });
       }),
       heartbeatIntervalMs,

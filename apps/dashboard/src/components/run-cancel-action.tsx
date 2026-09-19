@@ -20,9 +20,9 @@ interface RunCancelActionProps {
   onCanceled?: (() => Promise<void>) | (() => void);
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
+function getErrorMessage(cause: unknown): string {
+  if (cause instanceof Error && cause.message) {
+    return cause.message;
   }
 
   return "Unable to cancel workflow run";
