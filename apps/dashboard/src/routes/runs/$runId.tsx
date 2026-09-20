@@ -1,6 +1,6 @@
 import { AppLayout } from "@/components/app-layout";
 import { CursorPaginationControls } from "@/components/cursor-pagination-controls";
-import { RunCancelAction } from "@/components/run-cancel-action";
+import { RunAction } from "@/components/run-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -285,11 +285,12 @@ function RunDetailsPage() {
               />
             )}
           </div>
-          <div className="sm:shrink-0">
-            <RunCancelAction
+          <div className="flex gap-2 sm:shrink-0">
+            <RunAction action="rerun" runId={run.id} status={run.status} />
+            <RunAction
               runId={run.id}
               status={run.status}
-              onCanceled={async () => {
+              onDone={async () => {
                 await router.invalidate();
               }}
             />
@@ -476,6 +477,7 @@ function RunDetailsPage() {
           </Card>
 
           <StepInspectorPanel
+            run={run}
             step={selectedStep}
             childRun={selectedStepChildRun}
             attemptCount={selectedStepAttemptCount}
@@ -632,6 +634,7 @@ function RunOverviewPanel({
 }
 
 interface StepInspectorPanelProps {
+  run: WorkflowRun;
   step: StepAttempt | null;
   childRun: WorkflowRun | null;
   attemptCount: number;
@@ -639,6 +642,7 @@ interface StepInspectorPanelProps {
 }
 
 function StepInspectorPanel({
+  run,
   step,
   childRun,
   attemptCount,
@@ -672,6 +676,12 @@ function StepInspectorPanel({
         <div>
           <h3 className="text-base font-semibold">Step Inspector</h3>
           <p className="text-muted-foreground mt-1 text-sm">{step.stepName}</p>
+          <RunAction
+            action="rerun"
+            runId={run.id}
+            status={run.status}
+            fromStep={step.stepName}
+          />
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="text-muted-foreground shrink-0 text-xs">

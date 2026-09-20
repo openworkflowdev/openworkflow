@@ -19,6 +19,9 @@ export interface Backend {
   createWorkflowRun(
     params: Readonly<CreateWorkflowRunParams>,
   ): Promise<WorkflowRun>;
+  rerunWorkflowRun(
+    params: Readonly<RerunWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
   getWorkflowRun(
     params: Readonly<GetWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -93,6 +96,12 @@ export interface CreateWorkflowRunParams {
 
 export interface GetWorkflowRunParams {
   workflowRunId: string;
+}
+
+export interface RerunWorkflowRunParams {
+  workflowRunId: string;
+  fromStep: string | null;
+  context: JsonValue | null;
 }
 
 export interface ListWorkflowRunsParams extends PaginationOptions {

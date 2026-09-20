@@ -321,6 +321,76 @@ describe("native OpenTelemetry instrumentation", () => {
     );
   });
 
+  test.each([undefined, "target"])(
+    "links a rerun from %s to its own submission context after reopening storage",
+    async (fromStep) => {
+      const ow = new OpenWorkflow({ backend });
+      let baggage: string | undefined;
+      const workflow = ow.defineWorkflow(
+        { name: "rerun", version: "v1" },
+        async ({ step }) => {
+          baggage = propagation
+            .getBaggage(context.active())
+            ?.getEntry("example")?.value;
+          await step.run({ name: "prefix" }, () => "saved");
+          return await step.run({ name: "target" }, () => 42);
+        },
+      );
+      const source = await workflow.run();
+      await executeNext(workflow.workflow);
+      const origin = propagation.setBaggage(
+        ROOT_CONTEXT,
+        propagation.createBaggage({ example: { value: "rerun-request" } }),
+      );
+      const rerun = await context.with(origin, () =>
+        tracer.startActiveSpan("rerun-request", async (span) => {
+          try {
+            return await ow.rerunWorkflowRun(
+              source.workflowRun.id,
+              fromStep === undefined ? undefined : { fromStep },
+            );
+          } finally {
+            span.end();
+          }
+        }),
+      );
+      await backend.stop();
+      backend = BackendSqlite.connect(databasePath);
+      await executeNext(workflow.workflow);
+
+      const spans = exporter.getFinishedSpans();
+      const request = spans.find((span) => span.name === "rerun-request");
+      const submission = spans.find(
+        (span) =>
+          span.name === SPAN_NAMES.WORKFLOW_RUN_CREATE &&
+          span.attributes[ATTRIBUTE_NAMES.WORKFLOW_RUN_ID] === rerun.id,
+      );
+      const execution = spans.find(
+        (span) =>
+          span.name === SPAN_NAMES.WORKFLOW_RUN_EXECUTE &&
+          span.attributes[ATTRIBUTE_NAMES.WORKFLOW_RUN_ID] === rerun.id,
+      );
+      assert.ok(request);
+      assert.ok(submission);
+      assert.ok(execution);
+      expect(submission.parentSpanContext?.spanId).toBe(
+        request.spanContext().spanId,
+      );
+      expect(submission.kind).toBe(SpanKind.PRODUCER);
+      expect(submission.attributes).toMatchObject({
+        [ATTRIBUTE_NAMES.WORKFLOW_NAME]: "rerun",
+        [ATTRIBUTE_NAMES.WORKFLOW_VERSION]: "v1",
+        [ATTRIBUTE_NAMES.NAMESPACE_ID]: "default",
+      });
+      expect(execution.parentSpanContext).toBeUndefined();
+      expect(execution.links[0]?.context).toMatchObject({
+        traceId: submission.spanContext().traceId,
+        spanId: submission.spanContext().spanId,
+      });
+      expect(baggage).toBe("rerun-request");
+    },
+  );
+
   test("traces signal sends and suspended executions without exposing payloads", async () => {
     const ow = new OpenWorkflow({ backend });
     const workflow = ow.defineWorkflow(

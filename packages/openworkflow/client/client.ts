@@ -28,6 +28,7 @@ import {
   traceOperation,
 } from "../telemetry.js";
 import { Worker } from "../worker/worker.js";
+import { rerunWorkflowRun } from "./rerun.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -197,6 +198,25 @@ export class OpenWorkflow {
    */
   async cancelWorkflowRun(workflowRunId: string): Promise<void> {
     await cancelWorkflowRun(this.backend, workflowRunId);
+  }
+
+  /**
+   * Rerun a finished workflow with its original input and version.
+   * @param workflowRunId - ID of a failed, completed, or canceled run
+   * @param options - Rerun options
+   * @param options.fromStep - Recorded step name to rerun, reusing earlier
+   * successful results; omit to run every step again
+   * @returns A new pending run, leaving the source run unchanged
+   */
+  async rerunWorkflowRun(
+    workflowRunId: string,
+    options?: { fromStep?: string },
+  ): Promise<WorkflowRun> {
+    return await rerunWorkflowRun(
+      this.backend,
+      workflowRunId,
+      options?.fromStep,
+    );
   }
 
   /**

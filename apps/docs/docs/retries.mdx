@@ -28,6 +28,24 @@ To prevent runaway executions, each workflow run also has a hard cap of 1000
 total step attempts. If the run reaches that cap, it fails immediately and is
 not retried.
 
+## Rerun a Finished Workflow
+
+Use `rerunWorkflowRun` to create a new run from a failed, completed, or canceled
+run. Optionally pass a recorded step name to reuse earlier results:
+
+```ts
+const newRun = await ow.rerunWorkflowRun(originalRunId, {
+  fromStep: "send-email", // <-- optional
+});
+```
+
+The new run uses the original input and workflow version. It is ready to run
+immediately, with fresh retry counts and no deadline, idempotency key, or parent
+run. The source run stays unchanged.
+
+With `fromStep`, OpenWorkflow copies successful steps from before the selected
+step. The new run reuses those results.
+
 ## Step Retries
 
 Steps that throw are retried automatically:

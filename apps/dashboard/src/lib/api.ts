@@ -1,5 +1,6 @@
 import { getBackend } from "./backend";
 import { createServerFn } from "@tanstack/react-start";
+import { rerunWorkflowRun } from "openworkflow/internal";
 import type {
   PaginatedResponse,
   PaginationOptions,
@@ -88,6 +89,19 @@ export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<WorkflowRun> => {
     const backend = await getBackend();
     return backend.cancelWorkflowRun({ workflowRunId: data.workflowRunId });
+  });
+
+/** Rerun a finished workflow with its original input and version. */
+export const rerunWorkflowRunServerFn = createServerFn({ method: "POST" })
+  .validator(
+    z.object({ workflowRunId: z.string(), fromStep: z.string().optional() }),
+  )
+  .handler(async ({ data }): Promise<WorkflowRun> => {
+    return await rerunWorkflowRun(
+      await getBackend(),
+      data.workflowRunId,
+      data.fromStep,
+    );
   });
 
 /**

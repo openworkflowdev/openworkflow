@@ -8,6 +8,7 @@ import {
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
+  RerunWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
   ExtendWorkflowRunLeaseParams,
@@ -33,6 +34,7 @@ import {
 } from "../core/cursor.js";
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
+import { prepareWorkflowRerun } from "../core/rerun.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
@@ -215,6 +217,49 @@ export class BackendPostgres implements Backend {
       }
 
       return await this.insertWorkflowRun(tx, params);
+    });
+  }
+
+  async rerunWorkflowRun(
+    request: RerunWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    return await this.withTransaction(async (tx) => {
+      const [source] = await tx<WorkflowRun[]>`
+        SELECT * FROM ${this.workflowRunsTable(tx)}
+        WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${request.workflowRunId}
+        FOR UPDATE
+      `;
+      const stepAttemptsTable = this.stepAttemptsTable(tx);
+      const steps =
+        request.fromStep === null
+          ? []
+          : await tx<Pick<StepAttempt, "stepName" | "stepIndex" | "status">[]>`
+        SELECT "step_name", "step_index", "status" FROM ${stepAttemptsTable}
+        WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
+      `;
+      const { params, stepIndex } = prepareWorkflowRerun(
+        source ?? null,
+        request,
+        steps,
+      );
+      const run = await this.insertWorkflowRun(tx, params);
+      if (stepIndex !== null) {
+        await tx`
+          INSERT INTO ${stepAttemptsTable} (
+            "namespace_id", "id", "workflow_run_id", "step_name", "step_index", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          )
+          SELECT "namespace_id", gen_random_uuid(), ${run.id}, "step_name", "step_index", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          FROM ${stepAttemptsTable}
+          WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
+            AND "status" IN ('completed', 'succeeded')
+            AND "step_index" < ${stepIndex}
+        `;
+      }
+      return run;
     });
   }
 

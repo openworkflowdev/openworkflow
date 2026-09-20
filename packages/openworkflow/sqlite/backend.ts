@@ -7,6 +7,7 @@ import {
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
+  RerunWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
   ExtendWorkflowRunLeaseParams,
@@ -33,6 +34,7 @@ import {
 } from "../core/cursor.js";
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
+import { prepareWorkflowRerun } from "../core/rerun.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
@@ -173,6 +175,79 @@ export class BackendSqlite implements Backend {
       return Promise.reject(
         error instanceof Error ? error : new Error(String(error)),
       );
+    }
+  }
+
+  // oxlint-disable-next-line typescript/require-await -- keep the transaction synchronous
+  async rerunWorkflowRun(
+    request: RerunWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      // safety: these queries select rows from the corresponding tables.
+      const source = this.db
+        .prepare(
+          `
+        SELECT * FROM "workflow_runs" WHERE "namespace_id" = ? AND "id" = ?
+      `,
+        )
+        .get(this.namespaceId, request.workflowRunId) as
+        WorkflowRunRow | undefined;
+      // safety: the query selects step names, nullable indices, and statuses.
+      const steps =
+        request.fromStep === null
+          ? []
+          : (this.db
+              .prepare(
+                `
+        SELECT "step_name", "step_index", "status" FROM "step_attempts"
+        WHERE "namespace_id" = ? AND "workflow_run_id" = ?
+      `,
+              )
+              .all(this.namespaceId, request.workflowRunId) as Pick<
+              StepAttemptRow,
+              "step_name" | "step_index" | "status"
+            >[]);
+      const { params, stepIndex } = prepareWorkflowRerun(
+        source ? rowToWorkflowRun(source) : null,
+        request,
+        steps.map((step) => ({
+          stepName: step.step_name,
+          stepIndex: step.step_index,
+          // safety: backend transitions write domain status values.
+          status: step.status as StepAttempt["status"],
+        })),
+      );
+      const run = this.insertWorkflowRun(params);
+      if (stepIndex !== null) {
+        this.db
+          .prepare(
+            `
+          INSERT INTO "step_attempts" (
+            "namespace_id", "id", "workflow_run_id", "step_name", "step_index", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          )
+          SELECT "namespace_id",
+            lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+              substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) ||
+              substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))),
+            ?, "step_name", "step_index", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          FROM "step_attempts"
+          WHERE "namespace_id" = ? AND "workflow_run_id" = ?
+            AND "status" IN ('completed', 'succeeded')
+            AND "step_index" < ?
+        `,
+          )
+          .run(run.id, this.namespaceId, request.workflowRunId, stepIndex);
+      }
+      this.db.exec("COMMIT");
+      return run;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
   }
 
