@@ -2,6 +2,27 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "linden",
   "name": "OpenWorkflow",
+  "description": "Open-source durable workflow engine for TypeScript, powered by PostgreSQL or SQLite.",
+  "markdown": {
+    "instructions": [
+      "### When to use OpenWorkflow",
+      "",
+      "Use OpenWorkflow in TypeScript or JavaScript apps for:",
+      "",
+      "- Background jobs that need retries and must resume after a crash or deploy.",
+      "- Multi-step integrations and data pipelines that need to save progress between operations.",
+      "- AI workflows with multiple model or tool calls that need durable checkpoints.",
+      "- Workflows that wait for a human approval, a webhook, or a timer before continuing.",
+      "",
+      "OpenWorkflow runs on Node.js 22.5+ or Bun, with PostgreSQL or SQLite storing workflow state. Your app enqueues runs, and a worker executes them.",
+      "",
+      "### How to use OpenWorkflow",
+      "",
+      "Read and follow https://openworkflow.dev/skills/setup.md to set up OpenWorkflow.",
+      "",
+      "Define workflows with `defineWorkflow`, wrap operations in `step.run`, and enqueue runs with `ow.runWorkflow(workflow.spec, input)`. Start a worker with `npx @openworkflow/cli worker start` to execute them. See [Workflows](https://openworkflow.dev/docs/workflows.md), [Steps](https://openworkflow.dev/docs/steps.md), and [Signals](https://openworkflow.dev/docs/signals.md) for the APIs."
+    ]
+  },
   "colors": {
     "primary": "#000000"
   },
@@ -47,8 +68,7 @@
           "docs/type-safety",
           "docs/versioning",
           "docs/canceling",
-          "docs/production",
-          "docs/prometheus"
+          "docs/production"
         ]
       },
       {
@@ -61,22 +81,76 @@
       },
       {
         "group": "Integrations",
-        "pages": ["docs/standard-schema"]
-      },
-      {
-        "group": "Comparisons",
         "pages": [
-          "docs/openworkflow-vs-temporal",
-          "docs/openworkflow-vs-bullmq"
+          "docs/standard-schema",
+          "docs/opentelemetry",
+          "docs/sentry",
+          "docs/prometheus"
         ]
       },
       {
         "group": "Resources",
-        "pages": ["docs/roadmap", "docs/llms", "npm", "github"]
+        "pages": [
+          "docs/roadmap",
+          "docs/llms",
+          {
+            "group": "Agent Skills",
+            "expanded": false,
+            "pages": ["skills/setup"]
+          },
+          {
+            "group": "Comparisons",
+            "expanded": false,
+            "pages": [
+              "docs/openworkflow-vs-temporal",
+              "docs/openworkflow-vs-bullmq",
+              "docs/openworkflow-vs-inngest",
+              "docs/openworkflow-vs-trigger-dev",
+              "docs/openworkflow-vs-vercel-workflow"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Project",
+        "hidden": true,
+        "searchable": true,
+        "pages": ["about", "contact"]
       }
     ]
   },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/openworkflowdev/openworkflow",
+      "discord": "https://discord.openworkflow.dev"
+    },
+    "links": [
+      {
+        "items": [
+          { "label": "About", "href": "/about" },
+          { "label": "Contact", "href": "/contact" },
+          {
+            "label": "npm",
+            "href": "https://www.npmjs.com/package/openworkflow"
+          }
+        ]
+      }
+    ]
+  },
+  "seo": {
+    "organization": {
+      "sameAs": ["https://github.com/openworkflowdev"]
+    }
+  },
   "redirects": [
+    {
+      "source": "/github",
+      "destination": "https://github.com/openworkflowdev/openworkflow"
+    },
+    {
+      "source": "/npm",
+      "destination": "https://www.npmjs.com/package/openworkflow"
+    },
     {
       "source": "/docs",
       "destination": "/"

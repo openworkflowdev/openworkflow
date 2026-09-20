@@ -9,7 +9,7 @@ import type {
 } from "openworkflow/internal";
 import * as z from "zod";
 
-const paginationInputShape = {
+const paginationInputFields = {
   limit: z.number().optional(),
   after: z.string().optional(),
   before: z.string().optional(),
@@ -50,7 +50,7 @@ function parseOptionalDate(
  * List workflow runs from the backend with optional pagination.
  */
 export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
-  .validator(z.object(paginationInputShape))
+  .validator(z.object(paginationInputFields))
   .handler(async ({ data }): Promise<PaginatedResponse<WorkflowRun>> => {
     const backend = await getBackend();
     const result = await backend.listWorkflowRuns(getPaginationOptions(data));
@@ -109,7 +109,7 @@ export const listStepAttemptsServerFn = createServerFn({ method: "GET" })
   .validator(
     z.object({
       workflowRunId: z.string(),
-      ...paginationInputShape,
+      ...paginationInputFields,
     }),
   )
   .handler(async ({ data }): Promise<PaginatedResponse<StepAttempt>> => {
@@ -166,6 +166,7 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
     let parsedInput: WorkflowRun["input"] = null;
     if (normalizedInputValue) {
       try {
+        // safety: JSON.parse without a reviver returns the JSON values accepted by workflow input.
         parsedInput = JSON.parse(normalizedInputValue) as WorkflowRun["input"];
       } catch {
         throw new TypeError("Input must be valid JSON");

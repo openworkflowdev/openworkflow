@@ -1,5 +1,31 @@
 # @openworkflow/cli
 
+## 0.5.2
+
+- Fix generated worker and dashboard commands missing the custom config path
+- Fix broken imports and workflow discovery when the config is in a subdirectory
+- Fix init overwriting PostgreSQL URLs set with `export` in `.env`
+
+## 0.5.1
+
+- Telemetry w/ opt-out options: `--no-telemetry`, `DO_NOT_TRACK=1`, or
+  `OPENWORKFLOW_TELEMETRY_DISABLED=1`
+
+## 0.5.0
+
+- Add non-interactive initialization with `--backend sqlite|postgres|both --yes`
+  and `--skip-install` to generate files without installing dependencies
+- Add `--env-file` to init, doctor, worker, and dashboard commands, and load the
+  default `.env` from the config directory
+- Support tsconfig path aliases when loading config and workflow files (#763)
+  (thanks @Andres6936!)
+- Check backend connectivity and workflow table access in doctor and worker
+  startup
+- Fail doctor and worker startup when workflow directories cannot be read, and
+  time out doctor checks after 30 seconds
+- Fix false duplicate-workflow detection for names or versions containing `@`,
+  and fail doctor checks when duplicate workflow identities are found
+
 ## 0.4.5
 
 - Fix OpenWorkflow config loading under Bun by disabling native Jiti import

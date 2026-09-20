@@ -1,13 +1,26 @@
 // @vitest-environment jsdom
 import { usePolling } from "./use-polling";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const invalidate = vi.fn();
+const router = createRouter({
+  routeTree: createRootRoute(),
+  history: createMemoryHistory(),
+});
+const invalidate = vi.spyOn(router, "invalidate").mockResolvedValue();
 
-vi.mock("@tanstack/react-router", () => ({
-  useRouter: () => ({ invalidate }),
-}));
+function wrapper({ children }: { children: ReactNode }) {
+  return (
+    <RouterContextProvider router={router}>{children}</RouterContextProvider>
+  );
+}
 
 describe("usePolling", () => {
   beforeEach(() => {
@@ -26,9 +39,12 @@ describe("usePolling", () => {
   });
 
   it("calls router.invalidate on the default interval", () => {
-    renderHook(() => {
-      usePolling();
-    });
+    renderHook(
+      () => {
+        usePolling();
+      },
+      { wrapper },
+    );
 
     expect(invalidate).not.toHaveBeenCalled();
 
@@ -40,9 +56,12 @@ describe("usePolling", () => {
   });
 
   it("respects a custom interval", () => {
-    renderHook(() => {
-      usePolling({ interval: 5000 });
-    });
+    renderHook(
+      () => {
+        usePolling({ interval: 5000 });
+      },
+      { wrapper },
+    );
 
     vi.advanceTimersByTime(4999);
     expect(invalidate).not.toHaveBeenCalled();
@@ -52,18 +71,24 @@ describe("usePolling", () => {
   });
 
   it("does not poll when enabled is false", () => {
-    renderHook(() => {
-      usePolling({ enabled: false });
-    });
+    renderHook(
+      () => {
+        usePolling({ enabled: false });
+      },
+      { wrapper },
+    );
 
     vi.advanceTimersByTime(10_000);
     expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("stops polling on unmount", () => {
-    const { unmount } = renderHook(() => {
-      usePolling();
-    });
+    const { unmount } = renderHook(
+      () => {
+        usePolling();
+      },
+      { wrapper },
+    );
 
     vi.advanceTimersByTime(2000);
     expect(invalidate).toHaveBeenCalledTimes(1);
@@ -75,9 +100,12 @@ describe("usePolling", () => {
   });
 
   it("pauses polling when the tab is hidden", () => {
-    renderHook(() => {
-      usePolling();
-    });
+    renderHook(
+      () => {
+        usePolling();
+      },
+      { wrapper },
+    );
 
     vi.advanceTimersByTime(2000);
     expect(invalidate).toHaveBeenCalledTimes(1);
@@ -101,18 +129,24 @@ describe("usePolling", () => {
       configurable: true,
     });
 
-    renderHook(() => {
-      usePolling();
-    });
+    renderHook(
+      () => {
+        usePolling();
+      },
+      { wrapper },
+    );
 
     vi.advanceTimersByTime(10_000);
     expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("resumes polling and immediately invalidates when the tab becomes visible", () => {
-    renderHook(() => {
-      usePolling();
-    });
+    renderHook(
+      () => {
+        usePolling();
+      },
+      { wrapper },
+    );
 
     // Hide tab
     Object.defineProperty(document, "hidden", {
@@ -144,7 +178,7 @@ describe("usePolling", () => {
       ({ enabled }) => {
         usePolling({ enabled });
       },
-      { initialProps: { enabled: false } },
+      { initialProps: { enabled: false }, wrapper },
     );
 
     vi.advanceTimersByTime(4000);
@@ -161,7 +195,7 @@ describe("usePolling", () => {
       ({ enabled }) => {
         usePolling({ enabled });
       },
-      { initialProps: { enabled: true } },
+      { initialProps: { enabled: true }, wrapper },
     );
 
     vi.advanceTimersByTime(2000);

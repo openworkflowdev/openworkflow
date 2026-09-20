@@ -1,5 +1,7 @@
+import type { JsonValue } from "../core/json.js";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
+import type { SQLOutputValue } from "node:sqlite";
 
 /**
  * Common database interface that both Node and Bun SQLite drivers satisfy.
@@ -8,8 +10,10 @@ export interface Database {
   exec(sql: string): void;
   prepare(sql: string): {
     run(...params: unknown[]): { changes: number };
-    get(...params: unknown[]): unknown;
-    all(...params: unknown[]): unknown[];
+    get(
+      ...params: unknown[]
+    ): Record<string, SQLOutputValue> | null | undefined;
+    all(...params: unknown[]): Record<string, SQLOutputValue>[];
   };
   close(): void;
 }
@@ -32,12 +36,14 @@ export function newDatabase(path: string): Database {
 
   if (isBun) {
     /* v8 ignore start -- Bun tests are run separately */
+    // safety: the bun runtime exports this constructor; we only use the shared SQLite driver methods.
     const { Database: BunDatabase } = require("bun:sqlite") as {
       Database: new (path: string) => Database;
     };
     db = new BunDatabase(path);
     /* v8 ignore stop */
   } else {
+    // safety: node:sqlite exports DatabaseSync; we only use the shared SQLite driver methods.
     const { DatabaseSync: NodeDatabase } = require("node:sqlite") as {
       DatabaseSync: new (path: string) => Database;
     };
@@ -264,14 +270,17 @@ function getCurrentMigrationVersion(db: Database): number {
     FROM sqlite_master
     WHERE type = 'table' AND name = 'openworkflow_migrations'
   `);
-  const existsResult = existsStmt.get() as { count: number } | undefined;
+  // safety: COUNT(*) returns a numeric count column for this query.
+  const existsResult = existsStmt.get() as { count: number } | null | undefined;
   if (!existsResult || existsResult.count === 0) return -1;
 
   // get current version
   const versionStmt = db.prepare(
     `SELECT MAX("version") AS "version" FROM "openworkflow_migrations";`,
   );
-  const versionResult = versionStmt.get() as { version: number } | undefined;
+  // safety: MAX(version) returns an integer, or null when the migration table is empty.
+  const versionResult = versionStmt.get() as
+    { version: number | null } | null | undefined;
   return versionResult?.version ?? -1;
 }
 
@@ -308,6 +317,7 @@ export function addMilliseconds(date: string, ms: number): string {
  * @param value - Value to serialize
  * @returns JSON string or null
  */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- JSON.stringify owns the serialization of arbitrary input
 export function toJSON(value: unknown): string | null {
   return value === null || value === undefined ? null : JSON.stringify(value);
 }
@@ -317,8 +327,9 @@ export function toJSON(value: unknown): string | null {
  * @param value - JSON string or null
  * @returns Parsed value
  */
-export function fromJSON(value: string | null): unknown {
-  return value === null ? null : JSON.parse(value);
+export function fromJSON(value: string | null): JsonValue {
+  // safety: JSON.parse returns only JSON values when no reviver is supplied.
+  return value === null ? null : (JSON.parse(value) as JsonValue);
 }
 
 /**

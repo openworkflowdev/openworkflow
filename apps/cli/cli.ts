@@ -8,28 +8,55 @@ import {
   workerStart,
 } from "./commands.js";
 import { withErrorHandling } from "./errors.js";
-import { Command } from "commander";
+import {
+  initializeTelemetry,
+  shutdownTelemetry,
+  trackCommand,
+} from "./telemetry.js";
+import { Command, CommanderError, Option } from "commander";
 
 // openworkflow
 const program = new Command();
+initializeTelemetry(program);
 program
   .name("openworkflow")
   .description("OpenWorkflow CLI - learn more at https://openworkflow.dev")
   .usage("<command> [options]")
-  .version(getVersion());
+  .exitOverride()
+  .version(getVersion())
+  .option("--no-telemetry", "disable telemetry");
 
 // init
 program
   .command("init")
   .description("initialize OpenWorkflow")
+  .addOption(
+    new Option("--backend <backend>", "backend to configure").choices([
+      "sqlite",
+      "postgres",
+      "both",
+    ]),
+  )
+  .option(
+    "-y, --yes",
+    "skip prompts (requires --backend; does not allow overwrites)",
+  )
+  .option(
+    "--skip-install",
+    "create project files without installing dependencies",
+  )
   .option("--config <path>", "path to OpenWorkflow config file")
-  .action(withErrorHandling(init));
+  .option("--env-file <path>", "load environment variables from file")
+  .action(
+    withErrorHandling((options: Parameters<typeof init>[0]) => init(options)),
+  );
 
 // doctor
 program
   .command("doctor")
-  .description("check configuration and list available workflows")
+  .description("check worker prerequisites")
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(doctor));
 
 // worker
@@ -45,6 +72,7 @@ workerCmd
     Number.parseInt,
   )
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(workerStart));
 
 // dashboard
@@ -57,6 +85,15 @@ program
     Number.parseInt,
   )
   .option("--config <path>", "path to OpenWorkflow config file")
+  .option("--env-file <path>", "load environment variables from file")
   .action(withErrorHandling(dashboard));
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+} catch (error) {
+  if (!(error instanceof CommanderError)) throw error;
+  process.exitCode = error.exitCode;
+  trackCommand();
+} finally {
+  await shutdownTelemetry();
+}

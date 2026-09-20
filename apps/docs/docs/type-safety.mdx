@@ -1,11 +1,11 @@
 ---
 title: Type Safety
-description: End-to-end TypeScript type safety for workflows
+description: End-to-end TypeScript type safety for workflows, with typed inputs and outputs and inferred types for step results
 ---
 
-OpenWorkflow is built with TypeScript and provides full type inference for
-workflow inputs, outputs, and step results. You get autocomplete and compile-
-time checking throughout.
+OpenWorkflow uses schemas or explicit types to type workflow inputs and
+outputs. Step result types are inferred from their functions' return values.
+These types provide autocomplete and compile-time checking throughout.
 
 ## Schema Validation with Type Inference
 
@@ -13,6 +13,7 @@ For runtime validation with type inference, use [Standard
 Schema](/docs/standard-schema) compatible libraries like Zod:
 
 ```ts
+import { defineWorkflow } from "openworkflow";
 import { z } from "zod";
 
 const inputSchema = z.object({
@@ -25,17 +26,27 @@ export const payment = defineWorkflow(
     name: "payment",
     schema: inputSchema,
   },
-  async ({ input, step }) => {
+  async ({ input }) => {
     // input is typed as { email: string; amount: number }
     // and validated at runtime
+    return { recipient: input.email, amount: input.amount };
   },
 );
 ```
 
+With a schema and no explicit generics, the input type comes from the schema
+and the output type is inferred from the workflow function's return value.
+Here, the output is `{ recipient: string; amount: number }`.
+
 ## Explicit Type Definitions
 
-To manually specify input and (optionally) output types, use generics with
-`defineWorkflow`:
+To manually specify input and output types, use both generics with
+`defineWorkflow`. Generics provide compile-time checking; use a schema if you
+also need runtime input validation.
+
+This example uses your application's `validateOrder` and `shipOrder` functions.
+Follow the [Quick Start](/docs/quickstart) for a runnable example with setup
+instructions.
 
 ```ts
 import { defineWorkflow } from "openworkflow";
@@ -53,7 +64,7 @@ interface OrderResult {
 export const processOrder = defineWorkflow<OrderInput, OrderResult>(
   { name: "process-order" },
   async ({ input, step }) => {
-    const validated = await step.run({ name: "validate" }, async () => {
+    await step.run({ name: "validate" }, async () => {
       // input is typed as OrderInput
       return validateOrder(input.orderId);
     });
@@ -71,14 +82,18 @@ export const processOrder = defineWorkflow<OrderInput, OrderResult>(
 );
 ```
 
-If you only specify the input type, the output type is inferred from the return
-value:
+If you supply only the input generic, as in
+`defineWorkflow<{ name: string }>(...)`, the workflow's output type is
+`unknown`, so `handle.result()` returns `Promise<unknown>`. Supply both input
+and output types when you need a typed result without a schema:
 
 ```ts
-export const greet = defineWorkflow<{ name: string }>(
+import { defineWorkflow } from "openworkflow";
+
+export const greet = defineWorkflow<{ name: string }, string>(
   { name: "greet" },
   async ({ input }) => {
-    return `Hello, ${input.name}!`; // Output inferred as string
+    return `Hello, ${input.name}!`; // Output checked against string
   },
 );
 ```
@@ -123,20 +138,31 @@ const handle = await ow.runWorkflow(processOrder.spec, {
 // result is typed as OrderResult
 const result = await handle.result();
 console.log(result.trackingNumber); // TypeScript knows this exists
+
+const greetingHandle = await ow.runWorkflow(greet.spec, { name: "World" });
+const greeting = await greetingHandle.result(); // string
 ```
 
 ## Step Result Types
 
-Step return types are inferred automatically:
+Step return types are inferred automatically, even when you supply only the
+workflow's input generic:
 
 ```ts
+import { defineWorkflow } from "openworkflow";
+
+interface User {
+  email: string;
+  name: string;
+}
+
 const workflow = defineWorkflow<{ userId: string }>(
   { name: "user-workflow" },
   async ({ input, step }) => {
     // user is inferred as User type from the return
     const user = await step.run({ name: "get-user" }, async () => {
       const response = await fetch(`/api/users/${input.userId}`);
-      return response.json() as User;
+      return (await response.json()) as User;
     });
 
     // TypeScript knows user has these properties

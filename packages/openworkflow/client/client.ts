@@ -16,6 +16,17 @@ import type {
   WorkflowRun,
 } from "../core/workflow-run.js";
 import { validateInput } from "../core/workflow-run.js";
+import {
+  ATTRIBUTE_NAMES,
+  getSpanKind,
+  setAttribute,
+  setAttributes,
+  workflowRunAttributes,
+  captureTraceContext,
+  linkToCreationSpan,
+  SPAN_NAMES,
+  traceOperation,
+} from "../telemetry.js";
 import { Worker } from "../worker/worker.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
@@ -75,6 +86,7 @@ export class OpenWorkflow {
       fn,
     };
 
+    // safety: the registry stores heterogeneous workflows; each typed registration keeps its matching spec and function together.
     this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
   }
 
@@ -96,31 +108,42 @@ export class OpenWorkflow {
     input?: RunInput,
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
-    const validationResult = await validateInput(spec.schema, input);
-    if (!validationResult.success) {
-      throw new Error(validationResult.error);
-    }
-    const parsedInput = validationResult.value;
+    return traceOperation(
+      SPAN_NAMES.WORKFLOW_RUN_CREATE,
+      {
+        kind: await getSpanKind("PRODUCER"),
+        attributes: { [ATTRIBUTE_NAMES.WORKFLOW_NAME]: spec.name },
+      },
+      async (span) => {
+        const validationResult = await validateInput(spec.schema, input);
+        if (!validationResult.success) {
+          throw new Error(validationResult.error);
+        }
+        const parsedInput = validationResult.value;
+        const availableAt = resolveAvailableAt(options?.availableAt);
 
-    const workflowRun = await this.backend.createWorkflowRun({
-      workflowName: spec.name,
-      version: spec.version ?? null,
-      idempotencyKey: options?.idempotencyKey ?? null,
-      config: {},
-      context: null,
-      input: parsedInput ?? null,
-      parentStepAttemptNamespaceId: null,
-      parentStepAttemptId: null,
-      availableAt: resolveAvailableAt(options?.availableAt),
-      deadlineAt: options?.deadlineAt ?? null,
-    });
+        const workflowRun = await this.backend.createWorkflowRun({
+          workflowName: spec.name,
+          version: spec.version ?? null,
+          idempotencyKey: options?.idempotencyKey ?? null,
+          config: {},
+          context: captureTraceContext(),
+          input: parsedInput ?? null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt,
+          deadlineAt: options?.deadlineAt ?? null,
+        });
 
-    return new WorkflowRunHandle<Output>({
-      backend: this.backend,
-      workflowRun: workflowRun,
-      resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
-      resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
-    });
+        setAttributes(span, workflowRunAttributes(workflowRun));
+        return new WorkflowRunHandle<Output>({
+          backend: this.backend,
+          workflowRun,
+          resultPollIntervalMs: DEFAULT_RESULT_POLL_INTERVAL_MS,
+          resultTimeoutMs: DEFAULT_RESULT_TIMEOUT_MS,
+        });
+      },
+    );
   }
 
   /**
@@ -156,6 +179,7 @@ export class OpenWorkflow {
   > {
     const workflow = defineWorkflow(spec, fn);
 
+    // safety: the registry stores heterogeneous workflows; each typed registration keeps its matching spec and function together.
     this.registry.register(workflow as Workflow<unknown, unknown, unknown>);
 
     return new RunnableWorkflow(this, workflow);
@@ -172,7 +196,7 @@ export class OpenWorkflow {
    * ```
    */
   async cancelWorkflowRun(workflowRunId: string): Promise<void> {
-    await this.backend.cancelWorkflowRun({ workflowRunId });
+    await cancelWorkflowRun(this.backend, workflowRunId);
   }
 
   /**
@@ -213,11 +237,26 @@ export class OpenWorkflow {
       idempotencyKey?: string;
     }>,
   ): Promise<SendSignalResult> {
-    return this.backend.sendSignal({
-      signal: options.signal,
-      data: options.data ?? null,
-      idempotencyKey: options.idempotencyKey ?? null,
-    });
+    return traceOperation(
+      SPAN_NAMES.SIGNAL_SEND,
+      {
+        kind: await getSpanKind("PRODUCER"),
+        attributes: { [ATTRIBUTE_NAMES.SIGNAL_NAME]: options.signal },
+      },
+      async (span) => {
+        const result = await this.backend.sendSignal({
+          signal: options.signal,
+          data: options.data ?? null,
+          idempotencyKey: options.idempotencyKey ?? null,
+        });
+        setAttribute(
+          span,
+          ATTRIBUTE_NAMES.SIGNAL_RECIPIENT_COUNT,
+          result.workflowRunIds.length,
+        );
+        return result;
+      },
+    );
   }
 }
 
@@ -344,7 +383,7 @@ class WorkflowRunHandle<Output> {
     const start = Date.now();
     const timeout = options?.timeoutMs ?? this.resultTimeoutMs;
 
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    // oxlint-disable-next-line typescript/no-unnecessary-condition
     while (true) {
       const latest = await this.backend.getWorkflowRun({
         workflowRunId: this.workflowRun.id,
@@ -354,14 +393,9 @@ class WorkflowRunHandle<Output> {
         throw new Error(`Workflow run ${this.workflowRun.id} no longer exists`);
       }
 
-      if (Date.now() - start > timeout) {
-        throw new Error(
-          `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
-        );
-      }
-
       // 'succeeded' status is deprecated
       if (latest.status === "succeeded" || latest.status === "completed") {
+        // safety: the completed run belongs to this typed workflow handle and uses its declared output contract.
         return latest.output as Output;
       }
 
@@ -377,6 +411,12 @@ class WorkflowRunHandle<Output> {
         );
       }
 
+      if (Date.now() - start > timeout) {
+        throw new Error(
+          `Timed out waiting for workflow run ${this.workflowRun.id} to finish`,
+        );
+      }
+
       await new Promise((resolve) => {
         setTimeout(resolve, this.resultPollIntervalMs);
       });
@@ -388,8 +428,26 @@ class WorkflowRunHandle<Output> {
    * `sleeping` status can be canceled.
    */
   async cancel(): Promise<void> {
-    await this.backend.cancelWorkflowRun({
-      workflowRunId: this.workflowRun.id,
-    });
+    await cancelWorkflowRun(this.backend, this.workflowRun.id);
   }
+}
+
+/**
+ * Cancel a run through either client API.
+ * @param backend - Workflow storage
+ * @param workflowRunId - Run to cancel
+ */
+async function cancelWorkflowRun(
+  backend: Backend,
+  workflowRunId: string,
+): Promise<void> {
+  await traceOperation(
+    SPAN_NAMES.WORKFLOW_RUN_CANCEL,
+    { attributes: { [ATTRIBUTE_NAMES.WORKFLOW_RUN_ID]: workflowRunId } },
+    async (span) => {
+      const run = await backend.cancelWorkflowRun({ workflowRunId });
+      setAttributes(span, workflowRunAttributes(run));
+      linkToCreationSpan(span, run.context);
+    },
+  );
 }

@@ -51,6 +51,7 @@ export function formatRelativeTime(
   }
 
   const now =
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- this API accepts either a timestamp or a Date
     typeof referenceNow === "number" ? referenceNow : referenceNow.getTime();
   const diffMs = now - date.getTime();
 
@@ -77,6 +78,11 @@ export function formatRelativeTime(
   return `${days.toString()}d ago`;
 }
 
+interface MetadataTimestamp {
+  relative: string;
+  iso: string | null;
+}
+
 /**
  * Format a metadata timestamp into relative and absolute representations.
  * @param date - Date object
@@ -86,10 +92,7 @@ export function formatRelativeTime(
 export function formatMetadataTimestamp(
   date: Date | null,
   referenceNow?: Date | number,
-): {
-  relative: string;
-  iso: string | null;
-} {
+): MetadataTimestamp {
   if (!date) {
     return {
       relative: "-",

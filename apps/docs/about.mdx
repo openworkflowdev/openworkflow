@@ -1,0 +1,36 @@
+---
+title: About OpenWorkflow
+sidebarTitle: About
+description: Why OpenWorkflow exists, how it runs durable workflows, and how to contribute to the open-source project
+---
+
+## Why OpenWorkflow exists
+
+A background job can finish several operations before a crash stops it.
+Restarting the whole job can repeat work that already succeeded. OpenWorkflow
+saves progress between steps so your code can resume after a crash or deploy.
+
+You write workflows in TypeScript or JavaScript and wrap operations in steps.
+Workers execute them and save the results in PostgreSQL or SQLite. Workflows can
+retry failed steps, pause on a timer, or wait for a signal before continuing.
+Your application and workers connect directly to your database, so you can run
+OpenWorkflow on your own infrastructure.
+
+Use it for background jobs, multi-step integrations, data pipelines, and AI
+workflows that need to keep their progress. The [Quick Start](/docs/quickstart)
+walks through running a workflow locally, and the [overview](/docs/overview)
+explains how workflows, steps, and workers fit together.
+
+## An open-source project
+
+OpenWorkflow is developed on
+[GitHub](https://github.com/openworkflowdev/openworkflow) under the [Apache-2.0
+license](https://github.com/openworkflowdev/openworkflow/blob/main/LICENSE.md).
+The repository includes the workflow engine, CLI, dashboard, documentation, and
+examples. Bugs, feature proposals, and code changes are discussed there.
+
+Contributions can be code, documentation fixes, bug reports, or feedback from
+using OpenWorkflow. Read the [contribution
+guide](https://github.com/openworkflowdev/openworkflow/blob/main/CONTRIBUTING.md)
+before starting a change, and check the [roadmap](/docs/roadmap) for planned
+work. See [Contact](/contact) for where to ask questions or report a problem.

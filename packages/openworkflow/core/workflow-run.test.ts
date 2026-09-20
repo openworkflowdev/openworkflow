@@ -44,7 +44,10 @@ describe("validateInput", () => {
 
   test("validates input successfully against schema", async () => {
     const schema = createMockSchema<{ name: string }>({
-      validate: (input) => ({ value: input as { name: string } }),
+      validate: (input) => ({
+        // safety: this mock validator receives the matching literal fixture supplied by this test.
+        value: input as { name: string },
+      }),
     });
     const input = { name: "test" };
 
@@ -58,7 +61,10 @@ describe("validateInput", () => {
 
   test("transforms input using schema", async () => {
     const schema = createMockSchema<string, number>({
-      validate: (input) => ({ value: Number.parseInt(input as string, 10) }),
+      validate: (input) => ({
+        // safety: this mock validator receives the matching literal fixture supplied by this test.
+        value: Number.parseInt(input as string, 10),
+      }),
     });
 
     const result = await validateInput(schema, "42");
@@ -123,8 +129,13 @@ describe("validateInput", () => {
   test("handles async schema validation", async () => {
     const schema = createMockSchema<string>({
       validate: async (input) => {
-        await new Promise((resolve) => setTimeout(resolve, 1));
-        return { value: (input as string).toUpperCase() };
+        await new Promise((resolve) => {
+          setTimeout(resolve, 1);
+        });
+        return {
+          // safety: this mock validator receives the matching literal fixture supplied by this test.
+          value: (input as string).toUpperCase(),
+        };
       },
     });
 
@@ -137,7 +148,7 @@ describe("validateInput", () => {
   });
 
   test("handles undefined input when no schema", async () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     const result = await validateInput(null, undefined);
 
     expect(result.success).toBe(true);
@@ -206,9 +217,7 @@ describe("resolveCancelWorkflowRunConflict", () => {
 });
 
 function createMockSchema<I, O = I>(options: {
-  validate: (
-    input: unknown,
-  ) => StandardSchemaV1.Result<O> | Promise<StandardSchemaV1.Result<O>>;
+  validate: StandardSchemaV1.Props<I, O>["validate"];
 }): StandardSchemaV1<I, O> {
   return {
     "~standard": {

@@ -18,6 +18,10 @@ const config = defineConfig({
     tanstackStart(),
     viteReact(),
   ],
+  ssr: {
+    // workaround to preserve CLI's dependency resolution when Nitro builds
+    external: ["@openworkflow/cli"],
+  },
   server: {
     host: true,
     allowedHosts: ["host.docker.internal"],

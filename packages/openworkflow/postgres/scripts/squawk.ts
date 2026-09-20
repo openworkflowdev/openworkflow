@@ -6,7 +6,6 @@ const sql = migrations(DEFAULT_SCHEMA).join("\n\n");
 writeFileSync("squawk.sql", sql);
 
 try {
-  // eslint-disable-next-line sonarjs/no-os-command-from-path
   execSync("npx squawk squawk.sql", { stdio: "inherit" });
 } catch {
   // ignore - squawk will produce its own error output

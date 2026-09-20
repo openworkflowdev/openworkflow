@@ -158,12 +158,11 @@ export class BackendPostgres implements Backend {
     callback: (transaction: Postgres) => Promise<Result>,
   ): Promise<Result> {
     const reserved = await this.pg.reserve();
-    const transaction = reserved as unknown as Postgres;
     let connectionClosed = false;
 
     try {
       await reserved.unsafe("BEGIN ISOLATION LEVEL READ COMMITTED");
-      const result = await callback(transaction);
+      const result = await callback(reserved);
       await reserved.unsafe("COMMIT");
       return result;
     } catch (error) {
@@ -333,13 +332,17 @@ export class BackendPostgres implements Backend {
       const workflowRunsTable = this.workflowRunsTable(tx);
 
       const waiters = await tx<{ id: string; workflowRunId: string }[]>`
-          SELECT "id", "workflow_run_id" AS "workflowRunId"
-          FROM ${stepAttemptsTable}
-          WHERE "namespace_id" = ${this.namespaceId}
-            AND "kind" = 'signal-wait'
-            AND "status" = 'running'
-            AND "context"->>'signal' = ${params.signal}
-          FOR UPDATE
+          SELECT sa."id", sa."workflow_run_id" AS "workflowRunId"
+          FROM ${workflowRunsTable} wr
+          JOIN ${stepAttemptsTable} sa
+            ON sa."namespace_id" = wr."namespace_id"
+            AND sa."workflow_run_id" = wr."id"
+          WHERE sa."namespace_id" = ${this.namespaceId}
+            AND sa."kind" = 'signal-wait'
+            AND sa."status" = 'running'
+            AND sa."context"->>'signal' = ${params.signal}
+            AND wr."status" IN ('pending', 'running', 'sleeping')
+          FOR UPDATE OF wr, sa
         `;
 
       if (waiters.length === 0) {
@@ -844,6 +847,7 @@ export class BackendPostgres implements Backend {
   ): Promise<StepAttempt> {
     const stepAttemptsTable = this.stepAttemptsTable();
 
+    // safety: every StepAttemptContext variant contains only JSON-compatible fields.
     const [stepAttempt] = await this.pg<StepAttempt[]>`
       WITH owned_workflow_run AS (
         ${this.runningWorkflowRunOwnedByWorkerForUpdate(params)}
@@ -1125,7 +1129,7 @@ export class BackendPostgres implements Backend {
 
 /**
  * sqlDateDefaultNow returns the provided date or `NOW()` if not.
- * This is needed so we don't have to disable the eslint rule for every query.
+ * This is needed so we don't have to disable the lint rule for every query.
  * @param pg - Postgres client
  * @param date - Date to use (or null)
  * @returns The provided date or a NOW() expression

@@ -98,7 +98,6 @@ function ComboboxContent({
   >) {
   return (
     <ComboboxPrimitive.Portal>
-      {/* @ts-expect-error - anchor is not typed properly */}
       <ComboboxPrimitive.Positioner
         side={side}
         sideOffset={sideOffset}

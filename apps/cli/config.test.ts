@@ -7,16 +7,13 @@ import { beforeEach, afterEach, describe, expect, test } from "vitest";
 
 describe("defineConfig", () => {
   test("returns the same config", () => {
+    // safety: defineConfig only returns this object; the test never calls backend methods.
     const backend = {} as Backend; // Mock backend for testing
     const config = { backend };
     const result = defineConfig(config);
     expect(result).toBe(config);
   });
 });
-
-interface TestConfig {
-  name: string;
-}
 
 describe("loadConfig", () => {
   let tmpDir: string;
@@ -59,9 +56,28 @@ describe("loadConfig", () => {
     fs.writeFileSync(filePath, content);
 
     const { config, configFile } = await loadConfig(tmpDir);
-    const cfg = config as unknown as TestConfig; // this'll work until we validate
-    expect(cfg.name).toBe(expectedName);
+    expect(config).toHaveProperty("name", expectedName);
     expect(configFile).toContain(filename);
+  });
+
+  test("resolves aliases in config imports", async () => {
+    fs.mkdirSync(path.join(tmpDir, "src"));
+    fs.writeFileSync(
+      path.join(tmpDir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { paths: { "~/*": ["./src/*"] } } }),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "src", "name.ts"),
+      'export const name: string = "aliased";',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "openworkflow.config.ts"),
+      'import { name } from "~/name"; export default { name };',
+    );
+
+    const { config } = await loadConfig(tmpDir);
+
+    expect(config).toHaveProperty("name", "aliased");
   });
 
   test("throws if importing the config file fails", async () => {
@@ -88,8 +104,7 @@ describe("loadConfig", () => {
     );
 
     const { config } = await loadConfig(tmpDir);
-    const cfg = config as unknown as TestConfig;
-    expect(cfg.name).toBe("fallback");
+    expect(config).toHaveProperty("name", "fallback");
   });
 
   test("uses process.cwd when rootDir is not provided", async () => {
@@ -100,8 +115,7 @@ describe("loadConfig", () => {
 
       process.chdir(tmpDir);
       const { config, configFile } = await loadConfig();
-      const cfg = config as unknown as TestConfig;
-      expect(cfg.name).toBe("cwd");
+      expect(config).toHaveProperty("name", "cwd");
       expect(configFile).toContain("openworkflow.config.js");
     } finally {
       process.chdir(originalCwd);
@@ -117,8 +131,7 @@ describe("loadConfig", () => {
       "src/openworkflow.config.js",
       tmpDir,
     );
-    const cfg = config as unknown as TestConfig;
-    expect(cfg.name).toBe("explicit");
+    expect(config).toHaveProperty("name", "explicit");
     expect(configFile).toBe(filePath);
   });
 

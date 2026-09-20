@@ -1,12 +1,12 @@
 import { OpenWorkflow } from "../client/client.js";
 import type { Backend } from "../core/backend.js";
-import type { DurationString } from "../core/duration.js";
 import type { StepAttempt } from "../core/step-attempt.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowFunctionParams } from "../core/workflow-function.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 import type { BackendPostgres } from "../postgres.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import {
   WORKFLOW_STEP_LIMIT,
   STEP_LIMIT_EXCEEDED_ERROR_CODE,
@@ -178,10 +178,7 @@ describe("StepExecutor", () => {
 
     const stepNameByOutput = Object.fromEntries(
       steps.data.map((stepAttempt): readonly [string, string] => {
-        if (typeof stepAttempt.output !== "string") {
-          throw new TypeError("Expected string output for chaos naming test");
-        }
-        return [stepAttempt.output, stepAttempt.stepName];
+        return [z.string().parse(stepAttempt.output), stepAttempt.stepName];
       }),
     );
 
@@ -245,9 +242,15 @@ describe("StepExecutor", () => {
     const worker = client.newWorker();
     // Use deadline to force immediate failure without retries
     const handle = await workflow.run({}, { deadlineAt: new Date() });
-    await worker.tick();
-    await sleep(100);
+    const status = await tickUntilTerminal(
+      backend,
+      worker,
+      handle.workflowRun.id,
+      200,
+      10,
+    );
 
+    expect(status).toBe("failed");
     await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
   });
 
@@ -294,17 +297,16 @@ describe("StepExecutor", () => {
     const handle = await workflow.run();
     const worker = client.newWorker();
 
-    // First tick - hits sleep
     await worker.tick();
-    await sleep(200); // Wait for tick to complete
-    const parked = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(parked?.status).toBe("running");
-    expect(parked?.workerId).toBeNull();
+    const parked = await waitForParkedWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+    );
+    expect(parked.status).toBe("running");
+    expect(parked.workerId).toBeNull();
 
     // Wait for sleep to elapse
-    await sleep(50);
+    await sleepUntilAfter(parked.availableAt);
 
     // Second tick - completes
     await worker.tick();
@@ -728,7 +730,7 @@ describe("StepExecutor", () => {
           { name: `workflow-child-invalid-timeout-duration-${randomUUID()}` },
           undefined,
           {
-            timeout: "not-a-duration" as DurationString,
+            timeout: "not-a-duration",
           },
         );
         return "never";
@@ -1710,6 +1712,8 @@ describe("StepExecutor", () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
     const lateStepName = "late-after-park";
+    const releaseLateBranch = Promise.withResolvers<boolean>();
+    const lateBranchFinished = Promise.withResolvers<boolean>();
 
     const workflow = client.defineWorkflow(
       { name: `workflow-stale-branch-fence-${randomUUID()}` },
@@ -1717,8 +1721,12 @@ describe("StepExecutor", () => {
         await Promise.all([
           step.sleep("park-now", "600ms"),
           (async () => {
-            await sleep(200);
-            await step.run({ name: lateStepName }, () => "late-result");
+            try {
+              await releaseLateBranch.promise;
+              await step.run({ name: lateStepName }, () => "late-result");
+            } finally {
+              lateBranchFinished.resolve(true);
+            }
           })(),
         ]);
 
@@ -1730,8 +1738,8 @@ describe("StepExecutor", () => {
     const handle = await workflow.run();
     await tickUntilParked(backend, worker, handle.workflowRun.id, 200, 10);
 
-    // Give the late branch enough time to continue after the parent is parked.
-    await sleep(250);
+    releaseLateBranch.resolve(true);
+    await lateBranchFinished.promise;
 
     const attemptsWhileParked = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -1762,6 +1770,103 @@ describe("StepExecutor", () => {
     );
     expect(lateAttempts).toHaveLength(1);
     expect(lateAttempts[0]?.status).toBe("completed");
+  });
+
+  test("fences child completion from a parked execution during replay", async () => {
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+    const linkStarted = Promise.withResolvers<void>();
+    const releaseLink = Promise.withResolvers<void>();
+    const lateBranchFinished = Promise.withResolvers<void>();
+
+    const child = client.defineWorkflow(
+      { name: `workflow-child-late-link-${randomUUID()}` },
+      () => 42,
+    );
+    const parent = client.defineWorkflow(
+      { name: `workflow-parent-late-link-${randomUUID()}` },
+      async ({ step }) => {
+        const [result] = await Promise.all([
+          step.runWorkflow(child.workflow.spec).finally(() => {
+            lateBranchFinished.resolve();
+          }),
+          (async () => {
+            await linkStarted.promise;
+            await step.sleep("park", "0ms");
+          })(),
+        ]);
+        return result;
+      },
+    );
+
+    const originalLink = backend.setStepAttemptChildWorkflowRun.bind(backend);
+    const linkSpy = vi
+      .spyOn(backend, "setStepAttemptChildWorkflowRun")
+      .mockImplementationOnce(async (params) => {
+        linkStarted.resolve();
+        await releaseLink.promise;
+        return await originalLink(params);
+      });
+
+    try {
+      const handle = await parent.run();
+      const workerId = randomUUID();
+      const claimedParent = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 5000,
+      });
+      if (!claimedParent) throw new Error("Expected parent to be claimed");
+      expect(claimedParent.id).toBe(handle.workflowRun.id);
+
+      await executeWorkflow({
+        backend,
+        workflowRun: claimedParent,
+        workflowFn: parent.workflow.fn,
+        workflowVersion: null,
+        workerId,
+        retryPolicy: { ...DEFAULT_WORKFLOW_RETRY_POLICY, maximumAttempts: 1 },
+      });
+
+      const childWorkerId = randomUUID();
+      const claimedChild = await backend.claimWorkflowRun({
+        workerId: childWorkerId,
+        leaseDurationMs: 5000,
+      });
+      if (!claimedChild) throw new Error("Expected child to be claimed");
+      expect(claimedChild.workflowName).toBe(child.workflow.spec.name);
+      await backend.completeWorkflowRun({
+        workflowRunId: claimedChild.id,
+        workerId: childWorkerId,
+        output: 42,
+      });
+
+      // Reuse the worker slot while the previous pass still has a pending write.
+      const replay = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 5000,
+      });
+      if (!replay) throw new Error("Expected parent replay to be claimed");
+      expect(replay.id).toBe(handle.workflowRun.id);
+
+      await executeWorkflow({
+        backend,
+        workflowRun: replay,
+        workflowFn: async (params) => {
+          // History has been loaded without the pending child linkage.
+          releaseLink.resolve();
+          await lateBranchFinished.promise;
+          return await parent.workflow.fn(params);
+        },
+        workflowVersion: null,
+        workerId,
+        retryPolicy: { ...DEFAULT_WORKFLOW_RETRY_POLICY, maximumAttempts: 1 },
+      });
+
+      await expect(handle.result()).resolves.toBe(42);
+    } finally {
+      releaseLink.resolve();
+      linkSpy.mockRestore();
+    }
   });
 
   test("supports parallel workflows via Promise.all", async () => {
@@ -2941,11 +3046,7 @@ describe("StepExecutor", () => {
     await tickUntilParked(backend, worker, handle.workflowRun.id, 20, 50);
 
     // force re-execution by resetting availableAt to now via direct SQL.
-    const pg = (
-      backend as unknown as {
-        pg: { unsafe: (q: string, p?: unknown[]) => Promise<unknown> };
-      }
-    ).pg;
+    const pg = backend["pg"];
     await pg.unsafe(
       `UPDATE "openworkflow"."workflow_runs" SET "available_at" = NOW() WHERE "id" = $1`,
       [handle.workflowRun.id],
@@ -3321,10 +3422,10 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3347,9 +3448,6 @@ describe("executeWorkflow", () => {
       expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
       expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
       expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT + 1);
-      if (typeof failCall.error.message !== "string") {
-        throw new TypeError("Expected step-limit message to be a string");
-      }
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
     });
 
@@ -3395,11 +3493,11 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           completeWorkflowRun,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3413,6 +3511,104 @@ describe("executeWorkflow", () => {
       expect(workflowFn).toHaveBeenCalledTimes(1);
       expect(completeWorkflowRun).toHaveBeenCalledTimes(1);
       expect(failWorkflowRun).not.toHaveBeenCalled();
+    });
+
+    test("completes workflow with 1000 steps efficiently without per-step cache copies", async () => {
+      const stepNamesByAttemptId = new Map<string, string>();
+      const listStepAttempts = vi.fn(() =>
+        Promise.resolve({
+          data: [],
+          pagination: { next: null, prev: null },
+        }),
+      );
+      const createStepAttempt = vi.fn(
+        (params: Parameters<Backend["createStepAttempt"]>[0]) => {
+          const createdId = `created-${params.stepName}`;
+          stepNamesByAttemptId.set(createdId, params.stepName);
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: createdId,
+              stepName: params.stepName,
+              kind: params.kind,
+              status: "running",
+              output: null,
+              finishedAt: null,
+            }),
+          );
+        },
+      );
+      const completeStepAttempt = vi.fn(
+        (params: Parameters<Backend["completeStepAttempt"]>[0]) => {
+          const stepName = stepNamesByAttemptId.get(params.stepAttemptId);
+          if (!stepName) {
+            throw new Error(`Missing step name for ${params.stepAttemptId}`);
+          }
+          return Promise.resolve(
+            createMockStepAttempt({
+              id: params.stepAttemptId,
+              stepName,
+              status: "completed",
+              output: params.output ?? null,
+            }),
+          );
+        },
+      );
+      const completeWorkflowRun = vi.fn(
+        (params: Parameters<Backend["completeWorkflowRun"]>[0]) =>
+          Promise.resolve(
+            createMockWorkflowRun({
+              id: params.workflowRunId,
+              status: "completed",
+              workerId: params.workerId,
+              output: params.output ?? null,
+            }),
+          ),
+      );
+      const failWorkflowRun = vi.fn();
+
+      const workflowFn = vi.fn(
+        async ({ step }: WorkflowFunctionParams<unknown>) => {
+          for (let i = 0; i < WORKFLOW_STEP_LIMIT; i++) {
+            await step.run({ name: `perf-step-${String(i)}` }, () => ({
+              index: i,
+            }));
+          }
+          return "all-1000-steps-completed";
+        },
+      );
+      const workflowRun = createMockWorkflowRun({
+        id: "run-1000-steps-perf",
+        workerId: "worker-1000-perf",
+      });
+
+      const start = performance.now();
+      await executeWorkflow({
+        backend: createStubBackend({
+          listStepAttempts,
+          createStepAttempt,
+          completeStepAttempt,
+          completeWorkflowRun,
+          failWorkflowRun,
+        }),
+        workflowRun,
+        workflowFn,
+        workflowVersion: null,
+        workerId: "worker-1000-perf",
+        retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
+      });
+      const durationMs = performance.now() - start;
+
+      expect(workflowFn).toHaveBeenCalledTimes(1);
+      expect(createStepAttempt).toHaveBeenCalledTimes(WORKFLOW_STEP_LIMIT);
+      expect(completeStepAttempt).toHaveBeenCalledTimes(WORKFLOW_STEP_LIMIT);
+      expect(completeWorkflowRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          output: "all-1000-steps-completed",
+        }),
+      );
+      expect(failWorkflowRun).not.toHaveBeenCalled();
+      // Verifying linear fast execution time
+      expect(durationMs).toBeLessThan(5000);
     });
 
     test("fails terminally when new steps would exceed the step limit", async () => {
@@ -3490,12 +3686,12 @@ describe("executeWorkflow", () => {
       );
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           createStepAttempt,
           completeStepAttempt,
           failWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn,
         workflowVersion: null,
@@ -3518,9 +3714,6 @@ describe("executeWorkflow", () => {
       expect(failCall.error["code"]).toBe(STEP_LIMIT_EXCEEDED_ERROR_CODE);
       expect(failCall.error["limit"]).toBe(WORKFLOW_STEP_LIMIT);
       expect(failCall.error["stepCount"]).toBe(WORKFLOW_STEP_LIMIT);
-      if (typeof failCall.error.message !== "string") {
-        throw new TypeError("Expected step-limit message to be a string");
-      }
       expect(failCall.error.message).toMatch(/exceeded the step limit/i);
     });
 
@@ -3554,11 +3747,11 @@ describe("executeWorkflow", () => {
 
       await expect(
         executeWorkflow({
-          backend: {
+          backend: createStubBackend({
             listStepAttempts,
             failWorkflowRun,
             getWorkflowRun,
-          } as unknown as Backend,
+          }),
           workflowRun,
           workflowFn,
           workflowVersion: null,
@@ -3588,9 +3781,15 @@ describe("executeWorkflow", () => {
       const worker = client.newWorker();
       // Use deadline to skip retries - fails with deadline exceeded
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
     });
 
@@ -3610,9 +3809,15 @@ describe("executeWorkflow", () => {
 
       const worker = client.newWorker();
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow(/deadline exceeded/);
     });
 
@@ -3624,7 +3829,7 @@ describe("executeWorkflow", () => {
         { name: "non-error-workflow" },
         async ({ step }) => {
           await step.run({ name: "throw-object" }, () => {
-            // eslint-disable-next-line @typescript-eslint/only-throw-error
+            // oxlint-disable-next-line typescript/only-throw-error
             throw { custom: "error", code: 500 };
           });
           return "nope";
@@ -3633,9 +3838,15 @@ describe("executeWorkflow", () => {
 
       const worker = client.newWorker();
       const handle = await workflow.run({}, { deadlineAt: new Date() });
-      await worker.tick();
-      await sleep(100);
+      const status = await tickUntilTerminal(
+        backend,
+        worker,
+        handle.workflowRun.id,
+        200,
+        10,
+      );
 
+      expect(status).toBe("failed");
       await expect(handle.result()).rejects.toThrow();
     });
   });
@@ -3656,13 +3867,12 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run();
       const worker = client.newWorker();
       await worker.tick();
-      await sleep(200);
-
-      const workflowRun = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(workflowRun?.status).toBe("running");
-      expect(workflowRun?.workerId).toBeNull();
+      const workflowRun = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      expect(workflowRun.status).toBe("running");
+      expect(workflowRun.workerId).toBeNull();
     });
 
     test("resumes workflow after sleep duration", async () => {
@@ -3681,18 +3891,16 @@ describe("executeWorkflow", () => {
       const handle = await workflow.run({ value: 5 });
       const worker = client.newWorker();
 
-      // first tick - hits sleep
       await worker.tick();
-      await sleep(200);
-
-      const parked = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(parked?.status).toBe("running");
-      expect(parked?.workerId).toBeNull();
+      const parked = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      expect(parked.status).toBe("running");
+      expect(parked.workerId).toBeNull();
 
       // wait for sleep
-      await sleep(50);
+      await sleepUntilAfter(parked.availableAt);
 
       await worker.tick();
 
@@ -3917,18 +4125,17 @@ describe("executeWorkflow", () => {
     test("keeps run metadata frozen at runtime", async () => {
       const backend = await createTestBackend();
       const client = new OpenWorkflow({ backend });
-      let mutationError: unknown = null;
 
       const workflow = client.defineWorkflow(
         { name: "run-frozen" },
         async ({ run, step }) => {
           await step.run({ name: "mutate-run" }, () => {
             try {
-              Object.assign(run as unknown as Record<string, unknown>, {
+              Object.assign(run, {
                 id: "mutated",
               });
             } catch (error) {
-              mutationError = error;
+              expect(error).toBeInstanceOf(TypeError);
             }
             return null;
           });
@@ -3942,9 +4149,6 @@ describe("executeWorkflow", () => {
 
       const result = await handle.result();
       expect(result).toBe(handle.workflowRun.id);
-      if (mutationError !== null) {
-        expect(mutationError).toBeInstanceOf(TypeError);
-      }
     });
 
     test("keeps id and timestamps stable across replay", async () => {
@@ -3972,7 +4176,11 @@ describe("executeWorkflow", () => {
       const worker = client.newWorker();
       const handle = await workflow.run();
       await worker.tick();
-      await sleep(200);
+      const parked = await waitForParkedWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+      );
+      await sleepUntilAfter(parked.availableAt);
       await worker.tick();
       await handle.result();
 
@@ -4029,12 +4237,12 @@ describe("executeWorkflow", () => {
       });
 
       await executeWorkflow({
-        backend: {
+        backend: createStubBackend({
           listStepAttempts,
           sendSignal: sendSignalMock,
           completeStepAttempt,
           completeWorkflowRun,
-        } as unknown as Backend,
+        }),
         workflowRun,
         workflowFn: async ({ step }) => {
           const result = await step.sendSignal({
@@ -4048,7 +4256,11 @@ describe("executeWorkflow", () => {
         retryPolicy: DEFAULT_WORKFLOW_RETRY_POLICY,
       });
 
-      expect(sendSignalMock).toHaveBeenCalled();
+      expect(sendSignalMock).toHaveBeenCalledWith({
+        signal: "notify",
+        data: { v: 1 },
+        idempotencyKey: "__signal:signal-send-resume-run:notify",
+      });
       expect(completeStepAttempt).toHaveBeenCalledWith(
         expect.objectContaining({ stepAttemptId: "running-signal-send" }),
       );
@@ -4124,7 +4336,9 @@ describe("createStepExecutionStateFromAttempts", () => {
 });
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function sleepUntilAfter(date: Date): Promise<void> {
@@ -4212,6 +4426,7 @@ async function tickUntilParked(
       run.workerId === null &&
       run.availableAt !== null
     ) {
+      // safety: the checks above establish running status, no worker, and a non-null availableAt.
       return run as ParkedWorkflowRun;
     }
     if (claimedCount === 0) {
@@ -4221,6 +4436,31 @@ async function tickUntilParked(
 
   throw new Error(
     `Timed out waiting for workflow run ${workflowRunId} to park`,
+  );
+}
+
+async function waitForParkedWorkflowRun(
+  backend: BackendPostgres,
+  workflowRunId: string,
+): Promise<ParkedWorkflowRun> {
+  const startedAt = Date.now();
+  let latest: WorkflowRun | null;
+
+  do {
+    latest = await backend.getWorkflowRun({ workflowRunId });
+    if (
+      latest?.status === "running" &&
+      latest.workerId === null &&
+      latest.availableAt !== null
+    ) {
+      // safety: the checks above establish running status, no worker, and a non-null availableAt.
+      return latest as ParkedWorkflowRun;
+    }
+    await sleep(10);
+  } while (Date.now() - startedAt < 3000);
+
+  throw new Error(
+    `Timed out waiting for workflow run ${workflowRunId} to park; last status was ${latest?.status ?? "missing"}`,
   );
 }
 

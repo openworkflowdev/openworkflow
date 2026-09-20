@@ -24,8 +24,7 @@ export function computeBackoffDelayMs(
   const maximumIntervalMs = parseBackoffIntervalMs(policy.maximumInterval);
 
   const exponentialBackoffMs =
-    initialIntervalMs *
-    Math.pow(policy.backoffCoefficient, Math.max(0, attempt - 1));
+    initialIntervalMs * policy.backoffCoefficient ** Math.max(0, attempt - 1);
 
   return Math.min(exponentialBackoffMs, maximumIntervalMs);
 }

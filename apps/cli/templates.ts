@@ -1,3 +1,5 @@
+import path from "node:path";
+
 export const SQLITE_CLIENT = `import { BackendSqlite } from "openworkflow/sqlite";
 import { OpenWorkflow } from "openworkflow";
 
@@ -25,15 +27,22 @@ export const backend =
 export const ow = new OpenWorkflow({ backend });
 `;
 
-export const CONFIG = `import { backend } from "./openworkflow/client.js";
+/**
+ * Render config paths relative to the config file's directory.
+ * @param clientImport - Relative import path to the scaffolded client.
+ * @returns The config template string.
+ */
+export function getConfigTemplate(clientImport: string): string {
+  return `import { backend } from ${JSON.stringify(clientImport)};
 import { defineConfig } from "@openworkflow/cli";
 
 export default defineConfig({
   backend,
-  dirs: "./openworkflow",
+  dirs: ${JSON.stringify(path.posix.dirname(clientImport))},
   ignorePatterns: ["**/*.run.*"],
 });
 `;
+}
 
 export const HELLO_WORLD_WORKFLOW = `import { defineWorkflow } from "openworkflow";
 

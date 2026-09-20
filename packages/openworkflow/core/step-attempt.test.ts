@@ -128,37 +128,37 @@ describe("getCachedStepAttempt", () => {
 
 describe("addToStepAttemptCache", () => {
   test("adds attempt to empty cache", () => {
-    const cache: StepAttemptCache = new Map();
+    const cache = new Map<string, StepAttempt>();
     const attempt = createMockStepAttempt({ stepName: "new-step" });
 
-    const newCache = addToStepAttemptCache(cache, attempt);
+    addToStepAttemptCache(cache, attempt);
 
-    expect(newCache.size).toBe(1);
-    expect(newCache.get("new-step")).toBe(attempt);
+    expect(cache.size).toBe(1);
+    expect(cache.get("new-step")).toBe(attempt);
   });
 
   test("adds attempt to existing cache", () => {
     const existing = createMockStepAttempt({ stepName: "existing-step" });
-    const cache: StepAttemptCache = new Map([["existing-step", existing]]);
+    const cache = new Map<string, StepAttempt>([["existing-step", existing]]);
     const newAttempt = createMockStepAttempt({ stepName: "new-step" });
 
-    const newCache = addToStepAttemptCache(cache, newAttempt);
+    addToStepAttemptCache(cache, newAttempt);
 
-    expect(newCache.size).toBe(2);
-    expect(newCache.get("existing-step")).toBe(existing);
-    expect(newCache.get("new-step")).toBe(newAttempt);
+    expect(cache.size).toBe(2);
+    expect(cache.get("existing-step")).toBe(existing);
+    expect(cache.get("new-step")).toBe(newAttempt);
   });
 
-  test("does not mutate original cache (immutable)", () => {
+  test("mutates original cache in place", () => {
     const existing = createMockStepAttempt({ stepName: "existing-step" });
-    const cache: StepAttemptCache = new Map([["existing-step", existing]]);
+    const cache = new Map<string, StepAttempt>([["existing-step", existing]]);
     const newAttempt = createMockStepAttempt({ stepName: "new-step" });
 
-    const newCache = addToStepAttemptCache(cache, newAttempt);
+    addToStepAttemptCache(cache, newAttempt);
 
-    expect(cache.size).toBe(1);
-    expect(cache.has("new-step")).toBe(false);
-    expect(newCache.size).toBe(2);
+    expect(cache.size).toBe(2);
+    expect(cache.has("new-step")).toBe(true);
+    expect(cache.get("new-step")).toBe(newAttempt);
   });
 
   test("overwrites existing entry with same step name", () => {
@@ -166,16 +166,16 @@ describe("addToStepAttemptCache", () => {
       stepName: "step",
       output: "original",
     });
-    const cache: StepAttemptCache = new Map([["step", original]]);
+    const cache = new Map<string, StepAttempt>([["step", original]]);
     const replacement = createMockStepAttempt({
       stepName: "step",
       output: "replacement",
     });
 
-    const newCache = addToStepAttemptCache(cache, replacement);
+    addToStepAttemptCache(cache, replacement);
 
-    expect(newCache.size).toBe(1);
-    expect(newCache.get("step")?.output).toBe("replacement");
+    expect(cache.size).toBe(1);
+    expect(cache.get("step")?.output).toBe("replacement");
   });
 });
 
@@ -201,7 +201,7 @@ describe("normalizeStepOutput", () => {
   });
 
   test("converts undefined to null", () => {
-    // eslint-disable-next-line unicorn/no-useless-undefined
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     expect(normalizeStepOutput(undefined)).toBeNull();
   });
 

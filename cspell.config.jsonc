@@ -20,13 +20,15 @@
     "arktype",
     "bullmq",
     "bunx",
+    "inngest",
     "Mintlify",
     "nypm",
     "openworkflow",
+    "oxlint",
     "pghero",
     "posthog",
-    "sonarjs",
     "trivago",
+    "tsgolint",
 
     // postgres
     "hashtextextended",
@@ -46,7 +48,11 @@
     "wakeups",
 
     // usernames & contributor names
+    "Andres6936",
     "cfelegy",
+    "dmmulroy",
+    "joeruello",
+    "kunaldevxxx",
     "mariusflorescu",
     "Nagpal",
     "nathancahill",

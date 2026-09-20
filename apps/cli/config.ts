@@ -1,4 +1,4 @@
-import { createJiti } from "jiti";
+import { createModuleLoader } from "./module-loader.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -43,7 +43,6 @@ interface LoadedConfig {
 
 const CONFIG_NAME = "openworkflow.config";
 const CONFIG_EXTENSIONS = ["ts", "mts", "cts", "js", "mjs", "cjs"] as const;
-const jiti = createJiti(import.meta.url, { tryNative: false }); // bun compatibility
 
 /**
  * Load OpenWorkflow config from an explicit path.
@@ -70,17 +69,27 @@ export async function loadConfigFromPath(
  * @returns The loaded configuration and metadata
  */
 export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
-  let currentDir = path.resolve(startDir ?? process.cwd());
+  const configFile = findConfigFile(startDir);
+  return configFile ? importConfigFile(configFile) : getEmptyLoadedConfig();
+}
+
+/**
+ * Find the nearest config without executing it, so its environment can load first.
+ * @param startDir - Directory to search from
+ * @returns Config path, if found
+ */
+export function findConfigFile(startDir = process.cwd()): string | undefined {
+  let currentDir = path.resolve(startDir);
 
   // search up the directory tree
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  // oxlint-disable-next-line typescript/no-unnecessary-condition
   while (true) {
     for (const ext of CONFIG_EXTENSIONS) {
       const fileName = `${CONFIG_NAME}.${ext}`;
       const filePath = path.join(currentDir, fileName);
 
       if (existsSync(filePath)) {
-        return await importConfigFile(filePath);
+        return filePath;
       }
     }
 
@@ -93,7 +102,7 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
     currentDir = parentDir;
   }
 
-  return getEmptyLoadedConfig();
+  return undefined;
 }
 
 /**
@@ -103,17 +112,28 @@ export async function loadConfig(startDir?: string): Promise<LoadedConfig> {
  */
 async function importConfigFile(filePath: string): Promise<LoadedConfig> {
   try {
+    const jiti = createModuleLoader(filePath, { tryNative: false }); // bun compatibility
     const fileUrl = pathToFileURL(filePath).href;
-    const config = await jiti.import<OpenWorkflowConfig>(fileUrl, {
+    const config = await jiti.import(fileUrl, {
       default: true,
     });
 
+    // oxlint-disable-next-line anti-slop/no-runtime-typeof -- imported JS configs need a runtime object check
+    if (typeof config !== "object" || config === null) {
+      throw new Error("Config must export an object.");
+    }
     return {
-      config,
+      // safety: config modules are trusted application code; command entrypoints handle missing backend configuration.
+      config: config as OpenWorkflowConfig,
       configFile: filePath,
     };
   } catch (error: unknown) {
-    throw new Error(`Failed to load config file ${filePath}: ${String(error)}`);
+    throw new Error(
+      `Failed to load config file ${filePath}: ${String(error)}`,
+      {
+        cause: error,
+      },
+    );
   }
 }
 
@@ -126,7 +146,8 @@ function getEmptyLoadedConfig(): LoadedConfig {
     // not great, but meant to match the c12 api since that is what was used in
     // the initial implementation of loadConfig
     // this can be easily refactored later
-    config: {} as unknown as OpenWorkflowConfig,
+    // safety: the empty object is the legacy no-config sentinel; callers handle missing backend configuration.
+    config: {} as OpenWorkflowConfig,
     configFile: undefined, // no config found
   };
 }

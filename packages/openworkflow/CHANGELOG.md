@@ -1,5 +1,19 @@
 # openworkflow
 
+## 0.10.1
+
+- Fix `result()` returning a timeout error when polling finds a completed,
+  failed, or canceled workflow run (#767) (thanks @kunaldevxxx!)
+- Stop copying the full step cache after each step completes (#768)
+  (thanks @kunaldevxxx!)
+
+## 0.10.0
+
+- Add [OpenTelemetry tracing](https://openworkflow.dev/docs/opentelemetry) for
+  workflow creation, execution, cancellation, step callbacks, and signal sends
+  (#764) (thanks @joeruello!)
+- Fix workflow registration collisions when names or versions contain `@`
+
 ## 0.9.2
 
 - Prevent stale worker writes after workflow lease transfers in PostgreSQL and

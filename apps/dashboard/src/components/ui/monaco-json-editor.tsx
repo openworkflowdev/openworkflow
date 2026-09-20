@@ -38,7 +38,7 @@ export function MonacoJsonEditor({
 
   const editorHeight = useMemo(() => {
     const lines = Math.min(Math.max(lineCount(value) + 1, minLines), maxLines);
-    return (lines * LINE_HEIGHT).toString() + "px";
+    return `${(lines * LINE_HEIGHT).toString()}px`;
   }, [maxLines, minLines, value]);
 
   return (

@@ -5,6 +5,7 @@ import type { RetryPolicy, Workflow } from "../core/workflow-definition.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import { WorkflowRegistry } from "../core/workflow-registry.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
+import { bindActiveTraceContext, withoutActiveSpan } from "../telemetry.js";
 import { executeWorkflow } from "./execution.js";
 import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
@@ -73,7 +74,8 @@ export class Worker {
     if (this.running) return;
     this.running = true;
     this.backoffAttempts = 0;
-    this.loopPromise = this.runLoop();
+    // Background polls should not accumulate in the trace that started the worker.
+    this.loopPromise = withoutActiveSpan(() => this.runLoop());
     await Promise.resolve();
   }
 
@@ -215,9 +217,6 @@ export class Worker {
     execution: WorkflowExecution,
     workflow: Workflow<unknown, unknown, unknown>,
   ): Promise<void> {
-    // start heartbeating
-    execution.startHeartbeat();
-
     try {
       await executeWorkflow({
         backend: this.backend,
@@ -226,6 +225,9 @@ export class Worker {
         workflowVersion: execution.workflowRun.version,
         workerId: execution.workerId,
         retryPolicy: resolveRetryPolicy(workflow.spec.retryPolicy),
+        onExecutionStart: () => {
+          execution.startHeartbeat();
+        },
       });
     } catch (error) {
       // specifically for unexpected errors in the execution wrapper itself, not
@@ -271,17 +273,20 @@ class WorkflowExecution {
     const leaseDurationMs = DEFAULT_LEASE_DURATION_MS;
     const heartbeatIntervalMs = leaseDurationMs / 2;
 
-    this.heartbeatTimer = setInterval(() => {
-      this.backend
-        .extendWorkflowRunLease({
-          workflowRunId: this.workflowRun.id,
-          workerId: this.workerId,
-          leaseDurationMs,
-        })
-        .catch((error: unknown) => {
-          console.error("Heartbeat failed:", error);
-        });
-    }, heartbeatIntervalMs);
+    this.heartbeatTimer = setInterval(
+      bindActiveTraceContext(() => {
+        this.backend
+          .extendWorkflowRunLease({
+            workflowRunId: this.workflowRun.id,
+            workerId: this.workerId,
+            leaseDurationMs,
+          })
+          .catch((cause: unknown) => {
+            console.error("Heartbeat failed:", cause);
+          });
+      }),
+      heartbeatIntervalMs,
+    );
   }
 
   /**
@@ -301,7 +306,9 @@ class WorkflowExecution {
  * @returns Promise resolved after sleeping
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 /**

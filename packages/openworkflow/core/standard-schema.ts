@@ -4,7 +4,7 @@ export interface StandardSchemaV1<Input = unknown, Output = Input> {
   readonly "~standard": StandardSchemaV1.Props<Input, Output>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-namespace
+// oxlint-disable-next-line typescript/no-namespace
 export declare namespace StandardSchemaV1 {
   /** The Standard Schema properties interface. */
   export interface Props<Input = unknown, Output = Input> {
@@ -14,6 +14,7 @@ export declare namespace StandardSchemaV1 {
     readonly vendor: string;
     /** Validates unknown input values. */
     readonly validate: (
+      // oxlint-disable-next-line anti-slop/no-unknown-parameters -- standard schema validators must accept input before validation
       value: unknown,
     ) => Result<Output> | Promise<Result<Output>>;
     /** Inferred types associated with the schema. */

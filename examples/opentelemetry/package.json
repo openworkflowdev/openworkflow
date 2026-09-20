@@ -1,0 +1,22 @@
+{
+  "name": "example-opentelemetry",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx --import ./instrumentation.ts index.ts"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/instrumentation": "^0.222.0",
+    "@opentelemetry/instrumentation-http": "^0.222.0",
+    "@opentelemetry/instrumentation-undici": "^0.32.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
+    "@opentelemetry/sdk-trace-base": "^2.11.0",
+    "@sentry/node-core": "^10.75.0",
+    "openworkflow": "*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13"
+  }
+}

@@ -40,7 +40,6 @@ const summarizeDoc = ow.defineWorkflow(
       await randomSleep();
 
       // fail 50% of the time to demonstrate retries
-      // eslint-disable-next-line sonarjs/pseudo-random
       if (Math.random() < 0.5) {
         console.log(`[${input.num}] ⚠️ Simulated failure during summarization`);
         throw new Error("Simulated summarization error");
@@ -82,7 +81,7 @@ async function main() {
   await worker.start();
 
   console.log(`Running ${String(n)} workflows...`);
-  const runCreatePromises = [] as Promise<unknown>[];
+  const runCreatePromises: ReturnType<typeof summarizeDoc.run>[] = [];
   for (let i = 0; i < n; i++) {
     runCreatePromises.push(
       summarizeDoc.run({
@@ -94,9 +93,7 @@ async function main() {
   }
 
   // wait for all run handles to be created
-  const runHandles = (await Promise.all(runCreatePromises)) as {
-    result: () => ReturnType<typeof summarizeDoc.run>;
-  }[];
+  const runHandles = await Promise.all(runCreatePromises);
 
   // collect result promises, attach logging to each
   const resultPromises = runHandles.map((h, idx) =>
@@ -108,9 +105,9 @@ async function main() {
         );
         return { status: "fulfilled" as const, value: output };
       })
-      .catch((error: unknown) => {
-        console.error(`❌ Workflow run ${String(idx + 1)} failed:`, error);
-        return { status: "rejected" as const, reason: error };
+      .catch((cause: unknown) => {
+        console.error(`❌ Workflow run ${String(idx + 1)} failed:`, cause);
+        return { status: "rejected" as const, reason: cause };
       }),
   );
 
@@ -126,13 +123,14 @@ async function main() {
   console.log("Done.");
 }
 
-await main().catch((error: unknown) => {
-  console.error(error);
+await main().catch((cause: unknown) => {
+  console.error(cause);
   process.exitCode = 1;
 });
 
 function randomSleep() {
-  // eslint-disable-next-line sonarjs/pseudo-random
   const sleepDurationMs = Math.floor(Math.random() * 1000) * 5;
-  return new Promise((resolve) => setTimeout(resolve, sleepDurationMs));
+  return new Promise((resolve) => {
+    setTimeout(resolve, sleepDurationMs);
+  });
 }

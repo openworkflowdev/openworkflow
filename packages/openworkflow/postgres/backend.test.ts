@@ -1,3 +1,4 @@
+import type { StepAttempt } from "../core/step-attempt.js";
 import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
@@ -21,7 +22,7 @@ interface StepMutationContext {
 
 interface StepMutationCase {
   name: string;
-  mutate: (context: StepMutationContext) => Promise<unknown>;
+  mutate: (context: StepMutationContext) => Promise<StepAttempt>;
 }
 
 const STEP_MUTATION_CASES: StepMutationCase[] = [
@@ -72,15 +73,13 @@ async function waitForPostgresBackendLock(
     `;
     if (activity?.waitEventType === "Lock") return;
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   }
 
   throw new Error("Timed out waiting for Postgres backend lock");
 }
-
-test("it is a test file (workaround for sonarjs/no-empty-test-file linter)", () => {
-  expect(testBackend).toBeTypeOf("function");
-});
 
 testBackend({
   setup: async () => {
@@ -280,71 +279,86 @@ describe("BackendPostgres idempotency advisory locks", () => {
     const connectionError = Object.assign(new Error("connection closed"), {
       errno: "CONNECTION_CLOSED",
     });
-    const reserved = {
-      unsafe: vi.fn((query: string) =>
-        query.startsWith("SELECT")
-          ? Promise.reject(connectionError)
-          : Promise.resolve([]),
-      ),
-      release: vi.fn(),
-    };
-    const pg = {
-      reserve: () => Promise.resolve(reserved),
-    } as unknown as Postgres;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const reserved = await pg.reserve();
+    const unsafe = reserved.unsafe.bind(reserved);
+    const executeQuery = vi
+      .spyOn(reserved, "unsafe")
+      .mockImplementation((query, ...args) => {
+        if (query.startsWith("SELECT")) throw connectionError;
+        return unsafe(query, ...args);
+      });
+    const release = vi.spyOn(reserved, "release");
+    vi.spyOn(pg, "reserve").mockResolvedValue(reserved);
     const backend = BackendPostgres.fromPool(pg);
 
-    await expect(
-      backend.createWorkflowRun({
-        workflowName: randomUUID(),
-        version: null,
-        idempotencyKey: randomUUID(),
-        input: null,
-        config: {},
-        context: null,
-        parentStepAttemptNamespaceId: null,
-        parentStepAttemptId: null,
-        availableAt: null,
-        deadlineAt: null,
-      }),
-    ).rejects.toBe(connectionError);
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toBe(connectionError);
 
-    expect(reserved.unsafe).not.toHaveBeenCalledWith("ROLLBACK");
-    expect(reserved.release).not.toHaveBeenCalled();
+      expect(executeQuery).not.toHaveBeenCalledWith("ROLLBACK");
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      executeQuery.mockRestore();
+      await reserved.unsafe("ROLLBACK");
+      reserved.release();
+      await pg.end();
+    }
   });
 
   test("does not release a reserved connection after a rollback error", async () => {
     const transactionError = new Error("transaction failed");
     const rollbackError = new Error("rollback failed");
-    const reserved = {
-      unsafe: vi.fn((query: string) => {
-        if (query.startsWith("SELECT")) return Promise.reject(transactionError);
-        if (query === "ROLLBACK") return Promise.reject(rollbackError);
-        return Promise.resolve([]);
-      }),
-      release: vi.fn(),
-    };
-    const pg = {
-      reserve: () => Promise.resolve(reserved),
-    } as unknown as Postgres;
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const reserved = await pg.reserve();
+    const unsafe = reserved.unsafe.bind(reserved);
+    const executeQuery = vi
+      .spyOn(reserved, "unsafe")
+      .mockImplementation((query, ...args) => {
+        if (query.startsWith("SELECT")) throw transactionError;
+        if (query === "ROLLBACK") throw rollbackError;
+        return unsafe(query, ...args);
+      });
+    const release = vi.spyOn(reserved, "release");
+    vi.spyOn(pg, "reserve").mockResolvedValue(reserved);
     const backend = BackendPostgres.fromPool(pg);
 
-    await expect(
-      backend.createWorkflowRun({
-        workflowName: randomUUID(),
-        version: null,
-        idempotencyKey: randomUUID(),
-        input: null,
-        config: {},
-        context: null,
-        parentStepAttemptNamespaceId: null,
-        parentStepAttemptId: null,
-        availableAt: null,
-        deadlineAt: null,
-      }),
-    ).rejects.toBe(transactionError);
+    try {
+      await expect(
+        backend.createWorkflowRun({
+          workflowName: randomUUID(),
+          version: null,
+          idempotencyKey: randomUUID(),
+          input: null,
+          config: {},
+          context: null,
+          parentStepAttemptNamespaceId: null,
+          parentStepAttemptId: null,
+          availableAt: null,
+          deadlineAt: null,
+        }),
+      ).rejects.toBe(transactionError);
 
-    expect(reserved.unsafe).toHaveBeenCalledWith("ROLLBACK");
-    expect(reserved.release).not.toHaveBeenCalled();
+      expect(executeQuery).toHaveBeenCalledWith("ROLLBACK");
+      expect(release).not.toHaveBeenCalled();
+    } finally {
+      executeQuery.mockRestore();
+      await reserved.unsafe("ROLLBACK");
+      reserved.release();
+      await pg.end();
+    }
   });
 });
 
@@ -604,12 +618,6 @@ describe("BackendPostgres JSON key preservation", () => {
         OPENAI_REASONING_EFFORT: "medium",
       },
     };
-    const transformedModelKey = "OPENAI_MODEL".replaceAll("_", "");
-    const transformedBaseUrlKey = "OPENAI_BASE_URL".replaceAll("_", "");
-    const transformedReasoningEffortKey = "OPENAI_REASONING_EFFORT".replaceAll(
-      "_",
-      "",
-    );
 
     try {
       const workflowRun = await backend.createWorkflowRun({
@@ -625,36 +633,12 @@ describe("BackendPostgres JSON key preservation", () => {
         deadlineAt: null,
       });
 
-      if (
-        !workflowRun.input ||
-        typeof workflowRun.input !== "object" ||
-        Array.isArray(workflowRun.input)
-      ) {
-        throw new Error("Expected workflow run input object");
-      }
-
-      const createEnv = (workflowRun.input as { env?: Record<string, string> })
-        .env;
-      if (!createEnv) throw new Error("Expected workflow run input env");
-      expect(createEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
-      expect(createEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
-      expect(createEnv["OPENAI_REASONING_EFFORT"]).toBe(
-        input.env.OPENAI_REASONING_EFFORT,
-      );
-      expect(createEnv[transformedModelKey]).toBeUndefined();
-      expect(createEnv[transformedBaseUrlKey]).toBeUndefined();
-      expect(createEnv[transformedReasoningEffortKey]).toBeUndefined();
+      expect(workflowRun.input).toEqual(input);
 
       const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
       try {
         const workflowRunsTable = pg`${pg(DEFAULT_SCHEMA)}.${pg("workflow_runs")}`;
-        const [record] = await pg<
-          {
-            input: {
-              env?: Record<string, string>;
-            };
-          }[]
-        >`
+        const [record] = await pg<{ input: typeof input }[]>`
           SELECT "input"
           FROM ${workflowRunsTable}
           WHERE "namespace_id" = ${namespaceId}
@@ -662,16 +646,7 @@ describe("BackendPostgres JSON key preservation", () => {
           LIMIT 1
         `;
 
-        const persistedEnv = record?.input.env;
-        if (!persistedEnv) throw new Error("Expected persisted workflow input");
-        expect(persistedEnv["OPENAI_MODEL"]).toBe(input.env.OPENAI_MODEL);
-        expect(persistedEnv["OPENAI_BASE_URL"]).toBe(input.env.OPENAI_BASE_URL);
-        expect(persistedEnv["OPENAI_REASONING_EFFORT"]).toBe(
-          input.env.OPENAI_REASONING_EFFORT,
-        );
-        expect(persistedEnv[transformedModelKey]).toBeUndefined();
-        expect(persistedEnv[transformedBaseUrlKey]).toBeUndefined();
-        expect(persistedEnv[transformedReasoningEffortKey]).toBeUndefined();
+        expect(record?.input).toEqual(input);
       } finally {
         await pg.end();
       }

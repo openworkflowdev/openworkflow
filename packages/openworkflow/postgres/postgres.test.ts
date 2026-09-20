@@ -65,6 +65,7 @@ describe("postgres", () => {
       const schema = "test_empty_migration_rows";
       const executedMigrations: string[] = [];
 
+      // safety: this migration path only calls unsafe; the fixture supplies all query results it reads.
       const fakePg = {
         unsafe: (query: string) => {
           if (query.includes("SELECT EXISTS")) {
@@ -76,7 +77,7 @@ describe("postgres", () => {
           executedMigrations.push(query);
           return Promise.resolve([]);
         },
-      } as unknown as Postgres;
+      } as Postgres;
 
       await migrate(fakePg, schema);
 

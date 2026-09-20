@@ -53,6 +53,7 @@ import {
   toISO,
   fromISO,
 } from "./sqlite.js";
+import type { SQLOutputValue } from "node:sqlite";
 
 interface BackendSqliteOptions {
   namespaceId?: string;
@@ -136,7 +137,7 @@ export class BackendSqlite implements Backend {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // oxlint-disable-next-line typescript/require-await
   async stop(): Promise<void> {
     this.db.close();
   }
@@ -226,6 +227,7 @@ export class BackendSqlite implements Backend {
       currentTime,
     );
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = this.db
       .prepare(
         `
@@ -235,7 +237,7 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `,
       )
-      .get(this.namespaceId, id) as WorkflowRunRow | undefined;
+      .get(this.namespaceId, id) as WorkflowRunRow | null | undefined;
     requireRow(row, "create workflow run");
 
     return rowToWorkflowRun(row);
@@ -257,12 +259,13 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       this.namespaceId,
       workflowName,
       idempotencyKey,
       toISO(createdAt),
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     return row ? rowToWorkflowRun(row) : null;
   }
 
@@ -274,8 +277,9 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(this.namespaceId, params.workflowRunId) as
-      WorkflowRunRow | undefined;
+      WorkflowRunRow | null | undefined;
 
     return Promise.resolve(row ? rowToWorkflowRun(row) : null);
   }
@@ -291,6 +295,7 @@ export class BackendSqlite implements Backend {
           FROM "workflow_signals"
           WHERE "namespace_id" = ? AND "signal" = ? AND "sender_idempotency_key" = ?
         `);
+        // safety: the query selects these non-null text identifiers from the signal and step tables.
         const existing = existingStmt.all(
           this.namespaceId,
           params.signal,
@@ -304,13 +309,18 @@ export class BackendSqlite implements Backend {
         }
       }
       const waitersStmt = this.db.prepare(`
-        SELECT "id", "workflow_run_id"
-        FROM "step_attempts"
-        WHERE "namespace_id" = ?
-          AND "kind" = 'signal-wait'
-          AND "status" = 'running'
-          AND json_extract("context", '$.signal') = ?
+        SELECT sa."id", sa."workflow_run_id"
+        FROM "workflow_runs" wr
+        JOIN "step_attempts" sa
+          ON sa."namespace_id" = wr."namespace_id"
+          AND sa."workflow_run_id" = wr."id"
+        WHERE sa."namespace_id" = ?
+          AND sa."kind" = 'signal-wait'
+          AND sa."status" = 'running'
+          AND json_extract(sa."context", '$.signal') = ?
+          AND wr."status" IN ('pending', 'running', 'sleeping')
       `);
+      // safety: the query selects these non-null text identifiers from the signal and step tables.
       const waiters = waitersStmt.all(this.namespaceId, params.signal) as {
         id: string;
         workflow_run_id: string;
@@ -393,13 +403,13 @@ export class BackendSqlite implements Backend {
       WHERE "namespace_id" = ? AND "step_attempt_id" = ?
       LIMIT 1
     `);
+    // safety: the query selects the nullable JSON text column from the signal delivery.
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      { data: string | null } | undefined;
+      { data: string | null } | null | undefined;
 
+    // oxlint-disable-next-line unicorn/no-useless-undefined
     if (!row) return Promise.resolve<JsonValue | undefined>(undefined);
-    return Promise.resolve(
-      (fromJSON(row.data) as JsonValue | undefined) ?? null,
-    );
+    return Promise.resolve(fromJSON(row.data));
   }
 
   async claimWorkflowRun(
@@ -451,11 +461,12 @@ export class BackendSqlite implements Backend {
         LIMIT 1
       `);
 
+      // safety: the query selects the workflow_runs non-null text id column, or returns no row.
       const candidate = findStmt.get(
         this.namespaceId,
         currentTime,
         currentTime,
-      ) as { id: string } | undefined;
+      ) as { id: string } | null | undefined;
 
       if (!candidate) {
         this.db.exec("COMMIT");
@@ -509,11 +520,12 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       newAvailableAt,
       currentTime,
       ...this.runningWorkflowRunOwnedParams(params),
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     requireRow(row, "extend lease for workflow run");
 
     return await Promise.resolve(rowToWorkflowRun(row));
@@ -564,6 +576,7 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       resumeAt,
       currentTime,
@@ -573,7 +586,7 @@ export class BackendSqlite implements Backend {
       this.namespaceId,
       params.workflowRunId,
       params.workerId,
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     requireRow(row, "sleep workflow run");
 
     return await Promise.resolve(rowToWorkflowRun(row));
@@ -598,13 +611,14 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       toJSON(params.output),
       params.workerId,
       currentTime,
       currentTime,
       ...this.runningWorkflowRunOwnedParams(params),
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     requireRow(row, "mark workflow run completed");
 
     const updated = rowToWorkflowRun(row);
@@ -649,6 +663,7 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       failureUpdate.status,
       failureUpdate.availableAt?.toISOString() ?? null,
@@ -656,7 +671,7 @@ export class BackendSqlite implements Backend {
       toJSON(failureUpdate.error),
       currentTimeIso,
       ...this.runningWorkflowRunOwnedParams(params),
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     requireRow(row, "mark workflow run failed");
     const updated = rowToWorkflowRun(row);
     if (updated.status === "failed") {
@@ -684,12 +699,13 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
     const row = stmt.get(
       toISO(params.availableAt),
       toJSON(params.error),
       currentTime,
       ...this.runningWorkflowRunOwnedParams(params),
-    ) as WorkflowRunRow | undefined;
+    ) as WorkflowRunRow | null | undefined;
     if (!row) {
       return Promise.reject(
         new Error(
@@ -874,7 +890,7 @@ export class BackendSqlite implements Backend {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // oxlint-disable-next-line typescript/require-await
   async countWorkflowRuns(): Promise<WorkflowRunCounts> {
     const stmt = this.db.prepare(`
       SELECT "status", COUNT(*) AS "count"
@@ -883,6 +899,7 @@ export class BackendSqlite implements Backend {
       GROUP BY "status"
     `);
 
+    // safety: the grouped query returns the stored status and COUNT(*) as a numeric count.
     const rows = stmt.all(this.namespaceId) as {
       status: string;
       count: number;
@@ -910,6 +927,7 @@ export class BackendSqlite implements Backend {
       naturalOrder: "DESC",
       baseWhere: conditions.join(" AND "),
       baseParams: values,
+      // safety: this query selects workflow_runs columns defined by our SQLite migrations.
       mapRow: (row) => rowToWorkflowRun(row as WorkflowRunRow),
     });
   }
@@ -922,6 +940,7 @@ export class BackendSqlite implements Backend {
       naturalOrder: "ASC",
       baseWhere: `"namespace_id" = ? AND "workflow_run_id" = ?`,
       baseParams: [this.namespaceId, params.workflowRunId],
+      // safety: this query selects step_attempts columns defined by our SQLite migrations.
       mapRow: (row) => rowToStepAttempt(row as StepAttemptRow),
     });
   }
@@ -947,7 +966,7 @@ export class BackendSqlite implements Backend {
       readonly naturalOrder: "ASC" | "DESC";
       readonly baseWhere: string;
       readonly baseParams: readonly unknown[];
-      readonly mapRow: (row: unknown) => T;
+      readonly mapRow: (row: Record<string, SQLOutputValue>) => T;
     },
   ): Promise<PaginatedResponse<T>> {
     const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
@@ -1009,6 +1028,7 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
     const row = stmt.get(
       this.namespaceId,
       id,
@@ -1021,7 +1041,7 @@ export class BackendSqlite implements Backend {
       currentTime,
       currentTime,
       ...this.runningWorkflowRunOwnedParams(params),
-    ) as StepAttemptRow | undefined;
+    ) as StepAttemptRow | null | undefined;
     requireRow(row, "create step attempt");
 
     return await Promise.resolve(rowToStepAttempt(row));
@@ -1043,12 +1063,13 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
     const row = stmt.get(
       params.childWorkflowRunNamespaceId,
       params.childWorkflowRunId,
       currentTime,
       ...this.runningStepAttemptOwnedParams(params),
-    ) as StepAttemptRow | undefined;
+    ) as StepAttemptRow | null | undefined;
     requireRow(row, "set step attempt child workflow run");
 
     return await Promise.resolve(rowToStepAttempt(row));
@@ -1062,8 +1083,9 @@ export class BackendSqlite implements Backend {
       LIMIT 1
     `);
 
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
     const row = stmt.get(this.namespaceId, params.stepAttemptId) as
-      StepAttemptRow | undefined;
+      StepAttemptRow | null | undefined;
 
     return Promise.resolve(row ? rowToStepAttempt(row) : null);
   }
@@ -1092,12 +1114,13 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
     const row = stmt.get(
       toJSON(params.output),
       currentTime,
       currentTime,
       ...this.runningStepAttemptOwnedParams(params),
-    ) as StepAttemptRow | undefined;
+    ) as StepAttemptRow | null | undefined;
     requireRow(row, "mark step attempt completed");
 
     return await Promise.resolve(rowToStepAttempt(row));
@@ -1125,12 +1148,13 @@ export class BackendSqlite implements Backend {
       RETURNING *
     `);
 
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
     const row = stmt.get(
       toJSON(params.error),
       currentTime,
       currentTime,
       ...this.runningStepAttemptOwnedParams(params),
-    ) as StepAttemptRow | undefined;
+    ) as StepAttemptRow | null | undefined;
     requireRow(row, "mark step attempt failed");
 
     return await Promise.resolve(rowToStepAttempt(row));
@@ -1138,7 +1162,7 @@ export class BackendSqlite implements Backend {
 }
 
 // Row types for SQLite results
-interface WorkflowRunRow {
+interface WorkflowRunRow extends Record<string, SQLOutputValue> {
   namespace_id: string;
   id: string;
   workflow_name: string;
@@ -1163,7 +1187,7 @@ interface WorkflowRunRow {
   updated_at: string;
 }
 
-interface StepAttemptRow {
+interface StepAttemptRow extends Record<string, SQLOutputValue> {
   namespace_id: string;
   id: string;
   workflow_run_id: string;
@@ -1183,6 +1207,12 @@ interface StepAttemptRow {
 }
 
 // Conversion functions
+interface ParsedRowFields {
+  createdAt: Date;
+  updatedAt: Date;
+  config: Exclude<JsonValue, null>;
+}
+
 /**
  * Parse and validate the `created_at`, `updated_at`, and `config` fields
  * shared by workflow run and step attempt rows.
@@ -1192,7 +1222,7 @@ interface StepAttemptRow {
  */
 function parseRequiredRowFields(
   row: Readonly<{ created_at: string; updated_at: string; config: string }>,
-): { createdAt: Date; updatedAt: Date; config: unknown } {
+): ParsedRowFields {
   const createdAt = fromISO(row.created_at);
   const updatedAt = fromISO(row.updated_at);
   const config = fromJSON(row.config);
@@ -1218,12 +1248,14 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     id: row.id,
     workflowName: row.workflow_name,
     version: row.version,
+    // safety: the status column is written by backend transitions using the domain status values.
     status: row.status as WorkflowRun["status"],
     idempotencyKey: row.idempotency_key,
-    config: config as WorkflowRun["config"],
-    context: fromJSON(row.context) as WorkflowRun["context"],
-    input: fromJSON(row.input) as WorkflowRun["input"],
-    output: fromJSON(row.output) as WorkflowRun["output"],
+    config,
+    context: fromJSON(row.context),
+    input: fromJSON(row.input),
+    output: fromJSON(row.output),
+    // safety: workflow failures are persisted from the serialized error contract.
     error: fromJSON(row.error) as WorkflowRun["error"],
     attempts: row.attempts,
     parentStepAttemptNamespaceId: row.parent_step_attempt_namespace_id,
@@ -1253,12 +1285,15 @@ function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
     id: row.id,
     workflowRunId: row.workflow_run_id,
     stepName: row.step_name,
+    // safety: the kind column is written from CreateStepAttemptParams.kind.
     kind: row.kind as StepAttempt["kind"],
+    // safety: the status column is written by backend transitions using the domain status values.
     status: row.status as StepAttempt["status"],
-    config: config as StepAttempt["config"],
+    config,
+    // safety: step context is persisted from StepAttemptContext and decoded here with the same contract.
     context: fromJSON(row.context) as StepAttempt["context"],
-    output: fromJSON(row.output) as StepAttempt["output"],
-    error: fromJSON(row.error) as StepAttempt["error"],
+    output: fromJSON(row.output),
+    error: fromJSON(row.error),
     childWorkflowRunNamespaceId: row.child_workflow_run_namespace_id,
     childWorkflowRunId: row.child_workflow_run_id,
     startedAt: fromISO(row.started_at),

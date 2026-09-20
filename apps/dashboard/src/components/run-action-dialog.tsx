@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import type { WorkflowRun } from "openworkflow/internal";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
@@ -24,13 +25,13 @@ interface RunActionDialogProps {
   pendingLabel: string;
   confirmVariant?: ButtonVariant;
   fallbackErrorMessage: string;
-  action: () => Promise<unknown>;
-  onDone?: (() => Promise<void>) | (() => void);
+  action: () => Promise<WorkflowRun>;
+  onDone?: (() => Promise<void> | void) | undefined;
 }
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
+function getErrorMessage(cause: unknown, fallback: string): string {
+  if (cause instanceof Error && cause.message) {
+    return cause.message;
   }
 
   return fallback;

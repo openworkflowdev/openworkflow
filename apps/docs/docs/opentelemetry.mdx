@@ -1,0 +1,139 @@
+---
+title: OpenTelemetry
+description: OpenTelemetry traces, spans, and attributes for workflow runs, step callbacks, and signals, using your own provider
+---
+
+OpenWorkflow uses your application's global OpenTelemetry provider to trace
+workflow runs, step callbacks, and signals.
+
+To enable tracing, install the optional `@opentelemetry/api` peer dependency and
+set up your provider before importing code that uses OpenWorkflow.
+
+To send traces to Sentry, follow the [Sentry guide](/docs/sentry).
+
+## Spans
+
+Span names use the format `<resource>.<operation>`. Resource names are singular
+and use snake_case: `WorkflowRun` becomes `workflow_run`, and `StepAttempt`
+becomes `step_attempt`. Your workflow and step names are stored as attributes.
+
+| Span                   | Kind       | What it covers                                                                       |
+| ---------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `workflow_run.create`  | `PRODUCER` | Submitting a workflow run to the backend.                                            |
+| `workflow_run.execute` | `CONSUMER` | One worker execution, from loading step history through recording the run's outcome. |
+| `workflow_run.cancel`  | `INTERNAL` | A cancellation through `ow.cancelWorkflowRun()` or `handle.cancel()`.                |
+| `step_attempt.execute` | `INTERNAL` | One call to a `step.run()` callback.                                                 |
+| `signal.send`          | `PRODUCER` | Sending a signal through `ow.sendSignal()` or `step.sendSignal()`.                   |
+
+Completed steps return their saved results when a workflow replays, so they
+don't create new spans. If you instrument your HTTP or database client, calls
+made inside a step callback appear under that callback's span.
+
+When a workflow pauses, its execution span records which step it's waiting
+for, the step's kind, and the resume time or timeout. Sleeps and signal waits
+don't create their own spans.
+
+OpenWorkflow doesn't create spans for worker polling, result polling, or saving
+step results. You can trace those database calls through your database client's
+instrumentation. If an execution fails, its span is marked as an error. See
+[Errors and status](#errors-and-status) for details.
+
+## Attributes
+
+Run spans identify the workflow and its run. Step callback spans include the
+workflow name, run ID, and step name, along with any error details. These
+attributes describe the operation being traced. OpenWorkflow doesn't include
+workflow inputs, outputs, or signal payloads in span attributes.
+
+| Attribute                             | Type   | Meaning and location                                                                               |
+| ------------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| `openworkflow.workflow.name`          | String | Registered workflow name, on run and callback spans.                                               |
+| `openworkflow.workflow.version`       | String | Version on run spans, when the run is versioned.                                                   |
+| `openworkflow.namespace.id`           | String | Namespace ID on run spans, when available.                                                         |
+| `openworkflow.run.id`                 | String | Workflow run ID on operations for that run, when available.                                        |
+| `openworkflow.parent.run.id`          | String | Parent run ID on child creation spans.                                                             |
+| `openworkflow.step.name`              | String | Resolved step name on callbacks, signal sends, and executions that pause or report a step failure. |
+| `openworkflow.step.kind`              | String | Type of wait: `sleep`, `signal-wait`, or `workflow`. Included on executions that pause.            |
+| `openworkflow.child.run.id`           | String | Child run ID on executions waiting for a child workflow.                                           |
+| `openworkflow.step.resume_at`         | String | Planned resume time on executions paused for sleep, as an ISO timestamp.                           |
+| `openworkflow.step.timeout_at`        | String | Timeout timestamp on executions waiting for a signal or child workflow, when set.                  |
+| `openworkflow.execution.attempt`      | Number | Execution attempt number, including resumes.                                                       |
+| `openworkflow.execution.outcome`      | String | Execution outcome, described below.                                                                |
+| `openworkflow.signal.name`            | String | Signal name on sends and executions waiting for a signal.                                          |
+| `openworkflow.signal.recipient_count` | Number | Number of recipient runs on successful sends, including zero.                                      |
+| `error.type`                          | String | Error name on failed operations, or the JavaScript type if a non-Error value was thrown.           |
+
+### Execution outcomes
+
+A workflow run can have several executions, each with its own outcome. The
+outcome describes what happened during that execution and is separate from the
+run's stored status.
+
+| Value       | Meaning                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| `completed` | The workflow function returned successfully.                                |
+| `suspended` | The workflow paused for a durable wait.                                     |
+| `retrying`  | A step or workflow failed, and the run was rescheduled for another attempt. |
+| `failed`    | The execution failed.                                                       |
+| `stale`     | A branch tried to continue after its execution ended.                       |
+
+## Errors and status
+
+When an operation succeeds or a workflow pauses for a durable wait, its span
+status stays `UNSET`. If an operation fails, its span has `ERROR` status, an
+error description, and `error.type`. A failed `step_attempt.execute` span stays
+marked as an error even if a later retry succeeds.
+
+If a callback error also fails the execution, both spans are marked as errors.
+Once the callback span records the exception, the execution span doesn't record
+it again. Errors saving a step's result are recorded on the execution span,
+even when the callback itself succeeded.
+
+## Trace relationships
+
+When you create a workflow run, its `workflow_run.create` span belongs to your
+current trace. If there's no active span, it starts a new trace.
+
+Each time a worker executes the run, it starts a new trace with a
+`workflow_run.execute` span. That span links back to the original
+`workflow_run.create` span. Step callback spans are children of the execution
+span.
+
+When a workflow [sleeps](/docs/sleeping) or pauses for another durable wait,
+the current execution span ends. When a worker picks the run back up, it starts
+a new trace linked to the same creation span. [Retries](/docs/retries) work the
+same way. No span stays open while the workflow waits, and resumed executions
+don't link to the previous execution.
+
+For example, a workflow with a callback before and after a sleep produces:
+
+```text
+Trace A: workflow_run.create
+
+Trace B: workflow_run.execute  (links to A; outcome: suspended, step kind: sleep)
+           step_attempt.execute
+
+Trace C: workflow_run.execute  (links to A; outcome: completed)
+           step_attempt.execute
+```
+
+You can use `openworkflow.run.id` to find a run's creation and execution spans
+across traces. Links connect those spans while keeping the traces separate.
+
+A [child workflow](/docs/child-workflows) has its own creation span within the
+parent execution's trace. The child's executions link to that creation span.
+
+When you cancel a run, the cancellation span belongs to your current trace.
+It also links to the run's creation span if your provider supports adding links
+to an existing span. Signal sends belong to your current trace too. Executions
+that receive a signal keep their creation link and don't link to the sender.
+
+## Context
+
+OpenWorkflow saves context with each new run using your application's
+configured propagators. Each execution reads that context to link back to the
+creation span and restore baggage.
+
+If you enable baggage propagation, calls made during the execution can read
+that baggage and pass it along to downstream calls. Runs without a valid saved
+span context don't have a creation link.

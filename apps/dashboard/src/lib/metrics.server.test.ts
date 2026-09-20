@@ -1,13 +1,6 @@
-import { getBackend } from "./backend";
 import { getMetricsResponse } from "./metrics.server";
 import type { Backend, WorkflowRunCounts } from "openworkflow/internal";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("./backend", () => ({
-  getBackend: vi.fn(),
-}));
-
-const mockedGetBackend = vi.mocked(getBackend);
+import { describe, expect, it, vi } from "vitest";
 
 const ZERO_COUNTS: WorkflowRunCounts = {
   pending: 0,
@@ -18,10 +11,6 @@ const ZERO_COUNTS: WorkflowRunCounts = {
 };
 
 describe("getMetricsResponse()", () => {
-  beforeEach(() => {
-    mockedGetBackend.mockReset();
-  });
-
   it("returns Prometheus exposition format with expected metric labels", async () => {
     const counts: WorkflowRunCounts = {
       ...ZERO_COUNTS,
@@ -34,9 +23,9 @@ describe("getMetricsResponse()", () => {
     const backend: Pick<Backend, "countWorkflowRuns"> = {
       countWorkflowRuns: vi.fn().mockResolvedValue(counts),
     };
-    mockedGetBackend.mockResolvedValue(backend);
+    const loadBackend = vi.fn(() => Promise.resolve(backend));
 
-    const response = await getMetricsResponse();
+    const response = await getMetricsResponse(loadBackend);
     const body = await response.text();
 
     expect(response.status).toBe(200);
@@ -57,12 +46,12 @@ describe("getMetricsResponse()", () => {
     const backend: Pick<Backend, "countWorkflowRuns"> = {
       countWorkflowRuns: vi.fn().mockResolvedValue(ZERO_COUNTS),
     };
-    mockedGetBackend.mockResolvedValue(backend);
+    const loadBackend = vi.fn(() => Promise.resolve(backend));
 
-    await getMetricsResponse();
-    await getMetricsResponse();
+    await getMetricsResponse(loadBackend);
+    await getMetricsResponse(loadBackend);
 
-    expect(mockedGetBackend).toHaveBeenCalledTimes(2);
+    expect(loadBackend).toHaveBeenCalledTimes(2);
     expect(backend.countWorkflowRuns).toHaveBeenCalledTimes(2);
   });
 
@@ -72,9 +61,9 @@ describe("getMetricsResponse()", () => {
         .fn()
         .mockRejectedValue(new Error("failed to aggregate")),
     };
-    mockedGetBackend.mockResolvedValue(backend);
+    const loadBackend = vi.fn(() => Promise.resolve(backend));
 
-    const response = await getMetricsResponse();
+    const response = await getMetricsResponse(loadBackend);
 
     expect(response.status).toBe(500);
     expect(response.headers.get("content-type")).toBe(

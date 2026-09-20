@@ -1,0 +1,44 @@
+---
+title: Vercel Workflow alternative for Node.js and Bun
+sidebarTitle: OpenWorkflow vs Vercel Workflow
+description: Compare OpenWorkflow and the Vercel Workflow SDK for build requirements, runtime restrictions, and self-hosting with PostgreSQL or SQLite.
+---
+
+## TL;DR
+
+Vercel Workflow, also called the Workflow SDK, runs durable workflows using
+`"use workflow"` and `"use step"` directives. Vercel provides managed storage,
+queuing, and execution infrastructure. You can also self-host the SDK with its
+Postgres backend or another World, its name for a backend adapter.
+
+OpenWorkflow runs in Node.js or Bun workers that connect directly to PostgreSQL
+or SQLite. You deploy those workers and manage the database.
+
+## What This Looks Like in Practice
+
+The Workflow SDK transforms your code during the build. Workflow functions run
+in a sandbox that enforces deterministic execution. Step functions use the
+Node.js runtime for database queries, API calls, and other work. Framework
+integrations configure the build and expose the workflow endpoints.
+
+With OpenWorkflow, you define a function with `defineWorkflow` and wrap work in
+`step.run`. It uses ordinary TypeScript or JavaScript without a workflow
+compiler or framework plugin. You keep the workflow body deterministic and
+put side effects inside steps. See [Workflows](/docs/workflows).
+
+## When OpenWorkflow is the Better Fit
+
+- **Your existing deployment**: You already run Node.js or Bun services and
+  want to deploy a worker the same way, with direct access to your database.
+- **SQLite**: You want a [local database file](/docs/sqlite) for development or a single-server
+  deployment, and PostgreSQL for multiple servers.
+- **Your existing build**: You prefer explicit step calls and want to keep
+  your build setup.
+
+## When Vercel Workflow is the Right Call
+
+- **Vercel hosting**: Your app runs on Vercel, and you want managed workflow
+  storage, queuing, scaling, and observability alongside that deployment.
+- **Workflow sandbox**: You want the SDK's build integration and sandbox to
+  enforce workflow restrictions, and its directives fit how your team writes
+  application code.

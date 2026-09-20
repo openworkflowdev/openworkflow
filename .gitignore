@@ -1,5 +1,5 @@
 # other ignores:
-# - eslint.config.js
+# - .oxlintrc.json
 # - tsconfig.json
 # - vitest.config.ts
 .output

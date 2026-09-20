@@ -38,7 +38,6 @@ export function resolveCancelWorkflowRunConflict(
   existing: Readonly<WorkflowRun> | null,
 ): WorkflowRun {
   if (!existing) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(`Workflow run ${workflowRunId} does not exist`);
   }
 
@@ -48,13 +47,11 @@ export function resolveCancelWorkflowRunConflict(
 
   // 'succeeded' status is deprecated
   if (["succeeded", "completed", "failed"].includes(existing.status)) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(
       `Cannot cancel workflow run ${workflowRunId} with status ${existing.status}`,
     );
   }
 
-  // eslint-disable-next-line functional/no-throw-statements
   throw new Error("Failed to cancel workflow run");
 }
 
@@ -72,20 +69,17 @@ export function resolveResumeWorkflowRunConflict(
   existing: Readonly<WorkflowRun> | null,
 ): never {
   if (!existing) {
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(`Workflow run ${workflowRunId} does not exist`);
   }
 
   if (existing.status === "failed") {
     // The UPDATE also gates on the deadline, so a still-`failed` run that did
     // not resume is one whose deadline has already elapsed.
-    // eslint-disable-next-line functional/no-throw-statements
     throw new Error(
       `Cannot resume workflow run ${workflowRunId}; its deadline has already passed`,
     );
   }
 
-  // eslint-disable-next-line functional/no-throw-statements
   throw new Error(
     `Cannot resume workflow run ${workflowRunId} with status ${existing.status}; only failed runs can be resumed`,
   );
@@ -157,7 +151,8 @@ export async function validateInput<RunInput, Input>(
   if (!schema) {
     return {
       success: true,
-      value: input as unknown as Input,
+      // safety: without a schema, the workflow contract uses the same input type before and after validation.
+      value: input as Input,
     };
   }
 

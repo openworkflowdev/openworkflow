@@ -113,12 +113,11 @@ export function isWorkflow(
     return false;
   }
 
-  const maybeWorkflow = value as Record<string, unknown>;
-  if (!("spec" in maybeWorkflow) || !("fn" in maybeWorkflow)) {
+  if (!("spec" in value) || !("fn" in value)) {
     return false;
   }
 
-  const { spec, fn } = maybeWorkflow;
+  const { spec, fn } = value;
   return (
     typeof spec === "object" &&
     spec !== null &&

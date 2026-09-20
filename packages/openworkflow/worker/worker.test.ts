@@ -7,6 +7,7 @@ import {
 } from "../core/workflow-definition.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import { Worker, resolveRetryPolicy } from "./worker.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
@@ -144,17 +145,21 @@ describe("Worker", () => {
 
     // first attempt - will fail and reschedule
     await worker.tick();
-    await sleep(100); // wait for worker to finish
+    const firstAttempt = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "pending",
+      "first workflow attempt to be rescheduled",
+    );
     expect(attemptCount).toBe(1);
 
-    await sleep(1100); // wait for backoff delay
+    await sleepUntilAfter(firstAttempt.availableAt);
 
     // second attempt - will succeed
     await worker.tick();
-    await sleep(100); // wait for worker to finish
-    expect(attemptCount).toBe(2);
 
     const result = await handle.result();
+    expect(attemptCount).toBe(2);
     expect(result).toEqual({ success: true, attempts: 2 });
   });
 
@@ -358,11 +363,19 @@ describe("Worker", () => {
 
     await worker.start();
     const handle = await workflow.run();
-    await sleep(200);
-    await worker.stop();
+    try {
+      await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) => run.status === "completed",
+        "started worker to complete the workflow",
+      );
 
-    const result = await handle.result();
-    expect(result).toBe("complete");
+      const result = await handle.result();
+      expect(result).toBe("complete");
+    } finally {
+      await worker.stop();
+    }
   });
 
   test("recovers from crashes during parallel step execution", async () => {
@@ -376,16 +389,18 @@ describe("Worker", () => {
       async ({ step }) => {
         attemptCount++;
 
-        const [a, b] = await Promise.all([
-          step.run({ name: "step-a" }, () => {
-            if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
-            return "a";
-          }),
-          step.run({ name: "step-b" }, () => {
-            if (attemptCount === 1) throw new Error("Simulated crash");
-            return "b";
-          }),
-        ]);
+        const aPromise = step.run({ name: "step-a" }, () => {
+          if (attemptCount > 1) return "x"; // should not happen since "a" will be cached
+          return "a";
+        });
+        const bPromise = step.run({ name: "step-b" }, async () => {
+          // wait for step-a's completion to be persisted before crashing.
+          await aPromise;
+          if (attemptCount === 1) throw new Error("Simulated crash");
+          return "b";
+        });
+
+        const [a, b] = await Promise.all([aPromise, bPromise]);
 
         return { a, b, attempts: attemptCount };
       },
@@ -435,7 +450,7 @@ describe("Worker", () => {
     expect(claimed).not.toBeNull();
 
     // let lease expire before starting worker
-    await sleep(100);
+    await sleepUntilAfter(claimed?.availableAt);
 
     // worker should be able to reclaim
     const worker = client.newWorker();
@@ -506,21 +521,27 @@ describe("Worker", () => {
     const claimWorkflowRun = vi.fn().mockResolvedValue(null);
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
       concurrency: 3,
     });
 
-    const internalWorker = worker as unknown as {
-      workerIds: string[];
-      activeExecutions: Set<{ workerId: string }>;
-    };
-
-    internalWorker.workerIds = ["slot-0", "slot-1", "slot-2"];
-    internalWorker.activeExecutions.add({ workerId: "slot-0" });
-    internalWorker.activeExecutions.add({ workerId: "slot-2" });
+    worker["workerIds"].splice(
+      0,
+      worker["workerIds"].length,
+      "slot-0",
+      "slot-1",
+      "slot-2",
+    );
+    type ActiveExecution = Parameters<
+      (typeof worker)["activeExecutions"]["add"]
+    >[0];
+    // safety: this tick receives no claimed run and only reads workerId from these occupied-slot fixtures.
+    worker["activeExecutions"].add({ workerId: "slot-0" } as ActiveExecution);
+    // safety: this tick receives no claimed run and only reads workerId from these occupied-slot fixtures.
+    worker["activeExecutions"].add({ workerId: "slot-2" } as ActiveExecution);
 
     const claimed = await worker.tick();
 
@@ -616,25 +637,29 @@ describe("Worker", () => {
       // - step-b fails
       // - step-c never runs (workflow fails at step-b)
       await worker.tick();
-      await sleep(200);
+      const firstAttempt = await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) => run.status === "pending",
+        "parallel workflow attempt to be rescheduled",
+      );
       expect(executionCounts.stepA).toBe(1);
       expect(executionCounts.stepB).toBe(1);
       expect(executionCounts.stepC).toBe(0);
 
       // wait for backoff
-      await sleep(1100);
+      await sleepUntilAfter(firstAttempt.availableAt);
 
       // second workflow attempt
       // - step-a should be cached (not re-executed)
       // - step-b should be re-executed (failed previously)
       // - step-c should execute for first time
       await worker.tick();
-      await sleep(200);
+
+      const result = await handle.result();
       expect(executionCounts.stepA).toBe(1); // still 1, was cached
       expect(executionCounts.stepB).toBe(2); // incremented, was retried
       expect(executionCounts.stepC).toBe(1); // incremented, first execution
-
-      const result = await handle.result();
       expect(result).toEqual({
         a: "a-result",
         b: "b-result",
@@ -806,16 +831,18 @@ describe("Worker", () => {
     const handle = await workflow.run();
 
     await worker.tick();
-    await sleep(100);
 
-    const failed = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
+    const failed = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "workflow with an invalid sleep duration to fail",
+    );
 
-    expect(failed?.status).toBe("failed");
-    expect(failed?.availableAt).toBeNull();
-    expect(failed?.error).toBeDefined();
-    expect(failed?.error?.message).toContain("Invalid duration format");
+    expect(failed.status).toBe("failed");
+    expect(failed.availableAt).toBeNull();
+    expect(failed.error).toBeDefined();
+    expect(failed.error?.message).toContain("Invalid duration format");
   });
 
   test("step.sleep handles multiple sequential sleeps", async () => {
@@ -939,17 +966,22 @@ describe("Worker", () => {
 
       // first execution - sleep
       await worker.tick();
-      await sleep(200);
 
       // verify workflow is parked in running state
-      const parked = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
-      expect(parked?.status).toBe("running");
-      expect(parked?.workerId).toBeNull();
+      const parked = await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) =>
+          run.status === "running" &&
+          run.workerId === null &&
+          run.availableAt !== null,
+        "workflow to park before being claimed again",
+      );
+      expect(parked.status).toBe("running");
+      expect(parked.workerId).toBeNull();
 
       // wait for sleep duration
-      await sleep(200);
+      await sleepUntilAfter(parked.availableAt);
 
       // verify workflow can be claimed again
       const claimed = await backend.claimWorkflowRun({
@@ -1000,14 +1032,19 @@ describe("Worker", () => {
       // first worker processes the workflow until sleep
       const worker1 = client.newWorker();
       await worker1.tick();
-      await sleep(200);
 
-      const workflowAfterFirst = await backend.getWorkflowRun({
-        workflowRunId: handle.workflowRun.id,
-      });
+      const workflowAfterFirst = await waitForWorkflowRun(
+        backend,
+        handle.workflowRun.id,
+        (run) =>
+          run.status === "running" &&
+          run.workerId === null &&
+          run.availableAt !== null,
+        "workflow to park at the critical pause",
+      );
 
-      expect(workflowAfterFirst?.status).toBe("running");
-      expect(workflowAfterFirst?.workerId).toBeNull();
+      expect(workflowAfterFirst.status).toBe("running");
+      expect(workflowAfterFirst.workerId).toBeNull();
 
       const attemptsAfterFirst = await backend.listStepAttempts({
         workflowRunId: handle.workflowRun.id,
@@ -1019,8 +1056,6 @@ describe("Worker", () => {
       expect(sleepStep?.kind).toBe("sleep");
       expect(sleepStep?.status).toBe("running");
 
-      await sleep(50); // only 50ms of the 200ms sleep
-
       // if there's a running sleep step, the workflow should be properly parked
       const worker2 = client.newWorker();
       await worker2.tick();
@@ -1030,11 +1065,11 @@ describe("Worker", () => {
 
       // wait for the full sleep duration to elapse then check to make sure
       // workflow is claimable and resume
-      await sleep(300);
+      await sleepUntilAfter(workflowAfterFirst.availableAt);
       await worker2.tick();
-      await sleep(200);
-      expect(afterSleepCount).toBe(1);
+
       const result = await handle.result();
+      expect(afterSleepCount).toBe(1);
       expect(result.afterSleepCount).toBe(1);
     },
   );
@@ -1170,13 +1205,13 @@ describe("Worker", () => {
     const handle = await workflow.run({ value: 1 }, { deadlineAt: new Date() });
     await worker.tick();
 
-    // wait for it to fail due to deadline
-    await sleep(100);
-
-    const failed = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(failed?.status).toBe("failed");
+    const failed = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "workflow to fail before cancellation",
+    );
+    expect(failed.status).toBe("failed");
 
     // try to cancel after failure
     await expect(handle.cancel()).rejects.toThrow(
@@ -1197,9 +1232,9 @@ describe("Worker", () => {
   test("worker handles when canceled workflow during execution", async () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => 0);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
+    const stepStarted = Promise.withResolvers<boolean>();
+    const releaseStep = Promise.withResolvers<boolean>();
 
     let stepExecuted = false;
     const workflow = client.defineWorkflow(
@@ -1207,8 +1242,8 @@ describe("Worker", () => {
       async ({ step }) => {
         await step.run({ name: "step-1" }, async () => {
           stepExecuted = true;
-          // simulate some work
-          await sleep(50);
+          stepStarted.resolve(true);
+          await releaseStep.promise;
           return "result";
         });
         return { completed: true };
@@ -1221,10 +1256,11 @@ describe("Worker", () => {
 
       // start processing in the background
       const tickPromise = worker.tick();
-      await sleep(25);
+      await stepStarted.promise;
 
       // cancel while step is executing
       await handle.cancel();
+      releaseStep.resolve(true);
 
       // wait for tick to complete
       await tickPromise;
@@ -1241,6 +1277,8 @@ describe("Worker", () => {
         expect.anything(),
       );
     } finally {
+      releaseStep.resolve(true);
+      await worker.stop();
       consoleErrorSpy.mockRestore();
     }
   });
@@ -1298,10 +1336,11 @@ describe("Worker", () => {
       const handleV2 = await client.runWorkflow(v2Spec);
 
       await worker.tick();
-      await sleep(100); // wait for background execution
 
-      const resultV1 = await handleV1.result();
-      const resultV2 = await handleV2.result();
+      const [resultV1, resultV2] = await Promise.all([
+        handleV1.result(),
+        handleV2.result(),
+      ]);
 
       expect(resultV1).toBe("v1-result");
       expect(resultV2).toBe("v2-result");
@@ -1446,9 +1485,9 @@ describe("Worker", () => {
     const claimWorkflowRun = vi.fn().mockResolvedValue(null);
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
     });
 
@@ -1480,14 +1519,12 @@ describe("Worker", () => {
     vi.useFakeTimers();
 
     const claimWorkflowRun = vi.fn().mockRejectedValue(new Error("boom"));
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => 0);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
 
     const worker = new Worker({
-      backend: {
+      backend: createStubBackend({
         claimWorkflowRun,
-      } as unknown as Backend,
+      }),
       workflows: [],
     });
 
@@ -1538,25 +1575,27 @@ describe("Worker", () => {
 
     // first attempt - will fail and reschedule (attempt 1 < maximumAttempts 2)
     await worker.tick();
-    await sleep(100);
+    const afterFirst = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "pending",
+      "first workflow retry attempt to be rescheduled",
+    );
     expect(attemptCount).toBe(1);
+    expect(afterFirst.status).toBe("pending"); // rescheduled
 
-    const afterFirst = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(afterFirst?.status).toBe("pending"); // rescheduled
-
-    await sleep(1100); // wait for backoff delay
+    await sleepUntilAfter(afterFirst.availableAt);
 
     // second attempt - will fail permanently (attempt 2 >= maximumAttempts 2)
     await worker.tick();
-    await sleep(100);
+    const afterSecond = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "second workflow retry attempt to fail permanently",
+    );
     expect(attemptCount).toBe(2);
-
-    const afterSecond = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(afterSecond?.status).toBe("failed"); // permanently failed
+    expect(afterSecond.status).toBe("failed"); // permanently failed
   });
 
   test("falls back to step retry defaults, independent from workflow retry policy", async () => {
@@ -1590,24 +1629,25 @@ describe("Worker", () => {
 
     const beforeFail = Date.now();
     await worker.tick();
-    await sleep(100);
 
-    const afterFirst = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(afterFirst?.status).toBe("pending");
-    expect(afterFirst?.availableAt).not.toBeNull();
-    if (!afterFirst?.availableAt) throw new Error("Expected availableAt");
+    const afterFirst = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "pending" && run.availableAt !== null,
+      "failed step to use the default retry schedule",
+    );
+    expect(afterFirst.status).toBe("pending");
+    expect(afterFirst.availableAt).not.toBeNull();
+    if (!afterFirst.availableAt) throw new Error("Expected availableAt");
     const retryDelayMs = afterFirst.availableAt.getTime() - beforeFail;
     expect(retryDelayMs).toBeGreaterThanOrEqual(900);
     expect(retryDelayMs).toBeLessThan(1500);
 
-    await sleep(1100);
+    await sleepUntilAfter(afterFirst.availableAt);
     await worker.tick();
-    await sleep(100);
 
-    expect(stepAttempts).toBe(2);
     const result = await handle.result();
+    expect(stepAttempts).toBe(2);
     expect(result).toBe("ok");
   });
 
@@ -1662,13 +1702,15 @@ describe("Worker", () => {
 
     const worker = client.newWorker();
     await worker.tick();
-    await sleep(100);
 
-    const failedRun = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(failedRun?.status).toBe("failed");
-    expect(failedRun?.availableAt).toBeNull();
+    const failedRun = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "workflow to fail after reaching the default step attempt limit",
+    );
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.availableAt).toBeNull();
 
     const attempts = await backend.listStepAttempts({
       workflowRunId: handle.workflowRun.id,
@@ -1720,26 +1762,30 @@ describe("Worker", () => {
 
     const beforeFirstFail = Date.now();
     await worker.tick();
-    await sleep(100);
 
-    const afterFirst = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(afterFirst?.status).toBe("pending");
-    expect(afterFirst?.availableAt).not.toBeNull();
-    if (!afterFirst?.availableAt) throw new Error("Expected availableAt");
+    const afterFirst = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "pending" && run.availableAt !== null,
+      "first overridden step retry attempt to be rescheduled",
+    );
+    expect(afterFirst.status).toBe("pending");
+    expect(afterFirst.availableAt).not.toBeNull();
+    if (!afterFirst.availableAt) throw new Error("Expected availableAt");
     const firstDelayMs = afterFirst.availableAt.getTime() - beforeFirstFail;
     expect(firstDelayMs).toBeGreaterThanOrEqual(30);
     expect(firstDelayMs).toBeLessThan(180);
 
-    await sleep(100);
+    await sleepUntilAfter(afterFirst.availableAt);
     await worker.tick();
-    await sleep(200);
 
-    const afterSecond = await backend.getWorkflowRun({
-      workflowRunId: handle.workflowRun.id,
-    });
-    expect(afterSecond?.status).toBe("failed");
+    const afterSecond = await waitForWorkflowRun(
+      backend,
+      handle.workflowRun.id,
+      (run) => run.status === "failed",
+      "second overridden step retry attempt to fail permanently",
+    );
+    expect(afterSecond.status).toBe("failed");
     expect(stepAttempts).toBe(2);
   });
 
@@ -1992,8 +2038,9 @@ describe("resolveRetryPolicy", () => {
     const result = resolveRetryPolicy({
       maximumAttempts: Number.NaN,
       backoffCoefficient: -1,
-      initialInterval: "-1s" as "1s",
-      maximumInterval: "invalid" as "1s",
+      initialInterval: "-1s",
+      // @ts-expect-error deliberately invalid duration tests runtime validation
+      maximumInterval: "invalid",
     });
 
     expect(result).toEqual(DEFAULT_WORKFLOW_RETRY_POLICY);
@@ -2094,5 +2141,7 @@ function retryDelayMs(run: WorkflowRun, fallbackStartMs: number): number {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

@@ -1,0 +1,115 @@
+---
+title: Setup
+description: Instructions for coding agents to install OpenWorkflow and verify a local workflow run using SQLite or PostgreSQL
+---
+
+## When to use
+
+Use this skill to add OpenWorkflow to a TypeScript or JavaScript project or
+finish an incomplete setup. It covers local setup and verification. Finish
+with a workflow run that returns its expected result.
+
+## 1. Inspect the project
+
+Read the project's instructions, `package.json`, lockfile, and any existing
+OpenWorkflow config or workflows. Identify the runtime, package manager, and
+the package where OpenWorkflow belongs. Run setup from that package's directory.
+OpenWorkflow requires Node.js 22.5+ or Bun and a `package.json`.
+
+Preserve the project's language, module format, scripts, and existing code.
+Choose a path before making changes:
+
+- **New setup:** Continue to step 2 to initialize OpenWorkflow.
+- **Existing setup:** Read the
+  [configuration reference](https://openworkflow.dev/docs/configuration.md),
+  adapt the existing configuration, and continue to step 3. Skip `init`.
+- **Incomplete setup:** Inspect the existing files and dependencies. Read the
+  [CLI reference](https://openworkflow.dev/docs/cli.md) to identify what setup
+  still needs. Complete the missing pieces, preserve existing scripts, and
+  continue to step 3.
+
+## 2. Initialize OpenWorkflow
+
+Use the backend the user requested or the project already uses. For a first
+local setup with no database preference, use SQLite; it needs no separate
+database server. Read the guide for the selected backend when configuring
+its connection: [SQLite](https://openworkflow.dev/docs/sqlite.md) or
+[PostgreSQL](https://openworkflow.dev/docs/postgres.md).
+
+Run the command for the project's package manager:
+
+<CodeGroup>
+```bash npm
+npx --yes @openworkflow/cli init --backend sqlite --yes
+```
+
+```bash pnpm
+pnpx @openworkflow/cli init --backend sqlite --yes
+```
+
+```bash bun
+bunx @openworkflow/cli init --backend sqlite --yes
+```
+
+</CodeGroup>
+
+Replace `sqlite` with `postgres` for PostgreSQL, or `both` for SQLite in
+development and PostgreSQL when `NODE_ENV=production`. For PostgreSQL, set
+`OPENWORKFLOW_POSTGRES_URL` in `.env` to a working database connection before
+verification. If the connection details are unavailable, ask the user for them
+and complete any file changes that can proceed while waiting. Resume
+verification once the database is reachable.
+
+Always pass both `--backend` and `--yes` for unattended setup. The default
+command is interactive. In the npm command, the first `--yes` also skips the
+package-install prompt. Setup installs dependencies and creates a config,
+client, example workflow, and runner. File extensions depend on the project.
+It also adds a `worker` script and updates `.gitignore` or `.env` for the backend.
+
+If setup reports an existing config or a conflicting `worker` script, inspect
+and integrate with those files instead of deleting them to rerun setup.
+Use `--skip-install` only when dependencies must be installed separately, then
+run the installation commands it prints before verification.
+Read the [CLI reference](https://openworkflow.dev/docs/cli.md) when you need
+setup options beyond these commands.
+
+## 3. Verify the setup
+
+Use the project's package manager to run these CLI commands. The examples
+below use npm:
+
+1. Run `npx @openworkflow/cli doctor` and resolve any reported problems.
+2. Start `npx @openworkflow/cli worker start` in a separate terminal or
+   background process. Keep it running while executing the example.
+3. Run the generated `openworkflow/hello-world.run.*` file. For TypeScript,
+   use `npx tsx openworkflow/hello-world.run.ts` or
+   `bun openworkflow/hello-world.run.ts`; for JavaScript, use `node` or `bun`
+   with the generated filename. With pnpm, use `pnpx tsx` for TypeScript.
+4. Confirm the runner prints a workflow result with
+   `"greeting": "Hello, World!"`.
+
+For an existing setup, use an example workflow that is safe to run locally and
+check its expected result. Run the project's relevant type checks or tests
+after integration. Stop any background processes you started for verification.
+
+## 4. Hand off the setup
+
+Summarize the files changed, the backend selected, and the verification result.
+Give the user the commands to start the worker, rerun the example, and open
+the dashboard with `npx @openworkflow/cli dashboard` (or their package manager's
+equivalent). Explain that application code enqueues workflows and a running
+worker executes them. Link to the
+[Quick Start](https://openworkflow.dev/docs/quickstart.md) for the walkthrough
+and [Workflows](https://openworkflow.dev/docs/workflows.md) for building their
+own workflows.
+
+## Done when
+
+- `doctor` passes with the project's configuration and database connection.
+- The worker executes the example workflow and the runner returns the expected
+  result.
+- The user has the verification result and commands to run the setup again.
+
+If a check fails, investigate the failure. If you cannot resolve it, report the
+specific blocker and what remains unverified. Only report setup as complete
+after the workflow returns its expected result.

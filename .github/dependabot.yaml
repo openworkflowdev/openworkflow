@@ -1,5 +1,11 @@
 version: 2
 updates:
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: chore(deps)
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -17,10 +23,11 @@ updates:
       commitlint:
         patterns:
           - "*commitlint*"
-      eslint:
+      oxlint:
         patterns:
-          - "@eslint/js"
-          - "eslint"
+          - "oxlint"
+          - "oxlint-plugin-anti-slop"
+          - "oxlint-tsgolint"
       react:
         patterns:
           - "@types/react"

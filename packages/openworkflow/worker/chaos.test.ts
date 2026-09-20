@@ -108,5 +108,7 @@ async function createAndStartWorker(client: OpenWorkflow): Promise<Worker> {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

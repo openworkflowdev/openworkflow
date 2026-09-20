@@ -1,0 +1,70 @@
+---
+title: Sentry
+description: View workflow traces in Sentry with OpenTelemetry to see which steps ran, how long they took, and where they failed
+---
+
+You can use Sentry to see what happens during a workflow run: which steps ran,
+how long they took, and where they failed. OpenWorkflow already emits
+[OpenTelemetry spans](/docs/opentelemetry), so the setup connects your existing
+OpenTelemetry provider to Sentry.
+
+![OpenWorkflow trace in Sentry](/assets/sentry.png)
+
+## 1. Install
+
+Install Sentry and the OpenTelemetry packages it needs:
+
+```bash
+npm install @sentry/node-core @opentelemetry/api @opentelemetry/exporter-trace-otlp-http @opentelemetry/sdk-trace-base
+```
+
+## 2. Connect Sentry
+
+In your existing `instrumentation.ts`, add these imports and call
+`Sentry.init()` after starting your OpenTelemetry provider (`sdk.start()`):
+
+```ts
+import * as Sentry from "@sentry/node-core/light";
+import { otlpIntegration } from "@sentry/node-core/light/otlp";
+
+Sentry.init({
+  dsn: process.env["SENTRY_DSN"],
+  integrations: [otlpIntegration()],
+});
+```
+
+This adds Sentry as another destination for your spans. Your existing exporters
+and sampling settings still apply. See Sentry's
+[OTLP integration guide](https://docs.sentry.io/platforms/javascript/guides/node/install/lightweight/#using-with-opentelemetry-otlp)
+for more options.
+
+## 3. Start your app
+
+Set your Sentry project's DSN and load the instrumentation before your app.
+For TypeScript with `tsx`:
+
+```bash
+SENTRY_DSN='<your-dsn>' npx tsx --import ./instrumentation.ts index.ts
+```
+
+If your app and worker run in separate processes, load the instrumentation in
+both. You can pass the DSN as shown above; you don't need a `.env` file.
+
+During shutdown, stop the worker and await `sdk.shutdown()` to flush spans, then
+await `Sentry.close(5000)` to flush Sentry events.
+
+## 4. View a workflow run
+
+Run a workflow, then open Sentry's Traces view. Filter by `openworkflow.run.id`
+using your run's ID. You'll see spans for creating the run, executing it, and
+running each step callback. Failed attempts stay marked as errors even when a
+retry succeeds.
+
+Sleeps and retries create separate execution traces. Each one links back to the
+run's creation span. See [Trace relationships](/docs/opentelemetry#trace-relationships)
+for how these fit together.
+
+To try a complete setup, follow the
+[OpenTelemetry example](https://github.com/openworkflowdev/openworkflow/tree/main/examples/opentelemetry).
+It starts a workflow from an HTTP request, calls a fake email endpoint, sleeps,
+and retries a failed step.

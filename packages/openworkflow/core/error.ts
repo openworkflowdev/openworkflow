@@ -9,12 +9,12 @@ export interface SerializedError {
 
 /**
  * Serialize an error to a JSON-compatible format.
- * @param error - The error to serialize (can be Error instance or any value)
+ * @param cause - The error to serialize (can be Error instance or any value)
  * @returns A JSON-serializable error object
  */
-export function serializeError(error: unknown): SerializedError {
-  if (error instanceof Error) {
-    const { name, message, stack } = error;
+export function serializeError(cause: unknown): SerializedError {
+  if (cause instanceof Error) {
+    const { name, message, stack } = cause;
 
     if (stack) {
       return { name, message, stack };
@@ -24,7 +24,7 @@ export function serializeError(error: unknown): SerializedError {
   }
 
   return {
-    message: String(error),
+    message: String(cause),
   };
 }
 
@@ -48,12 +48,12 @@ export function deserializeError(serialized: Readonly<SerializedError>): Error {
 /**
  * Wrap an error with a clearer message while preserving the original cause.
  * @param message - The message to use for the new error
- * @param error - The original error
+ * @param cause - The original error
  * @returns A new error with the original error as its cause
  */
-export function wrapError(message: string, error: unknown): Error {
-  const { message: wrappedMessage } = serializeError(error);
-  return new Error(`${message}: ${wrappedMessage}`, { cause: error });
+export function wrapError(message: string, cause: unknown): Error {
+  const { message: wrappedMessage } = serializeError(cause);
+  return new Error(`${message}: ${wrappedMessage}`, { cause });
 }
 
 /**
@@ -67,6 +67,5 @@ export function requireRow<T>(
   row: T,
   operation: string,
 ): asserts row is NonNullable<T> {
-  // eslint-disable-next-line functional/no-throw-statements
   if (!row) throw new Error(`Failed to ${operation}`);
 }

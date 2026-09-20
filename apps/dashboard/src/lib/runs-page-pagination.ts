@@ -13,7 +13,8 @@ const runsPaginationSearchSchema = z.object({
 export type RunsPaginationSearch = z.infer<typeof runsPaginationSearchSchema>;
 
 export function validateRunsPaginationSearch(
-  search: Record<string, unknown>,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- URL search values are untrusted until the schema validates them
+  search: unknown,
 ): RunsPaginationSearch {
   const parsed = runsPaginationSearchSchema.safeParse(search);
   if (!parsed.success) {
@@ -30,11 +31,10 @@ export function validateRunsPaginationSearch(
 }
 
 export function resolveRunsPageSize(limit?: number): RunsPageSize {
-  if (RUNS_PAGE_SIZE_OPTIONS.includes(limit as RunsPageSize)) {
-    return limit as RunsPageSize;
-  }
-
-  return DEFAULT_RUNS_PAGE_SIZE;
+  return (
+    RUNS_PAGE_SIZE_OPTIONS.find((size) => size === limit) ??
+    DEFAULT_RUNS_PAGE_SIZE
+  );
 }
 
 export const STEP_ATTEMPTS_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -42,7 +42,8 @@ export type StepAttemptsPageSize =
   (typeof STEP_ATTEMPTS_PAGE_SIZE_OPTIONS)[number];
 
 export function validateStepAttemptsPaginationSearch(
-  search: Record<string, unknown>,
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- URL search values are untrusted until the schema validates them
+  search: unknown,
 ): RunsPaginationSearch {
   return validateRunsPaginationSearch(search);
 }

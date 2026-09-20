@@ -4,7 +4,6 @@ import { addWorkflow, multiplyWorkflow } from "./openworkflow/math.js";
 import { OpenWorkflow } from "openworkflow";
 import { BackendSqlite } from "openworkflow/sqlite";
 
-// eslint-disable-next-line sonarjs/publicly-writable-directories
 const sqliteFileName = "/tmp/openworkflow_example_workflow_discovery.db";
 const backend = BackendSqlite.connect(sqliteFileName);
 const ow = new OpenWorkflow({ backend });

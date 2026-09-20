@@ -56,6 +56,16 @@ bunx @openworkflow/cli init
 The CLI will guide you through setup and generate everything you need to get
 started.
 
+Alternatively, for unattended setup:
+
+```bash
+# SQLite
+npx --yes @openworkflow/cli init --backend sqlite --yes
+
+# PostgreSQL
+npx --yes @openworkflow/cli init --backend postgres --yes
+```
+
 ## Documentation
 
 - [Documentation](https://openworkflow.dev/docs)
@@ -63,6 +73,7 @@ started.
 - [Core Concepts](https://openworkflow.dev/docs/core-concepts)
 - [Advanced Patterns](https://openworkflow.dev/docs/advanced-patterns)
 - [Production Checklist](https://openworkflow.dev/docs/production)
+- [OpenTelemetry](https://openworkflow.dev/docs/opentelemetry)
 
 ## Architecture
 
@@ -84,7 +95,6 @@ before submitting a pull request.
 
 ## Community
 
-- [OpenWorkflow Cloud](https://cloud.openworkflow.dev)
 - [Discord](https://discord.openworkflow.dev)
 - [GitHub Issues](https://github.com/openworkflowdev/openworkflow/issues) -
   Report bugs and request features

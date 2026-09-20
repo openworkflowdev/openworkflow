@@ -1,3 +1,4 @@
+import { OpenWorkflow } from "../client/client.js";
 import {
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   type Backend,
@@ -128,8 +129,9 @@ export function testBackend(options: TestBackendOptions): void {
           context: null,
           availableAt: null,
           deadlineAt: null,
-        } as unknown as Parameters<Backend["createWorkflowRun"]>[0];
+        };
 
+        // @ts-expect-error legacy callers omit the parent linkage fields
         const created = await backend.createWorkflowRun(legacyParams);
 
         expect(created.parentStepAttemptNamespaceId).toBeNull();
@@ -140,7 +142,7 @@ export function testBackend(options: TestBackendOptions): void {
         const parentRun = await createClaimedWorkflowRun(backend);
         const parentStepAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -619,7 +621,7 @@ export function testBackend(options: TestBackendOptions): void {
         // p2
         const page2 = await backend.listWorkflowRuns({
           limit: 2,
-          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page1.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2.data).toHaveLength(2);
         expect(page2.data[0]?.id).toBe(runs[2]?.id);
@@ -630,7 +632,7 @@ export function testBackend(options: TestBackendOptions): void {
         // p3
         const page3 = await backend.listWorkflowRuns({
           limit: 2,
-          after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page2.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page3.data).toHaveLength(1);
         expect(page3.data[0]?.id).toBe(runs[0]?.id);
@@ -640,7 +642,7 @@ export function testBackend(options: TestBackendOptions): void {
         // p2 again
         const page2Back = await backend.listWorkflowRuns({
           limit: 2,
-          before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          before: page3.pagination.prev!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2Back.data).toHaveLength(2);
         expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
@@ -681,7 +683,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const page2 = await backend.listWorkflowRuns({
           limit: 2,
-          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page1.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2.data).toHaveLength(2);
         expect(page2.data[0]?.id).toBe(runs[2]?.id);
@@ -690,7 +692,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const page3 = await backend.listWorkflowRuns({
           limit: 2,
-          after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page2.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page3.data).toHaveLength(1);
         expect(page3.data[0]?.id).toBe(runs[4]?.id);
@@ -698,7 +700,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const page2Back = await backend.listWorkflowRuns({
           limit: 2,
-          before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          before: page3.pagination.prev!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2Back.data).toHaveLength(2);
         expect(page2Back.data[0]?.id).toBe(runs[2]?.id);
@@ -803,7 +805,7 @@ export function testBackend(options: TestBackendOptions): void {
         const page2 = await backend.listWorkflowRuns({
           status: "failed",
           limit: 2,
-          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page1.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2.data).toHaveLength(1);
         expect(page2.data[0]?.id).toBe(failedRuns[0]?.id);
@@ -1624,7 +1626,7 @@ export function testBackend(options: TestBackendOptions): void {
         const updated =
           await backend.rescheduleWorkflowRunAfterFailedStepAttempt({
             workflowRunId: claimed.id,
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             error,
             availableAt,
           });
@@ -1678,7 +1680,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const created = await backend.createStepAttempt({
           workflowRunId: expected.workflowRunId,
-          workerId: workflowRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: workflowRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: expected.stepName,
           kind: expected.kind,
           config: expected.config,
@@ -1751,7 +1753,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const created = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -1770,7 +1772,7 @@ export function testBackend(options: TestBackendOptions): void {
         const parentRun = await createClaimedWorkflowRun(backend);
         const stepAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "workflow",
           config: {},
@@ -1792,7 +1794,7 @@ export function testBackend(options: TestBackendOptions): void {
         const updated = await backend.setStepAttemptChildWorkflowRun({
           workflowRunId: parentRun.id,
           stepAttemptId: stepAttempt.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           childWorkflowRunNamespaceId: childRun.namespaceId,
           childWorkflowRunId: childRun.id,
         });
@@ -1811,7 +1813,7 @@ export function testBackend(options: TestBackendOptions): void {
         const parentRun = await createClaimedWorkflowRun(backend);
         const stepAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "workflow",
           config: {},
@@ -1845,7 +1847,7 @@ export function testBackend(options: TestBackendOptions): void {
         const parentRun = await createClaimedWorkflowRun(backend);
         const stepAttempt = await backend.createStepAttempt({
           workflowRunId: parentRun.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "workflow",
           config: {},
@@ -1854,7 +1856,7 @@ export function testBackend(options: TestBackendOptions): void {
         await backend.completeStepAttempt({
           workflowRunId: parentRun.id,
           stepAttemptId: stepAttempt.id,
-          workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output: { ok: true },
         });
         const childRun = await backend.createWorkflowRun({
@@ -1874,7 +1876,7 @@ export function testBackend(options: TestBackendOptions): void {
           backend.setStepAttemptChildWorkflowRun({
             workflowRunId: parentRun.id,
             stepAttemptId: stepAttempt.id,
-            workerId: parentRun.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: parentRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             childWorkflowRunNamespaceId: childRun.namespaceId,
             childWorkflowRunId: childRun.id,
           }),
@@ -1888,7 +1890,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const first = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -1897,7 +1899,7 @@ export function testBackend(options: TestBackendOptions): void {
         await backend.completeStepAttempt({
           workflowRunId: claimed.id,
           stepAttemptId: first.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion,
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output: { ok: true },
         });
 
@@ -1905,7 +1907,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const second = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -1927,7 +1929,7 @@ export function testBackend(options: TestBackendOptions): void {
         for (let i = 0; i < 5; i++) {
           await backend.createStepAttempt({
             workflowRunId: claimed.id,
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             stepName: `step-${String(i)}`,
             kind: "function",
             config: {},
@@ -1952,7 +1954,7 @@ export function testBackend(options: TestBackendOptions): void {
         const page2 = await backend.listStepAttempts({
           workflowRunId: claimed.id,
           limit: 2,
-          after: page1.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page1.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2.data).toHaveLength(2);
         expect(page2.data[0]?.stepName).toBe("step-2");
@@ -1964,7 +1966,7 @@ export function testBackend(options: TestBackendOptions): void {
         const page3 = await backend.listStepAttempts({
           workflowRunId: claimed.id,
           limit: 2,
-          after: page2.pagination.next!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          after: page2.pagination.next!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page3.data).toHaveLength(1);
         expect(page3.data[0]?.stepName).toBe("step-4");
@@ -1975,7 +1977,7 @@ export function testBackend(options: TestBackendOptions): void {
         const page2Back = await backend.listStepAttempts({
           workflowRunId: claimed.id,
           limit: 2,
-          before: page3.pagination.prev!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          before: page3.pagination.prev!, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(page2Back.data).toHaveLength(2);
         expect(page2Back.data[0]?.stepName).toBe("step-2");
@@ -1998,7 +2000,7 @@ export function testBackend(options: TestBackendOptions): void {
         const claimed = await createClaimedWorkflowRun(backend);
         await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "step-1",
           kind: "function",
           config: {},
@@ -2021,7 +2023,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const created = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -2032,7 +2034,7 @@ export function testBackend(options: TestBackendOptions): void {
         const completed = await backend.completeStepAttempt({
           workflowRunId: claimed.id,
           stepAttemptId: created.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output,
         });
 
@@ -2044,7 +2046,7 @@ export function testBackend(options: TestBackendOptions): void {
         const completedAgain = await backend.completeStepAttempt({
           workflowRunId: claimed.id,
           stepAttemptId: created.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output,
         });
         expect(completedAgain).toEqual(completed);
@@ -2071,7 +2073,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const stepAttempt = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -2081,7 +2083,7 @@ export function testBackend(options: TestBackendOptions): void {
         // complete the workflow so it's no longer running
         await backend.completeWorkflowRun({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output: null,
         });
 
@@ -2090,7 +2092,7 @@ export function testBackend(options: TestBackendOptions): void {
           backend.completeStepAttempt({
             workflowRunId: claimed.id,
             stepAttemptId: stepAttempt.id,
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             output: { foo: "bar" },
           }),
         ).rejects.toThrow("Failed to mark step attempt completed");
@@ -2106,7 +2108,7 @@ export function testBackend(options: TestBackendOptions): void {
           backend.completeStepAttempt({
             workflowRunId: claimed.id,
             stepAttemptId: randomUUID(),
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             output: { foo: "bar" },
           }),
         ).rejects.toThrow("Failed to mark step attempt completed");
@@ -2121,7 +2123,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const created = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -2132,7 +2134,7 @@ export function testBackend(options: TestBackendOptions): void {
         const failed = await backend.failStepAttempt({
           workflowRunId: claimed.id,
           stepAttemptId: created.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           error,
         });
 
@@ -2144,7 +2146,7 @@ export function testBackend(options: TestBackendOptions): void {
         const failedAgain = await backend.failStepAttempt({
           workflowRunId: claimed.id,
           stepAttemptId: created.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           error,
         });
         expect(failedAgain).toEqual(failed);
@@ -2171,7 +2173,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const stepAttempt = await backend.createStepAttempt({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: randomUUID(),
           kind: "function",
           config: {},
@@ -2181,7 +2183,7 @@ export function testBackend(options: TestBackendOptions): void {
         // complete the workflow so it's no longer running
         await backend.completeWorkflowRun({
           workflowRunId: claimed.id,
-          workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           output: null,
         });
 
@@ -2190,7 +2192,7 @@ export function testBackend(options: TestBackendOptions): void {
           backend.failStepAttempt({
             workflowRunId: claimed.id,
             stepAttemptId: stepAttempt.id,
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             error: { message: "nope" },
           }),
         ).rejects.toThrow("Failed to mark step attempt failed");
@@ -2206,7 +2208,7 @@ export function testBackend(options: TestBackendOptions): void {
           backend.failStepAttempt({
             workflowRunId: claimed.id,
             stepAttemptId: randomUUID(),
-            workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             error: { message: "nope" },
           }),
         ).rejects.toThrow("Failed to mark step attempt failed");
@@ -2849,13 +2851,89 @@ export function testBackend(options: TestBackendOptions): void {
         expect(result.workflowRunIds).toEqual([]);
       });
 
+      test.each([false, true])(
+        "excludes canceled waiters with an active waiter present: %s",
+        async (includeActiveWaiter) => {
+          const isolatedBackend = await setup();
+          const client = new OpenWorkflow({ backend: isolatedBackend });
+          const signal = `canceled-waiter-${randomUUID()}`;
+          const workflow = client.defineWorkflow(
+            { name: "signal-waiter" },
+            async ({ step }) =>
+              await step.waitForSignal({ signal, timeout: "1h" }),
+          );
+          const worker = client.newWorker({ concurrency: 2 });
+
+          try {
+            const canceledHandle = await workflow.run();
+            const activeHandle = includeActiveWaiter
+              ? await workflow.run()
+              : null;
+
+            await worker.tick();
+            await worker.stop();
+
+            for (const handle of [canceledHandle, activeHandle]) {
+              if (!handle) continue;
+              await expect(
+                isolatedBackend.getWorkflowRun({
+                  workflowRunId: handle.workflowRun.id,
+                }),
+              ).resolves.toMatchObject({ status: "running", workerId: null });
+            }
+
+            const steps = await isolatedBackend.listStepAttempts({
+              workflowRunId: canceledHandle.workflowRun.id,
+            });
+            const waitStep = steps.data.find(
+              (attempt) => attempt.kind === "signal-wait",
+            );
+            if (!waitStep) throw new Error("Expected a persisted signal wait");
+
+            await canceledHandle.cancel();
+            const result = await client.sendSignal({
+              signal,
+              data: { approved: true },
+            });
+
+            expect(result.workflowRunIds).toEqual(
+              activeHandle ? [activeHandle.workflowRun.id] : [],
+            );
+            await expect(
+              isolatedBackend.getSignalDelivery({ stepAttemptId: waitStep.id }),
+            ).resolves.toBeUndefined();
+
+            await worker.tick();
+            await worker.stop();
+
+            if (activeHandle) {
+              await expect(activeHandle.result()).resolves.toEqual({
+                data: { approved: true },
+              });
+            }
+            await expect(
+              isolatedBackend.getWorkflowRun({
+                workflowRunId: canceledHandle.workflowRun.id,
+              }),
+            ).resolves.toMatchObject({
+              status: "canceled",
+              workerId: null,
+              availableAt: null,
+            });
+          } finally {
+            await worker.stop();
+            await teardown(isolatedBackend);
+          }
+        },
+      );
+
       test("delivers to one active waiter and wakes run", async () => {
         const run = await createClaimedWorkflowRun(backend);
         const signalString = `test-signal-${randomUUID()}`;
 
         const step = await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -2868,7 +2946,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         await backend.sleepWorkflowRun({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           availableAt: newDateInOneYear(),
         });
 
@@ -2889,9 +2967,9 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: run.id,
         });
         expect(wokenRun).not.toBeNull();
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        // oxlint-disable-next-line typescript/no-non-null-assertion
         expect(wokenRun!.availableAt).not.toBeNull();
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        // oxlint-disable-next-line typescript/no-non-null-assertion
         expect(wokenRun!.availableAt!.getTime()).toBeLessThanOrEqual(
           Date.now() + 5000,
         );
@@ -2905,7 +2983,7 @@ export function testBackend(options: TestBackendOptions): void {
           const run = await createClaimedWorkflowRun(backend);
           await backend.createStepAttempt({
             workflowRunId: run.id,
-            workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             stepName: "wait-step",
             kind: "signal-wait",
             config: {},
@@ -2917,7 +2995,7 @@ export function testBackend(options: TestBackendOptions): void {
           });
           await backend.sleepWorkflowRun({
             workflowRunId: run.id,
-            workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
             availableAt: newDateInOneYear(),
           });
           runs.push(run);
@@ -2935,14 +3013,14 @@ export function testBackend(options: TestBackendOptions): void {
         }
       });
 
-      test("idempotent send returns same result", async () => {
+      test("idempotent send returns same result after recipient cancellation", async () => {
         const run = await createClaimedWorkflowRun(backend);
         const signalString = `idempotent-${randomUUID()}`;
         const idempotencyKey = randomUUID();
 
         await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -2954,7 +3032,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         await backend.sleepWorkflowRun({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           availableAt: newDateInOneYear(),
         });
 
@@ -2963,6 +3041,9 @@ export function testBackend(options: TestBackendOptions): void {
           data: { val: 1 },
           idempotencyKey,
         });
+
+        expect(first.workflowRunIds).toEqual([run.id]);
+        await backend.cancelWorkflowRun({ workflowRunId: run.id });
 
         const second = await backend.sendSignal({
           signal: signalString,
@@ -2979,7 +3060,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const step = await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -2991,7 +3072,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         await backend.sleepWorkflowRun({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           availableAt: newDateInOneYear(),
         });
 
@@ -3021,7 +3102,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         const step = await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -3033,7 +3114,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         await backend.sleepWorkflowRun({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           availableAt: newDateInOneYear(),
         });
 
@@ -3063,7 +3144,7 @@ export function testBackend(options: TestBackendOptions): void {
         const run = await createClaimedWorkflowRun(backend);
         const step = await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -3086,7 +3167,7 @@ export function testBackend(options: TestBackendOptions): void {
 
         await backend.createStepAttempt({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: "wait-step",
           kind: "signal-wait",
           config: {},
@@ -3098,7 +3179,7 @@ export function testBackend(options: TestBackendOptions): void {
         });
         await backend.sleepWorkflowRun({
           workflowRunId: run.id,
-          workerId: run.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          workerId: run.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           availableAt: newDateInOneYear(),
         });
 
@@ -3115,7 +3196,7 @@ export function testBackend(options: TestBackendOptions): void {
         expect(step).toBeDefined();
 
         const result = await backend.getSignalDelivery({
-          stepAttemptId: step!.id, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          stepAttemptId: step!.id, // oxlint-disable-line typescript/no-non-null-assertion
         });
         expect(result).toBeNull();
       });
@@ -3176,7 +3257,7 @@ async function claimAndFailNextPendingRun(b: Backend): Promise<string> {
   if (!claimed) throw new Error("Expected to claim a pending run");
   await b.failWorkflowRun({
     workflowRunId: claimed.id,
-    workerId: claimed.workerId!, // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    workerId: claimed.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
     error: { message: "failed run" },
     retryPolicy: {
       ...DEFAULT_WORKFLOW_RETRY_POLICY,
@@ -3225,5 +3306,7 @@ function newDateInOneYear() {
  * @returns Promise resolved after sleeping
  */
 function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

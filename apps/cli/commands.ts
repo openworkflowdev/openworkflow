@@ -1,7 +1,14 @@
-import { WorkerConfig, loadConfig, loadConfigFromPath } from "./config.js";
-import { CLIError } from "./errors.js";
 import {
-  CONFIG,
+  WorkerConfig,
+  findConfigFile,
+  loadConfig,
+  loadConfigFromPath,
+} from "./config.js";
+import { CLIError, exit } from "./errors.js";
+import { createModuleLoader } from "./module-loader.js";
+import { trackCommand } from "./telemetry.js";
+import {
+  getConfigTemplate,
   HELLO_WORLD_RUNNER,
   HELLO_WORLD_WORKFLOW,
   POSTGRES_CLIENT,
@@ -10,8 +17,7 @@ import {
 } from "./templates.js";
 import * as p from "@clack/prompts";
 import { consola } from "consola";
-import { config as loadDotenv } from "dotenv";
-import { createJiti } from "jiti";
+import { config as loadDotenv, parse as parseDotenv } from "dotenv";
 import { spawn } from "node:child_process";
 import {
   existsSync,
@@ -23,17 +29,43 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { addDependency, detectPackageManager } from "nypm";
+import {
+  addDependency,
+  addDependencyCommand,
+  detectPackageManager,
+} from "nypm";
 import { OpenWorkflow } from "openworkflow";
-import { isWorkflow, Workflow } from "openworkflow/internal";
+import { Backend, isWorkflow, Workflow } from "openworkflow/internal";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const workflowSources = new WeakMap<
+  Workflow<unknown, unknown, unknown>,
+  string
+>();
 
 type BackendChoice = "sqlite" | "postgres" | "both";
 
 interface CommandOptions {
   config?: string;
+  envFile?: string;
 }
+
+interface InitOptions extends CommandOptions {
+  backend?: BackendChoice;
+  yes?: boolean;
+  skipInstall?: boolean;
+}
+
+interface InitDependencies {
+  addDependency: typeof addDependency;
+  note: typeof p.note;
+}
+
+const DEFAULT_INIT_DEPENDENCIES: InitDependencies = {
+  addDependency,
+  note: p.note,
+};
 
 interface DashboardOptions extends CommandOptions {
   port?: number;
@@ -52,6 +84,7 @@ export function getVersion(): string {
   for (const pkgPath of paths) {
     if (existsSync(pkgPath)) {
       try {
+        // safety: this is the installed CLI package manifest; its version is supplied by the package build.
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
           version?: string;
         };
@@ -68,58 +101,79 @@ export function getVersion(): string {
 /**
  * openworkflow init
  * @param options - Command options
+ * @param services - Package installer and setup instructions output
+ * @returns Resolves when setup finishes.
  */
-export async function init(options: CommandOptions = {}): Promise<void> {
-  const configPath = options.config;
+// oxlint-disable-next-line complexity
+export async function init(
+  options: InitOptions = {},
+  services: InitDependencies = DEFAULT_INIT_DEPENDENCIES,
+): Promise<void> {
+  if (options.yes && !options.backend) {
+    throw new CLIError("--backend is required with --yes.");
+  }
+  if (!options.yes && !process.stdin.isTTY) {
+    throw new CLIError(
+      "Interactive setup requires a terminal. Pass --backend sqlite|postgres|both --yes.",
+    );
+  }
   p.intro("Initializing OpenWorkflow...");
 
-  const { configFile } = await loadConfigWithEnv(configPath);
+  const configFile = findConfigWithEnv(options);
   let configFileToDelete: string | null = null;
 
-  if (configFile) {
+  if (configFile && existsSync(configFile)) {
+    if (options.yes) {
+      throw new CLIError(
+        `Config file already exists at ${configFile}. --yes does not allow overwrites.`,
+      );
+    }
     const shouldOverride = await p.confirm({
       message: `Config file already exists at ${configFile}. Override it?`,
       initialValue: false,
     });
 
-    if (!shouldOverride || p.isCancel(shouldOverride)) cancelSetup();
+    if (!shouldOverride || p.isCancel(shouldOverride)) return cancelSetup();
 
     configFileToDelete = configFile;
   }
 
-  const backendChoice = await p.select<BackendChoice>({
-    message: "Select a backend for OpenWorkflow:",
-    options: [
-      {
-        value: "sqlite",
-        label: "SQLite",
-        hint: "Recommended for testing and development",
-      },
-      {
-        value: "postgres",
-        label: "PostgreSQL",
-        hint: "Recommended for production",
-      },
-      {
-        value: "both",
-        label: "Both",
-        hint: "SQLite for dev, PostgreSQL for production",
-      },
-    ],
-    initialValue: "sqlite",
-  });
+  const backendChoice =
+    options.backend ??
+    (await p.select<BackendChoice>({
+      message: "Select a backend for OpenWorkflow:",
+      options: [
+        {
+          value: "sqlite",
+          label: "SQLite",
+          hint: "Recommended for testing and development",
+        },
+        {
+          value: "postgres",
+          label: "PostgreSQL",
+          hint: "Recommended for production",
+        },
+        {
+          value: "both",
+          label: "Both",
+          hint: "SQLite for dev, PostgreSQL for production",
+        },
+      ],
+      initialValue: "sqlite",
+    }));
 
-  if (p.isCancel(backendChoice)) cancelSetup();
+  if (p.isCancel(backendChoice)) return cancelSetup();
+  trackCommand(backendChoice);
 
   const spinner = p.spinner();
 
   // detect package manager & install packages
   spinner.start("Detecting package manager...");
   const pm = await detectPackageManager(process.cwd());
-  const packageManager = pm?.name ?? "your package manager";
+  const packageManager = pm?.name ?? "npm";
   spinner.stop(`Using ${packageManager}`);
 
-  const packageJson = readPackageJsonForDoctor();
+  const packageJson = readPackageJson();
   if (!packageJson) {
     throw new CLIError(
       "No package.json found.",
@@ -127,7 +181,13 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     );
   }
 
-  const configFileName = configPath ?? getConfigFileName(packageJson);
+  const configArg = options.config
+    ? ` --config '${options.config.replaceAll("'", String.raw`'\''`)}'`
+    : "";
+  const workerCommand = `npx @openworkflow/cli worker start${configArg}`;
+  assertWorkerScriptCanBeUpdated(packageJson, workerCommand);
+
+  const configFileName = options.config ?? getConfigFileName(packageJson);
   const clientFileName = getClientFileName(packageJson);
   const exampleWorkflowFileName = getExampleWorkflowFileName(packageJson);
   const runFileName = getRunFileName(packageJson);
@@ -135,34 +195,50 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     ? `npx tsx openworkflow/${runFileName}`
     : `node openworkflow/${runFileName}`;
 
-  const shouldSetup = await p.confirm({
-    message: "Install packages and set up project files?",
-    initialValue: true,
-  });
+  const shouldSetup =
+    options.yes ??
+    (await p.confirm({
+      message: options.skipInstall
+        ? "Set up project files?"
+        : "Install packages and set up project files?",
+      initialValue: true,
+    }));
 
-  if (p.isCancel(shouldSetup)) cancelSetup();
+  if (p.isCancel(shouldSetup)) return cancelSetup();
 
   if (!shouldSetup) {
     p.outro("Setup skipped.");
     return;
   }
 
+  const dependencies = getDependenciesToInstall(backendChoice);
+  const devDependencies = getDevDependenciesToInstall();
+  if (options.skipInstall) {
+    services.note(
+      [
+        addDependencyCommand(packageManager, dependencies),
+        addDependencyCommand(packageManager, devDependencies, { dev: true }),
+      ].join("\n"),
+      "Install dependencies before running OpenWorkflow",
+    );
+  } else {
+    spinner.start(`Installing ${dependencies.join(", ")}...`);
+    await services.addDependency(dependencies, {
+      silent: true,
+      packageManager,
+    });
+    spinner.stop(`Installed ${dependencies.join(", ")}`);
+    spinner.start(`Installing ${devDependencies.join(", ")}...`);
+    await services.addDependency(devDependencies, {
+      silent: true,
+      dev: true,
+      packageManager,
+    });
+    spinner.stop(`Installed ${devDependencies.join(", ")}`);
+  }
+
   if (configFileToDelete) {
     unlinkSync(configFileToDelete);
-  }
-
-  {
-    const dependencies = getDependenciesToInstall(backendChoice);
-    spinner.start(`Installing ${dependencies.join(", ")}...`);
-    await addDependency(dependencies, { silent: true });
-    spinner.stop(`Installed ${dependencies.join(", ")}`);
-  }
-
-  {
-    const devDependencies = getDevDependenciesToInstall();
-    spinner.start(`Installing ${devDependencies.join(", ")}...`);
-    await addDependency(devDependencies, { silent: true, dev: true });
-    spinner.stop(`Installed ${devDependencies.join(", ")}`);
   }
 
   createClientFile(backendChoice, clientFileName);
@@ -177,18 +253,33 @@ export async function init(options: CommandOptions = {}): Promise<void> {
     updateEnvForPostgres();
   }
 
-  addWorkerScriptToPackageJson();
+  addWorkerScriptToPackageJson(workerCommand);
 
   // write config file last, so canceling earlier doesn't leave a config file
   // which would prevent re-running init
   createConfigFile(configFileName);
 
   // wrap up
-  p.note(
-    `➡️ Start a worker:\n$ npx @openworkflow/cli worker start\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard`,
+  services.note(
+    `➡️ Start a worker:\n$ ${workerCommand}\n\n➡️ Run the example workflow:\n$ ${runCommand}\n\n➡️ View the dashboard:\n$ npx @openworkflow/cli dashboard${configArg}`,
     "Next steps",
   );
   p.outro("✅ Setup complete!");
+}
+
+function assertWorkerScriptCanBeUpdated(
+  manifest: Readonly<PackageJson>,
+  workerCommand: string,
+): void {
+  const { scripts } = manifest;
+  const worker = scripts?.["worker"];
+  if (
+    worker !== undefined &&
+    worker !== "npx @openworkflow/cli worker start" &&
+    worker !== workerCommand
+  ) {
+    throw new CLIError("Setup would overwrite package.json scripts.worker.");
+  }
 }
 
 /**
@@ -196,10 +287,13 @@ export async function init(options: CommandOptions = {}): Promise<void> {
  * @param options - Command options
  */
 export async function doctor(options: CommandOptions = {}): Promise<void> {
-  const configPath = options.config;
   consola.start("Running OpenWorkflow doctor...");
+  const timer = setTimeout(() => {
+    consola.error("Doctor timed out after 30 seconds.");
+    void exit(1);
+  }, 30_000);
 
-  const { config, configFile } = await loadConfigWithEnv(configPath);
+  const { config, configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -207,45 +301,48 @@ export async function doctor(options: CommandOptions = {}): Promise<void> {
     );
   }
   const backend = config.backend;
+  let cleanupFailed = false;
 
   try {
+    await checkBackendConnection(backend);
+    if (config.worker?.concurrency !== undefined) {
+      assertPositiveInteger("concurrency", config.worker.concurrency);
+    }
     consola.log("");
-    consola.info(`Config file: ${configFile}`);
+    consola.info(`Config file: ${path.relative(process.cwd(), configFile)}`);
 
     const backendName = backend.constructor.name.replace("Backend", "");
     consola.log(`  • Backend: ${backendName}`);
 
-    const packageJson = readPackageJsonForDoctor();
-    if (packageJson) {
-      warnIfMissingBackendPackage(backendName, packageJson);
-      warnIfMissingTsconfig(packageJson);
-    }
-
     // discover directories
-    const dirs = getWorkflowDirectories(config);
+    const dirs = [...new Set(getWorkflowDirectories(config))];
     consola.log(`  • Workflow directories: ${dirs.join(", ")}`);
 
     // discover files
     const configFileDir = path.dirname(configFile);
-    const { files, workflows } = await discoverWorkflowsInDirs(
+    const { workflows } = await discoverWorkflowsInDirs(
       dirs,
       configFileDir,
       config.ignorePatterns ?? [],
     );
-    consola.log("");
-    consola.info(`Found ${String(files.length)} workflow file(s):`);
-    for (const file of files) {
-      consola.log(`  • ${file}`);
-    }
-
+    assertNoDuplicateWorkflows(workflows);
     printDiscoveredWorkflows(workflows);
-    warnAboutDuplicateWorkflows(workflows);
-
-    consola.log("");
-    consola.success("Configuration looks good!");
   } finally {
-    await backend.stop();
+    if (hasBackendStop(backend)) {
+      try {
+        await backend.stop();
+      } catch (error) {
+        cleanupFailed = true;
+        consola.error(`Backend cleanup failed: ${String(error)}`);
+      }
+    }
   }
+
+  clearTimeout(timer);
+  if (cleanupFailed) await exit(1);
+  consola.log("");
+  consola.success("Configuration looks good!");
+  await exit(0);
 }
 
 export type WorkerStartOptions = WorkerConfig & CommandOptions;
@@ -257,10 +354,9 @@ export type WorkerStartOptions = WorkerConfig & CommandOptions;
 export async function workerStart(
   options: WorkerStartOptions = {},
 ): Promise<void> {
-  const { config: configPath, ...workerConfig } = options;
   consola.start("Starting worker...");
 
-  const { config, configFile } = await loadConfigWithEnv(configPath);
+  const { config, configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -288,6 +384,8 @@ export async function workerStart(
   }
 
   try {
+    await checkBackendConnection(backend);
+
     // discover and import workflows
     const dirs = getWorkflowDirectories(config);
     consola.info(`Discovering workflows from: ${dirs.join(", ")}`);
@@ -306,7 +404,9 @@ export async function workerStart(
 
     assertNoDuplicateWorkflows(workflows);
 
-    const workerOptions = mergeDefinedOptions(config.worker, workerConfig);
+    const workerOptions = mergeDefinedOptions(config.worker, {
+      concurrency: options.concurrency,
+    });
     if (workerOptions.concurrency !== undefined) {
       assertPositiveInteger("concurrency", workerOptions.concurrency);
     }
@@ -324,9 +424,22 @@ export async function workerStart(
     await worker.start();
     consola.success("Worker started.");
   } catch (error) {
-    await gracefulShutdown();
+    try {
+      await gracefulShutdown();
+    } catch (cleanupError) {
+      consola.warn(`Backend cleanup failed: ${String(cleanupError)}`);
+    }
     throw error;
   }
+}
+
+interface DashboardSpawnOptions {
+  command: string;
+  args: string[];
+  spawnOptions: {
+    stdio: "inherit";
+    env: NodeJS.ProcessEnv;
+  };
 }
 
 /**
@@ -335,14 +448,7 @@ export async function workerStart(
  * @param port - Optional dashboard port.
  * @returns Spawn configuration for launching the dashboard process.
  */
-export function getDashboardSpawnOptions(port?: number): {
-  command: string;
-  args: string[];
-  spawnOptions: {
-    stdio: "inherit";
-    env?: NodeJS.ProcessEnv;
-  };
-} {
+export function getDashboardSpawnOptions(port?: number): DashboardSpawnOptions {
   return {
     command: "npx",
     args: ["@openworkflow/dashboard"],
@@ -383,11 +489,10 @@ export function validateDashboardPort(port?: number): number | undefined {
  * @returns Resolves when the dashboard process exits.
  */
 export async function dashboard(options: DashboardOptions = {}): Promise<void> {
-  const configPath = options.config;
   const port = validateDashboardPort(options.port);
   consola.start("Starting dashboard...");
 
-  const { configFile } = await loadConfigWithEnv(configPath);
+  const { configFile } = await loadConfigWithEnv(options);
   if (!configFile) {
     throw new CLIError(
       "No config file found.",
@@ -450,11 +555,46 @@ export async function dashboard(options: DashboardOptions = {}): Promise<void> {
 
 /**
  * Show a canceled-setup message and exit the process with status 0.
+ * @returns Never resolves because the process exits.
  */
-function cancelSetup(): never {
+function cancelSetup(): Promise<never> {
   p.cancel("Setup canceled.");
-  // eslint-disable-next-line unicorn/no-process-exit
-  process.exit(0);
+  return exit(0);
+}
+
+function hasBackendStop(backend: Backend | undefined): backend is Backend {
+  return typeof backend?.stop === "function";
+}
+
+function hasBackendConnectionMethods(
+  backend: Backend | undefined,
+): backend is Backend {
+  return (
+    hasBackendStop(backend) && typeof backend.listWorkflowRuns === "function"
+  );
+}
+
+/**
+ * Exercise backend initialization, connectivity, and workflow table access.
+ * @param backend - Configured backend
+ */
+async function checkBackendConnection(
+  backend: Backend | undefined,
+): Promise<void> {
+  if (!hasBackendConnectionMethods(backend)) {
+    throw new CLIError(
+      "Missing or invalid backend.",
+      "Set config.backend to a connected OpenWorkflow backend.",
+    );
+  }
+  try {
+    await backend.listWorkflowRuns({ limit: 1 });
+  } catch (error) {
+    throw new CLIError(
+      "Failed to access backend.",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 /**
@@ -501,7 +641,7 @@ function findDuplicateWorkflows(
   for (const workflow of workflows) {
     const name = workflow.spec.name;
     const version = workflow.spec.version ?? null;
-    const key = version ? `${name}@${version}` : name;
+    const key = JSON.stringify([name, version]);
 
     const existing = workflowKeys.get(key);
     if (existing) {
@@ -543,24 +683,6 @@ function assertNoDuplicateWorkflows(
 }
 
 /**
- * Warn about duplicate workflows without failing.
- * @param workflows - Discovered workflows
- */
-function warnAboutDuplicateWorkflows(
-  workflows: Workflow<unknown, unknown, unknown>[],
-): void {
-  const duplicates = findDuplicateWorkflows(workflows);
-  for (const duplicate of duplicates) {
-    consola.warn(
-      `Duplicate workflow detected: ${formatWorkflowIdentity(duplicate.name, duplicate.version)}`,
-    );
-    consola.warn(
-      "Multiple files export a workflow with the same name and version.",
-    );
-  }
-}
-
-/**
  * Print discovered workflows to the console.
  * @param workflows - Array of discovered workflows
  */
@@ -568,13 +690,14 @@ function printDiscoveredWorkflows(
   workflows: Workflow<unknown, unknown, unknown>[],
 ): void {
   consola.log("");
-  consola.info(`Discovered ${String(workflows.length)} workflow(s):`);
+  consola.info(
+    `Found ${String(workflows.length)} workflow${workflows.length === 1 ? "" : "s"}:`,
+  );
   for (const workflow of workflows) {
     const name = workflow.spec.name;
-    const version = workflow.spec.version ?? "unversioned";
-    const versionStr =
-      version === "unversioned" ? "" : ` (version: ${version})`;
-    consola.log(`  • ${name}${versionStr}`);
+    const version = workflow.spec.version;
+    const versionStr = version ? ` (${version})` : "";
+    consola.log(`  • ${name}${versionStr} — ${workflowSources.get(workflow)}`);
   }
 }
 
@@ -599,16 +722,18 @@ function escapeRegexChar(char: string): string {
   return /[-/\\^$+?.()|[\]{}]/.test(char) ? `\\${char}` : char;
 }
 
+interface GlobToken {
+  regexFragment: string;
+  nextIndex: number;
+}
+
 /**
  * Handle "*" and "**" glob tokens.
  * @param pattern - Glob pattern
  * @param index - Current index
  * @returns Regex fragment and next index
  */
-function handleAsteriskToken(
-  pattern: string,
-  index: number,
-): { regexFragment: string; nextIndex: number } {
+function handleAsteriskToken(pattern: string, index: number): GlobToken {
   const next = pattern[index + 1];
   if (next === "*") {
     const nextIndex = pattern[index + 2] === "/" ? index + 3 : index + 2;
@@ -661,8 +786,8 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 /**
- * Check whether a file path matches ignore patterns.
- * @param filePath - Absolute file path
+ * Check whether a file or directory path matches ignore patterns.
+ * @param filePath - Absolute path, with a trailing separator for directories
  * @param baseDir - Base directory for relative matching
  * @param matchers - Compiled regex matchers
  * @returns Whether the file should be ignored
@@ -676,9 +801,14 @@ function isIgnoredFile(
 
   const relativePath = normalizeForGlobMatch(path.relative(baseDir, filePath));
   const fileName = path.basename(filePath);
+  const isDirectory = filePath.endsWith(path.sep);
 
   return matchers.some(
-    (matcher) => matcher.test(relativePath) || matcher.test(fileName),
+    (matcher) =>
+      matcher.test(relativePath) ||
+      matcher.test(fileName) ||
+      (isDirectory &&
+        (matcher.test(`${relativePath}/`) || matcher.test(`${fileName}/`))),
   );
 }
 
@@ -710,22 +840,24 @@ export function discoverWorkflowFiles(
     try {
       entries = readdirSync(absoluteDir, { withFileTypes: true });
     } catch (error) {
-      // doesn't exist or can't be read, skip
-      const errMessage = error instanceof Error ? error.message : String(error);
-      consola.debug(`Failed to read directory: ${absoluteDir} - ${errMessage}`);
-      return;
+      throw new CLIError(
+        `Cannot read workflow directory: ${absoluteDir}`,
+        `${String(error)}\nCorrect config.dirs or make the directory readable.`,
+      );
     }
 
     for (const entry of entries) {
       const fullPath = path.join(absoluteDir, entry.name);
       if (entry.isDirectory()) {
-        scanDirectory(fullPath);
+        if (!isIgnoredFile(`${fullPath}${path.sep}`, baseDir, matchers)) {
+          scanDirectory(fullPath);
+        }
       } else if (
         entry.isFile() &&
         WORKFLOW_EXTENSIONS.some((ext: string) =>
           entry.name.endsWith(`.${ext}`),
         ) &&
-        !entry.name.endsWith(".d.ts") &&
+        !/\.d\.(?:ts|mts|cts)$/.test(entry.name) &&
         !isIgnoredFile(fullPath, baseDir, matchers)
       ) {
         discoveredFiles.push(fullPath);
@@ -737,7 +869,7 @@ export function discoverWorkflowFiles(
     scanDirectory(dir);
   }
 
-  return discoveredFiles;
+  return [...new Set(discoveredFiles)];
 }
 
 /**
@@ -750,12 +882,12 @@ async function importWorkflows(
   files: string[],
 ): Promise<Workflow<unknown, unknown, unknown>[]> {
   const workflows: Workflow<unknown, unknown, unknown>[] = [];
-  const jiti = createJiti(import.meta.url);
 
   for (const file of files) {
     // import the module
-    let module: Record<string, unknown>;
+    let module: object;
     try {
+      const jiti = createModuleLoader(file);
       module = await jiti.import(pathToFileURL(file).href);
     } catch (error) {
       const errorMessage =
@@ -770,6 +902,7 @@ async function importWorkflows(
     for (const [key, value] of Object.entries(module)) {
       if (isWorkflow(value)) {
         workflows.push(value);
+        workflowSources.set(value, path.relative(process.cwd(), file));
         consola.debug(
           `Found workflow "${value.spec.name}" in ${file} (${key})`,
         );
@@ -777,7 +910,7 @@ async function importWorkflows(
     }
   }
 
-  return workflows;
+  return [...new Set(workflows)];
 }
 
 /**
@@ -876,11 +1009,20 @@ function createConfigFile(configFileName: string): void {
   const spinner = p.spinner();
   spinner.start("Writing config...");
   const configDestPath = path.resolve(process.cwd(), configFileName);
+  const relativeClientPath = path
+    .relative(
+      path.dirname(configDestPath),
+      path.join(process.cwd(), "openworkflow/client.js"),
+    )
+    .replaceAll(path.sep, "/");
+  const clientImport = relativeClientPath.startsWith("../")
+    ? relativeClientPath
+    : `./${relativeClientPath}`;
 
   // mkdir if the user specified a config file, and they want it in a dir
   mkdirSync(path.dirname(configDestPath), { recursive: true });
 
-  writeFileSync(configDestPath, CONFIG, "utf8");
+  writeFileSync(configDestPath, getConfigTemplate(clientImport), "utf8");
   spinner.stop(`Config written to ${configDestPath}`);
 }
 
@@ -977,8 +1119,9 @@ function updateGitignoreForSqlite(): void {
 
 /**
  * Add worker script to package.json.
+ * @param workerCommand - Worker command including any custom config path.
  */
-function addWorkerScriptToPackageJson(): void {
+function addWorkerScriptToPackageJson(workerCommand: string): void {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return;
@@ -986,16 +1129,14 @@ function addWorkerScriptToPackageJson(): void {
   const spinner = p.spinner();
   spinner.start("Adding worker script to package.json...");
   try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-      scripts?: Record<string, string>;
-    };
+    const packageJson = parsePackageJson(readFileSync(packageJsonPath, "utf8"));
 
     packageJson.scripts ??= {};
-    packageJson.scripts["worker"] = "npx @openworkflow/cli worker start";
+    packageJson.scripts["worker"] = workerCommand;
 
     writeFileSync(
       packageJsonPath,
-      JSON.stringify(packageJson, null, 2) + "\n",
+      `${JSON.stringify(packageJson, null, 2)}\n`,
       "utf8",
     );
 
@@ -1007,22 +1148,22 @@ function addWorkerScriptToPackageJson(): void {
 }
 
 /**
- * Append a line to a file if no existing line matches. Creates the file if it
- * doesn't exist.
+ * Append a line if the file does not already contain the desired entry.
+ * Creates the file if it doesn't exist.
  * @param filePath - Path to the file
  * @param line - Line to append (without a trailing newline)
- * @param matchesExisting - Predicate that returns true when an existing line
- * should be treated as already representing `line`
+ * @param matchesExisting - Predicate that checks whether the file contents
+ * already contain the desired entry
  * @returns Whether the line was appended
  */
 function appendLineIfMissing(
   filePath: string,
   line: string,
-  matchesExisting: (existing: string) => boolean,
+  matchesExisting: (content: string) => boolean,
 ): boolean {
   const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
 
-  if (content.split("\n").some((existing) => matchesExisting(existing))) {
+  if (matchesExisting(content)) {
     return false;
   }
 
@@ -1039,10 +1180,8 @@ function appendLineIfMissing(
  * @returns Whether the entry was appended
  */
 function ensureGitignoreEntry(gitignorePath: string, entry: string): boolean {
-  return appendLineIfMissing(
-    gitignorePath,
-    entry,
-    (line) => line.trim() === entry,
+  return appendLineIfMissing(gitignorePath, entry, (content) =>
+    content.split("\n").some((line) => line.trim() === entry),
   );
 }
 
@@ -1066,45 +1205,105 @@ function updateEnvForPostgres(): void {
 }
 
 /**
- * Load CLI config after loading .env, and wrap errors for user-facing output.
- * @param configPath - Optional explicit config file path
- * @returns Loaded config and metadata.
+ * Find the config and load its environment without importing it.
+ * @param options - Config and environment file paths
+ * @returns Config path, if found.
  */
-async function loadConfigWithEnv(configPath?: string) {
-  loadDotenv({ quiet: true });
+function findConfigWithEnv(options: CommandOptions) {
+  const { envFile } = options;
+  const configPath = options.config
+    ? path.resolve(options.config)
+    : findConfigFile();
+  const baseDir = configPath ? path.dirname(configPath) : process.cwd();
+  const { error } = loadDotenv({
+    path: envFile ?? path.join(baseDir, ".env"),
+    quiet: true,
+  });
+  if (envFile !== undefined && error) {
+    throw new CLIError(
+      `Failed to load environment file: ${envFile}`,
+      error.message,
+    );
+  }
+  return configPath;
+}
+
+// Load the environment before importing config for commands that use it.
+async function loadConfigWithEnv(options: CommandOptions) {
+  const configPath = findConfigWithEnv(options);
   try {
-    return configPath
-      ? await loadConfigFromPath(configPath)
-      : await loadConfig();
+    const loaded = await loadConfigFromPath(
+      configPath ?? "openworkflow.config.ts",
+    );
+    trackCommand(loaded.config.backend);
+    return loaded;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CLIError("Failed to load OpenWorkflow config.", message);
   }
 }
 
-interface PackageJsonForDoctor {
+interface PackageJson {
+  scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
 
 /**
- * Load package.json for doctor checks.
+ * Load and validate package.json for project setup.
  * @returns Parsed package.json or null if unavailable.
  */
-function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
+function readPackageJson(): PackageJson | null {
   const packageJsonPath = path.join(process.cwd(), "package.json");
   if (!existsSync(packageJsonPath)) {
     return null;
   }
 
   try {
-    return JSON.parse(
-      readFileSync(packageJsonPath, "utf8"),
-    ) as PackageJsonForDoctor;
-  } catch {
-    consola.warn("Could not read package.json for dependency checks.");
+    return parsePackageJson(readFileSync(packageJsonPath, "utf8"));
+  } catch (error) {
+    if (error instanceof CLIError) throw error;
+    consola.warn("Could not read package.json for project setup.");
     return null;
   }
+}
+
+function parsePackageJson(contents: string): PackageJson {
+  const manifest: unknown = JSON.parse(contents);
+  assertPackageJson(manifest);
+  return manifest;
+}
+
+function assertPackageJson(manifest: unknown): asserts manifest is PackageJson {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new CLIError("Invalid package.json: expected an object.");
+  }
+
+  const fields = {
+    scripts: "scripts" in manifest ? manifest.scripts : undefined,
+    dependencies:
+      "dependencies" in manifest ? manifest.dependencies : undefined,
+    devDependencies:
+      "devDependencies" in manifest ? manifest.devDependencies : undefined,
+  };
+  for (const [key, field] of Object.entries(fields)) {
+    if (field !== undefined && !isStringRecord(field)) {
+      throw new CLIError(
+        `Invalid package.json: ${key} must be an object containing string values.`,
+      );
+    }
+  }
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every(
+      (entry): entry is string => typeof entry === "string",
+    )
+  );
 }
 
 /**
@@ -1114,7 +1313,7 @@ function readPackageJsonForDoctor(): PackageJsonForDoctor | null {
  * @returns ".ts" when TypeScript is a dependency, otherwise ".js"
  */
 function getScriptExtension(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): ".ts" | ".js" {
   return packageJson && hasDependency(packageJson, "typescript")
     ? ".ts"
@@ -1127,7 +1326,7 @@ function getScriptExtension(
  * @returns The config file name to create
  */
 export function getConfigFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `openworkflow.config${getScriptExtension(packageJson)}`;
 }
@@ -1138,7 +1337,7 @@ export function getConfigFileName(
  * @returns The example workflow file name to create
  */
 export function getExampleWorkflowFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `hello-world${getScriptExtension(packageJson)}`;
 }
@@ -1149,7 +1348,7 @@ export function getExampleWorkflowFileName(
  * @returns The runner file name to create
  */
 export function getRunFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `hello-world.run${getScriptExtension(packageJson)}`;
 }
@@ -1160,7 +1359,7 @@ export function getRunFileName(
  * @returns The client file name to create
  */
 export function getClientFileName(
-  packageJson: Readonly<PackageJsonForDoctor> | null,
+  packageJson: Readonly<PackageJson> | null,
 ): string {
   return `client${getScriptExtension(packageJson)}`;
 }
@@ -1172,56 +1371,12 @@ export function getClientFileName(
  * @returns True when the dependency is listed.
  */
 function hasDependency(
-  packageJson: Readonly<PackageJsonForDoctor>,
+  packageJson: Readonly<PackageJson>,
   name: string,
 ): boolean {
   return Boolean(
     packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name],
   );
-}
-
-/**
- * Warn when the configured backend is missing its package.
- * @param backendName - Configured backend name.
- * @param packageJson - Parsed package.json.
- */
-function warnIfMissingBackendPackage(
-  backendName: string,
-  packageJson: Readonly<PackageJsonForDoctor>,
-): void {
-  const backendNameLower = backendName.toLowerCase();
-
-  const isPostgres = backendNameLower.includes("postgres");
-  const isSqlite = backendNameLower.includes("sqlite");
-
-  if ((isPostgres || isSqlite) && !hasDependency(packageJson, "openworkflow")) {
-    consola.warn(
-      `Backend is ${backendName} but openworkflow is not installed.`,
-    );
-  }
-
-  if (isPostgres && !hasDependency(packageJson, "postgres")) {
-    consola.warn(
-      `Backend is ${backendName} but the postgres driver is not installed.`,
-    );
-  }
-}
-
-/**
- * Warn when TypeScript is installed but tsconfig.json is missing.
- * @param packageJson - Parsed package.json.
- */
-function warnIfMissingTsconfig(
-  packageJson: Readonly<PackageJsonForDoctor>,
-): void {
-  if (!hasDependency(packageJson, "typescript")) {
-    return;
-  }
-
-  const tsconfigPath = path.join(process.cwd(), "tsconfig.json");
-  if (!existsSync(tsconfigPath)) {
-    consola.warn("TypeScript is installed but no tsconfig.json was found.");
-  }
 }
 
 /**
@@ -1233,10 +1388,9 @@ function warnIfMissingTsconfig(
  * @returns Whether the entry was appended
  */
 function ensureEnvEntry(envPath: string, key: string, value: string): boolean {
-  return appendLineIfMissing(envPath, `${key}=${value}`, (line) => {
-    const trimmed = line.trim();
-    return trimmed.startsWith(`${key}=`) || trimmed.startsWith(`${key} =`);
-  });
+  return appendLineIfMissing(envPath, `${key}=${value}`, (content) =>
+    Object.hasOwn(parseDotenv(content), key),
+  );
 }
 
 /**
@@ -1263,12 +1417,14 @@ function assertPositiveInteger(name: string, value: number): void {
 function mergeDefinedOptions<T extends Record<string, unknown>>(
   base: T | undefined,
   overrides: Partial<T>,
-): T {
-  const merged = base ? { ...base } : ({} as T);
+): Partial<T> {
+  const merged: Partial<T> = base ? { ...base } : {};
 
-  for (const [key, value] of Object.entries(overrides)) {
+  for (const key in overrides) {
+    if (!Object.hasOwn(overrides, key)) continue;
+    const value = overrides[key];
     if (value !== undefined) {
-      (merged as Record<string, unknown>)[key] = value;
+      merged[key] = value;
     }
   }
 

@@ -1,8 +1,4 @@
 import type { StepAttempt, StepAttemptCache } from "../core/step-attempt.js";
-import {
-  addToStepAttemptCache,
-  getCachedStepAttempt,
-} from "../core/step-attempt.js";
 
 /** Maximum number of step attempts allowed for a single workflow run. */
 export const WORKFLOW_STEP_LIMIT = 1000;
@@ -150,15 +146,20 @@ function getRunningWaitAttemptResumeAt(
     : defaultWaitTimeoutAt(attempt.createdAt);
 }
 
+export interface RunningWait {
+  attempt: Readonly<StepAttempt>;
+  resumeAt: Date;
+}
+
 /**
- * Compute the earliest wake-up timestamp across running wait step attempts.
+ * Find the running wait with the earliest wake-up timestamp.
  * @param attempts - Persisted step attempts for the workflow run
- * @returns Earliest wake-up timestamp, or null when no running wait exists
+ * @returns Earliest wait and its timestamp, or null when none exists
  */
-function getEarliestRunningWaitResumeAt(
+function getEarliestRunningWait(
   attempts: readonly StepAttempt[],
-): Date | null {
-  let earliest: Date | null = null;
+): RunningWait | null {
+  let earliest: RunningWait | null = null;
 
   for (const attempt of attempts) {
     const resumeAt = getRunningWaitAttemptResumeAt(attempt);
@@ -166,8 +167,8 @@ function getEarliestRunningWaitResumeAt(
       continue;
     }
 
-    if (!earliest || resumeAt.getTime() < earliest.getTime()) {
-      earliest = resumeAt;
+    if (!earliest || resumeAt.getTime() < earliest.resumeAt.getTime()) {
+      earliest = { attempt, resumeAt };
     }
   }
 
@@ -191,7 +192,7 @@ export interface StepHistoryOptions {
  * directly.
  */
 export class StepHistory {
-  private cache: StepAttemptCache;
+  private readonly cache: Map<string, StepAttempt>;
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
@@ -208,7 +209,7 @@ export class StepHistory {
       options.attempts,
       options.resumedAt ?? null,
     );
-    this.cache = state.cache;
+    this.cache = new Map(state.cache);
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
     this.failedByStepName = new Map(state.failedByStepName);
     this.runningByStepName = new Map(state.runningByStepName);
@@ -243,7 +244,7 @@ export class StepHistory {
   }
 
   findCached(stepName: string): StepAttempt | undefined {
-    return getCachedStepAttempt(this.cache, stepName);
+    return this.cache.get(stepName);
   }
 
   findRunning(stepName: string): StepAttempt | undefined {
@@ -307,29 +308,29 @@ export class StepHistory {
   }
 
   /**
-   * Earliest wake-up timestamp across running wait attempts.
-   * @returns Earliest wake-up timestamp, or null when no running wait exists
+   * Find the running wait with the earliest wake-up timestamp.
+   * @returns Earliest wait and its timestamp, or null when none exists
    */
-  earliestRunningWaitResumeAt(): Date | null {
-    return getEarliestRunningWaitResumeAt([...this.runningByStepName.values()]);
+  earliestRunningWait(): RunningWait | null {
+    return getEarliestRunningWait([...this.runningByStepName.values()]);
   }
 
   /**
-   * Earliest wake-up timestamp considering running waits and a fallback (from
-   * the in-progress wait the caller is about to park on).
-   * @param fallback - Candidate timestamp for the in-progress wait
-   * @returns The earlier of the fallback or any known running wait. If no
-   * running wait exists, returns a clone of `fallback`, which will also be
-   * invalid when `fallback` is invalid.
+   * Select the earliest running wait, including the caller's in-progress wait.
+   * @param fallback - In-progress wait and its candidate wake-up timestamp
+   * @returns The selected wait with its timestamp. If no running wait exists,
+   * returns the fallback with a cloned timestamp, even when it is invalid.
    */
-  resolveEarliestRunningWaitResumeAt(fallback: Readonly<Date>): Date {
-    const earliest = this.earliestRunningWaitResumeAt();
-    if (!earliest) return new Date(fallback);
-
-    const fallbackMs = fallback.getTime();
-    if (!Number.isFinite(fallbackMs)) return earliest;
-
-    return earliest.getTime() < fallbackMs ? earliest : new Date(fallback);
+  resolveEarliestRunningWait(fallback: Readonly<RunningWait>): RunningWait {
+    const earliest = this.earliestRunningWait();
+    const fallbackMs = fallback.resumeAt.getTime();
+    if (
+      earliest &&
+      (!Number.isFinite(fallbackMs) || earliest.resumeAt.getTime() < fallbackMs)
+    ) {
+      return earliest;
+    }
+    return { attempt: fallback.attempt, resumeAt: new Date(fallback.resumeAt) };
   }
 
   /**
@@ -368,7 +369,7 @@ export class StepHistory {
    */
   recordCompletion(attempt: Readonly<StepAttempt>): void {
     this.runningByStepName.delete(attempt.stepName);
-    this.cache = addToStepAttemptCache(this.cache, attempt);
+    this.cache.set(attempt.stepName, attempt);
   }
 
   /**

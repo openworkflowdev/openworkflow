@@ -1,11 +1,13 @@
 ---
 title: CLI Reference
-description: Command-line interface for OpenWorkflow
+description: Command-line interface for OpenWorkflow, with commands to set up a project, start workers, and open the dashboard
 ---
 
-The OpenWorkflow CLI is the primary way to set up your project, run workers, and
-launch the dashboard. CLI commands read your `openworkflow.config.ts`
-automatically, or you can override the path with `--config`.
+The OpenWorkflow CLI
+[(`@openworkflow/cli`)](https://www.npmjs.com/package/@openworkflow/cli) is the
+primary way to set up your project, run workers, and launch the dashboard. The
+CLI reads your `openworkflow.config.ts` by default, or you can override the path
+with `--config`.
 
 ## Installation
 
@@ -28,7 +30,7 @@ bun add -D @openworkflow/cli
 
 ### `init`
 
-Initialize OpenWorkflow in your project:
+Initialize OpenWorkflow in a project with an existing `package.json`:
 
 <CodeGroup>
 ```bash npm
@@ -45,15 +47,24 @@ bunx @openworkflow/cli init
 
 </CodeGroup>
 
-This interactive command:
+By default, `init` is interactive and prompts for a backend, installs
+dependencies, and creates a config, client, example workflow, and runner. It
+also adds a `worker` script and updates `.gitignore` or `.env` for the selected
+backend.
 
-1. Asks which backend to use (SQLite, PostgreSQL, or both)
-2. Installs required dependencies
-3. Creates `openworkflow.config.ts`
-4. Creates an example workflow in `./openworkflow/`
-5. Adds a `worker` script to `package.json`
-6. Updates `.gitignore` for SQLite (if selected)
-7. Adds `OPENWORKFLOW_POSTGRES_URL` to `.env` for PostgreSQL (if selected)
+Options:
+
+- `--backend <backend>` - Select `sqlite`, `postgres`, or `both`. With `both`,
+  PostgreSQL is used when `NODE_ENV=production`; otherwise SQLite is used.
+- `-y, --yes` - Skip prompts. Requires `--backend` and rejects existing configs.
+- `--skip-install` - Create files without installing dependencies or changing
+  dependency declarations. Prints the installation commands to run later.
+
+For unattended setup without installing dependencies:
+
+```bash
+npx --yes @openworkflow/cli init --backend postgres --yes --skip-install
+```
 
 ### `worker start`
 
@@ -147,7 +158,7 @@ See [Dashboard](/docs/dashboard) for details.
 
 ### `doctor`
 
-Diagnose your OpenWorkflow setup:
+Check your config, backend connection, and workflows for problems.
 
 <CodeGroup>
 ```bash npm
@@ -163,37 +174,6 @@ bunx @openworkflow/cli doctor
 ```
 
 </CodeGroup>
-
-This command checks:
-
-- Config file exists and loads correctly
-- Backend connection works
-- Workflow directories exist
-- Workflow files are discoverable
-- Workflows export valid definitions
-- No duplicate workflow names
-
-Example output:
-
-```
-ℹ Config file: /project/openworkflow.config.ts
-  • Backend: Postgres
-  • Workflow directories: ./openworkflow
-
-ℹ Found 3 workflow file(s):
-  • /project/openworkflow/orders.ts
-  • /project/openworkflow/notifications.ts
-  • /project/openworkflow/reports.ts
-
-ℹ Discovered 5 workflow(s):
-  • process-order
-  • send-notification (version: 2.0.0)
-  • send-notification (version: 1.0.0)
-  • generate-report
-  • cleanup
-
-✔ Configuration looks good!
-```
 
 ### `--version`
 
@@ -241,12 +221,22 @@ bunx @openworkflow/cli worker start --help
 
 ## Environment Variables
 
-The CLI loads `.env` files automatically before reading the config.
+The CLI loads `.env` from the current directory before reading the config. You
+can pass `--env-file <path>` to load a different .env file.
 
 ```bash
 # .env
 OPENWORKFLOW_POSTGRES_URL=postgresql://user:pass@localhost:5432/openworkflow
 ```
+
+## Telemetry
+
+The CLI sends command names, backend types, CLI/Node.js versions, OS,
+architecture, and a random installation ID to PostHog by default. It does not
+send project contents, paths, or error messages.
+
+Disable telemetry with `--no-telemetry` or `DO_NOT_TRACK=1` in your shell.
+Any nonempty `CI` or `OPENWORKFLOW_TELEMETRY_DISABLED` also disables it.
 
 ## Exit Codes
 

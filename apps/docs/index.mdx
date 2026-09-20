@@ -1,9 +1,11 @@
 ---
-title: The open source workflow engine
-description: OpenWorkflow is a TypeScript framework for building durable, resumable workflows.
+title: OpenWorkflow
+description: OpenWorkflow is an open-source durable workflow engine for TypeScript, powered by PostgreSQL or SQLite.
 sidebarTitle: Introduction
 mode: wide
 ---
+
+import AiAssistedSetup from "/snippets/ai-assisted-setup.mdx";
 
 <CodeGroup>
 ```bash npm
@@ -20,14 +22,19 @@ bunx @openworkflow/cli init
 
 </CodeGroup>
 
+<AiAssistedSetup />
+
 ![OpenWorkflow Dashboard](/assets/dashboard.png)
 
 ## What is OpenWorkflow?
 
-OpenWorkflow is a TypeScript framework that makes multi-step operations durable.
-Wrap each operation in a step, and OpenWorkflow remembers which steps already
-finished. If anything crashes, the workflow picks up right where it left off —
-completed steps are never re-run.
+OpenWorkflow is an open-source durable workflow engine for TypeScript, backed by
+PostgreSQL or SQLite. Wrap each operation in a step and OpenWorkflow saves its
+result. After a crash or deploy, the worker resumes the workflow using those
+saved results so they aren't re-run.
+
+Use it for background jobs, multi-step integrations, data processing, and AI
+workflows that need retries, long waits, or coordination between tasks.
 
 ```ts
 import { defineWorkflow } from "openworkflow";
@@ -76,5 +83,11 @@ export const processOrder = defineWorkflow(
   </Card>
   <Card title="How It Works" icon="book" href="/docs/overview">
     Understand the core concepts: workflows, steps, and workers.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/docs/cli">
+    Set up your project, start workers, and open the dashboard.
+  </Card>
+  <Card title="Building with LLMs" icon="robot" href="/docs/llms">
+    Use agent skills, Markdown docs, and MCP search with your coding assistant.
   </Card>
 </CardGroup>

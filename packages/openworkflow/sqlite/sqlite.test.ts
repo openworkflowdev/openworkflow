@@ -14,13 +14,16 @@ function getMigrationVersion(db: Database): number {
     FROM sqlite_master
     WHERE type = 'table' AND name = 'openworkflow_migrations'
   `);
-  const existsResult = existsStmt.get() as { count: number } | undefined;
+  // safety: COUNT(*) returns a numeric count column for this query.
+  const existsResult = existsStmt.get() as { count: number } | null | undefined;
   if (!existsResult || existsResult.count === 0) return -1;
 
   const versionStmt = db.prepare(
     `SELECT MAX("version") AS "version" FROM "openworkflow_migrations";`,
   );
-  const versionResult = versionStmt.get() as { version: number } | undefined;
+  // safety: MAX(version) returns an integer, or null when the migration table is empty.
+  const versionResult = versionStmt.get() as
+    { version: number | null } | null | undefined;
   return versionResult?.version ?? -1;
 }
 
@@ -53,6 +56,7 @@ describe("sqlite", () => {
   // a bit of a hacky test, but needed since vitest still loads requires even
   // though the package is type:module
   test("newDatabase does not depend on global require", () => {
+    // safety: the test temporarily removes the optional global require binding and restores it afterward.
     const globals = globalThis as { require?: unknown };
     const originalRequire = globals.require;
 
@@ -60,6 +64,7 @@ describe("sqlite", () => {
       globals.require = undefined;
       const tempDb = newDatabase(":memory:");
       try {
+        // safety: SELECT 1 AS value always returns one row with a numeric value.
         const result = tempDb.prepare("SELECT 1 AS value;").get() as {
           value: number;
         };
@@ -179,6 +184,7 @@ describe("sqlite", () => {
       migrate(db);
 
       // Check that migrations table exists
+      // safety: COUNT(*) returns a numeric count column for this query.
       const migrationsCheck = db
         .prepare(
           `
@@ -191,6 +197,7 @@ describe("sqlite", () => {
       expect(migrationsCheck.count).toBe(1);
 
       // Check that workflow_runs table exists
+      // safety: COUNT(*) returns a numeric count column for this query.
       const workflowRunsCheck = db
         .prepare(
           `
@@ -203,6 +210,7 @@ describe("sqlite", () => {
       expect(workflowRunsCheck.count).toBe(1);
 
       // Check that step_attempts table exists
+      // safety: COUNT(*) returns a numeric count column for this query.
       const stepAttemptsCheck = db
         .prepare(
           `
@@ -223,6 +231,7 @@ describe("sqlite", () => {
       const versionStmt = db.prepare(
         `SELECT "version" FROM "openworkflow_migrations" ORDER BY "version";`,
       );
+      // safety: the migration table stores integer versions, and this query selects that column.
       const versions = versionStmt.all() as { version: number }[];
 
       // Should have all migration versions from 0 to latest
@@ -251,6 +260,7 @@ describe("sqlite", () => {
       const versionStmt = db.prepare(
         `SELECT COUNT(*) as count FROM "openworkflow_migrations";`,
       );
+      // safety: COUNT(*) returns a numeric count column for this query.
       const countResult = versionStmt.get() as { count: number };
       const allMigrations = migrations();
       const expectedCount = allMigrations.length;

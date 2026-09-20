@@ -30,6 +30,7 @@ import {
   getStatusBadgeClass,
 } from "@/lib/status";
 import { usePolling } from "@/lib/use-polling";
+import { useStepSelection } from "@/lib/use-step-selection";
 import { cn } from "@/lib/utils";
 import {
   computeDuration,
@@ -38,16 +39,16 @@ import {
   getListboxNavigationIndex,
 } from "@/utils";
 import { ArrowLeftIcon, ListDashesIcon } from "@phosphor-icons/react";
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import type {
-  StepAttempt,
-  WorkflowRun,
-  WorkflowRunStatus,
-} from "openworkflow/internal";
+import {
+  createFileRoute,
+  Link,
+  useHydrated,
+  useRouter,
+} from "@tanstack/react-router";
+import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
 import {
   type KeyboardEvent,
   type ReactNode,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -99,14 +100,17 @@ export const Route = createFileRoute("/runs/$runId")({
 
     const childRunsById = Object.fromEntries(
       await Promise.all(
-        childRunIds.map(async (childRunId) => [
-          childRunId,
-          await getWorkflowRunServerFn({
-            data: { workflowRunId: childRunId },
-          }),
-        ]),
+        childRunIds.map(
+          async (childRunId) =>
+            [
+              childRunId,
+              await getWorkflowRunServerFn({
+                data: { workflowRunId: childRunId },
+              }),
+            ] as const,
+        ),
       ),
-    ) as Record<string, WorkflowRun | null>;
+    );
 
     return {
       run,
@@ -128,9 +132,7 @@ function RunDetailsPage() {
   const params = Route.useParams();
   const navigate = Route.useNavigate();
   const router = useRouter();
-  const [selectedStepId, setSelectedStepId] = useState<string | null>(() =>
-    getDefaultSelectedStepId(steps),
-  );
+  const [selectedStepId, setSelectedStepId] = useStepSelection(steps);
   const stepOptionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
@@ -185,14 +187,22 @@ function RunDetailsPage() {
     enabled: !!run && !TERMINAL_RUN_STATUSES.has(run.status),
   });
 
-  useEffect(() => {
-    setSelectedStepId((previousStepId) => {
-      if (previousStepId && steps.some((step) => step.id === previousStepId)) {
-        return previousStepId;
-      }
-
-      return getDefaultSelectedStepId(steps);
-    });
+  const stepsByName = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const step of steps) {
+      counts[step.stepName] = (counts[step.stepName] ?? 0) + 1;
+    }
+    return counts;
+  }, [steps]);
+  const stepAttemptIndexById = useMemo(() => {
+    const seenByName: Record<string, number> = {};
+    const attemptIndexes: Record<string, number> = {};
+    for (const step of steps) {
+      const attemptIndex = (seenByName[step.stepName] ?? 0) + 1;
+      seenByName[step.stepName] = attemptIndex;
+      attemptIndexes[step.id] = attemptIndex;
+    }
+    return attemptIndexes;
   }, [steps]);
 
   if (!run) {
@@ -214,23 +224,6 @@ function RunDetailsPage() {
   const referenceNowMs = referenceNow.getTime();
   const duration = computeDuration(run.startedAt, run.finishedAt);
   const startedAt = formatRelativeTime(run.startedAt, referenceNowMs);
-  const stepsByName = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const step of steps) {
-      counts[step.stepName] = (counts[step.stepName] ?? 0) + 1;
-    }
-    return counts;
-  }, [steps]);
-  const stepAttemptIndexById = useMemo(() => {
-    const seenByName: Record<string, number> = {};
-    const attemptIndexes: Record<string, number> = {};
-    for (const step of steps) {
-      const attemptIndex = (seenByName[step.stepName] ?? 0) + 1;
-      seenByName[step.stepName] = attemptIndex;
-      attemptIndexes[step.id] = attemptIndex;
-    }
-    return attemptIndexes;
-  }, [steps]);
   const selectedStep =
     selectedStepId === null
       ? null
@@ -373,6 +366,7 @@ function RunDetailsPage() {
 
                   return (
                     <button
+                      type="button"
                       id={`step-option-${step.id}`}
                       key={step.id}
                       ref={(node) => {
@@ -923,13 +917,9 @@ function MetadataDebugSection({
 
 function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
   const [copied, setCopied] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useHydrated();
   const serializedValue = stringifyDebugValue(value);
   const useStructuredEditor = shouldUseStructuredEditor(value, serializedValue);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   async function copyPayload() {
     try {
@@ -988,28 +978,8 @@ function DebugValueSection({ title, value, tone }: DebugValueSectionProps) {
   );
 }
 
-function getDefaultSelectedStepId(
-  steps: readonly StepAttempt[],
-): string | null {
-  if (steps.length === 0) {
-    return null;
-  }
-
-  const failedStep = steps.find((step) => step.status === "failed");
-  if (failedStep) {
-    return failedStep.id;
-  }
-
-  const runningStep = steps.find((step) => step.status === "running");
-  if (runningStep) {
-    return runningStep.id;
-  }
-
-  return steps.at(-1)?.id ?? null;
-}
-
 function getRunStatusHelp(status: string): string {
-  switch (status as WorkflowRunStatus) {
+  switch (status) {
     case "pending": {
       return "Queued and waiting for an available worker to claim it.";
     }
@@ -1035,14 +1005,16 @@ function getRunStatusHelp(status: string): string {
   }
 }
 
-function hasDebugValue(value: unknown): boolean {
+function hasDebugValue<T>(value: T): value is NonNullable<T> {
   return value !== null && value !== undefined;
 }
 
 function shouldUseStructuredEditor(
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- the debug view accepts arbitrary workflow payloads
   value: unknown,
   serializedValue: string,
 ): boolean {
+  // oxlint-disable-next-line anti-slop/no-runtime-typeof -- objects use the structured debug editor
   if (typeof value === "object" && value !== null) {
     return true;
   }
@@ -1054,11 +1026,22 @@ function shouldUseStructuredEditor(
   return serializedValue.includes("\n");
 }
 
-function normalizeDebugValue(value: unknown): unknown {
+type DebugValue =
+  | string
+  | number
+  | boolean
+  | null
+  | DebugValue[]
+  | { [key: string]: DebugValue | undefined };
+
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- normalize arbitrary payloads for the debug view
+function normalizeDebugValue(value: unknown): DebugValue {
   return normalizeValue(value, new WeakSet());
 }
 
-function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
+/* oxlint-disable anti-slop/no-runtime-typeof -- this serializer intentionally handles each JS runtime type */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- recursively normalize arbitrary payloads, including errors and cycles
+function normalizeValue(value: unknown, seen: WeakSet<object>): DebugValue {
   if (value instanceof Error) {
     return {
       name: value.name,
@@ -1095,22 +1078,28 @@ function normalizeValue(value: unknown, seen: WeakSet<object>): unknown {
     return value.map((item) => normalizeValue(item, seen));
   }
 
-  if (typeof value === "object") {
-    const objectValue = value as Record<string, unknown>;
-    if (seen.has(objectValue)) {
-      return "[circular]";
-    }
-    seen.add(objectValue);
-
-    const normalizedEntries = Object.entries(objectValue).map(
-      ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
-    );
-    return Object.fromEntries(normalizedEntries);
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
   }
 
-  return value;
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+  seen.add(value);
+
+  const normalizedEntries = Object.entries(value).map(
+    ([key, entryValue]) => [key, normalizeValue(entryValue, seen)] as const,
+  );
+  return Object.fromEntries(normalizedEntries);
 }
 
+/* oxlint-enable anti-slop/no-runtime-typeof */
+
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- stringify arbitrary payloads without crashing the debug view
 function stringifyDebugValue(value: unknown): string {
   try {
     return JSON.stringify(normalizeDebugValue(value), null, 2);

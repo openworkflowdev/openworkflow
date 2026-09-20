@@ -4,6 +4,7 @@
     "@tsconfig/vite-react/tsconfig.json" // https://www.npmjs.com/package/@tsconfig/vite-react
   ],
   "compilerOptions": {
+    "outDir": "dist",
     "noEmit": false, // TS6310
     "allowImportingTsExtensions": false, // TS5096, caused by disabling noEmit
     "types": ["vite/client"],
