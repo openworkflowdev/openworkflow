@@ -240,6 +240,18 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 6 - add step index to steps
+    `BEGIN;
+
+    ALTER TABLE ${quotedSchema}."step_attempts"
+    ADD COLUMN "step_index" INTEGER;
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations" ("version")
+    VALUES (6)
+    ON CONFLICT DO NOTHING;
+
+    COMMIT;`,
   ];
 }
 

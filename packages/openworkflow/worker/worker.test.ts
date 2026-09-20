@@ -85,6 +85,11 @@ describe("Worker", () => {
       .map((stepAttempt) => stepAttempt.stepName)
       .toSorted((a, b) => a.localeCompare(b));
     expect(stepNames).toEqual(["once", "once:1"]);
+    expect(
+      Object.fromEntries(
+        steps.data.map((attempt) => [attempt.stepName, attempt.stepIndex]),
+      ),
+    ).toEqual({ once: 0, "once:1": 1 });
   });
 
   test("reschedules workflow when definition is missing", async () => {
@@ -266,6 +271,17 @@ describe("Worker", () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
 
+    const thirdRecorded = Promise.withResolvers<void>();
+    const createStepAttempt = backend.createStepAttempt.bind(backend);
+    vi.spyOn(backend, "createStepAttempt").mockImplementation(
+      async (params) => {
+        if (params.stepName === "step-a") await thirdRecorded.promise;
+        const attempt = await createStepAttempt(params);
+        if (params.stepName === "step-c") thirdRecorded.resolve();
+        return attempt;
+      },
+    );
+
     const startedSteps = new Set<string>();
     let resolveAllStepsStarted: (() => void) | null = null;
     const allStepsStarted = new Promise<void>((resolve) => {
@@ -309,6 +325,14 @@ describe("Worker", () => {
     const result = await handle.result();
     expect(result).toEqual({ a: "a", b: "b", c: "c" });
     expect(startedSteps).toEqual(new Set(["step-a", "step-b", "step-c"]));
+    const attempts = await backend.listStepAttempts({
+      workflowRunId: handle.workflowRun.id,
+    });
+    expect(
+      Object.fromEntries(
+        attempts.data.map((attempt) => [attempt.stepName, attempt.stepIndex]),
+      ),
+    ).toEqual({ "step-a": 0, "step-b": 1, "step-c": 2 });
   });
 
   test("respects worker concurrency limit", { timeout: 15_000 }, async () => {
@@ -665,6 +689,18 @@ describe("Worker", () => {
         b: "b-result",
         c: "c-result",
       });
+      const attempts = await backend.listStepAttempts({
+        workflowRunId: handle.workflowRun.id,
+      });
+      expect(
+        attempts.data
+          .filter((attempt) => attempt.stepName === "step-b")
+          .map((attempt) => attempt.stepIndex),
+      ).toEqual([1, 1]);
+      expect(
+        attempts.data.find((attempt) => attempt.stepName === "step-c")
+          ?.stepIndex,
+      ).toBe(2);
     },
   );
 
