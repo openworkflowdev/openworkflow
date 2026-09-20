@@ -1663,6 +1663,7 @@ export function testBackend(options: TestBackendOptions): void {
           id: "", // -
           workflowRunId: workflowRun.id,
           stepName: randomUUID(),
+          stepIndex: 0,
           kind: "function",
           status: "running",
           config: { key: "val" },
@@ -1681,6 +1682,7 @@ export function testBackend(options: TestBackendOptions): void {
           workflowRunId: expected.workflowRunId,
           workerId: workflowRun.workerId!, // oxlint-disable-line typescript/no-non-null-assertion
           stepName: expected.stepName,
+          stepIndex: expected.stepIndex,
           kind: expected.kind,
           config: expected.config,
           context: expected.context,
@@ -1762,6 +1764,7 @@ export function testBackend(options: TestBackendOptions): void {
         const got = await backend.getStepAttempt({
           stepAttemptId: created.id,
         });
+        expect(got?.stepIndex).toBeNull();
         expect(got).toEqual(created);
       });
     });

@@ -230,6 +230,16 @@ export function migrations(): string[] {
     VALUES (5);
 
     COMMIT;`,
+
+    // 6 - add step index to steps
+    `BEGIN;
+
+    ALTER TABLE "step_attempts" ADD COLUMN "step_index" INTEGER;
+
+    INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
+    VALUES (6);
+
+    COMMIT;`,
   ];
 }
 
