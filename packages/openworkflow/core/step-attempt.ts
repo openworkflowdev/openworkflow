@@ -60,6 +60,8 @@ export interface StepAttempt {
   id: string;
   workflowRunId: string;
   stepName: string;
+  /** Zero-based order within the run; null for older attempts. */
+  stepIndex: number | null;
   kind: StepKind;
   status: StepAttemptStatus;
   config: JsonValue; // user-defined config

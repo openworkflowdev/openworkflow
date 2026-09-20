@@ -964,6 +964,7 @@ export class BackendSqlite implements Backend {
         "id",
         "workflow_run_id",
         "step_name",
+        "step_index",
         "kind",
         "status",
         "config",
@@ -972,7 +973,7 @@ export class BackendSqlite implements Backend {
         "created_at",
         "updated_at"
       )
-      SELECT ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?
+      SELECT ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?
       FROM "workflow_runs"
       WHERE ${RUNNING_WORKFLOW_RUN_OWNED_WHERE}
       RETURNING *
@@ -984,6 +985,7 @@ export class BackendSqlite implements Backend {
       id,
       params.workflowRunId,
       params.stepName,
+      params.stepIndex ?? null,
       params.kind,
       toJSON(params.config),
       toJSON(params.context),
@@ -1141,6 +1143,7 @@ interface StepAttemptRow extends Record<string, SQLOutputValue> {
   id: string;
   workflow_run_id: string;
   step_name: string;
+  step_index: number | null;
   kind: string;
   status: string;
   config: string;
@@ -1233,6 +1236,7 @@ function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
     id: row.id,
     workflowRunId: row.workflow_run_id,
     stepName: row.step_name,
+    stepIndex: row.step_index,
     // safety: the kind column is written from CreateStepAttemptParams.kind.
     kind: row.kind as StepAttempt["kind"],
     // safety: the status column is written by backend transitions using the domain status values.

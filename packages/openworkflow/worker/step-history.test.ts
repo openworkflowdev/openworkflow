@@ -7,6 +7,10 @@ describe("StepHistory", () => {
     test("returns the base name on first use", () => {
       const history = new StepHistory({ attempts: [] });
       expect(history.resolveStepName("step")).toBe("step");
+      expect(history.stepIndex("step")).toBe(0);
+      expect(() => history.stepIndex("missing")).toThrow(
+        'Unresolved step "missing"',
+      );
     });
 
     test("appends incrementing suffixes for collisions", () => {
@@ -14,6 +18,8 @@ describe("StepHistory", () => {
       expect(history.resolveStepName("step")).toBe("step");
       expect(history.resolveStepName("step")).toBe("step:1");
       expect(history.resolveStepName("step")).toBe("step:2");
+      expect(history.stepIndex("step:1")).toBe(1);
+      expect(history.stepIndex("step:2")).toBe(2);
     });
 
     test("skips suffixes that were user-supplied as base names", () => {
@@ -21,6 +27,40 @@ describe("StepHistory", () => {
       history.resolveStepName("step");
       history.resolveStepName("step:1"); // user-supplied collision
       expect(history.resolveStepName("step")).toBe("step:2");
+    });
+
+    test("preserves indices when parallel branches replay in a different order", () => {
+      const history = new StepHistory({
+        attempts: [
+          createMockStepAttempt({ stepName: "a", stepIndex: 0 }),
+          createMockStepAttempt({ stepName: "b", stepIndex: 1 }),
+          createMockStepAttempt({ stepName: "b:1", stepIndex: 2 }),
+          createMockStepAttempt({
+            stepName: "a:1",
+            stepIndex: 3,
+            status: "failed",
+          }),
+        ],
+      });
+
+      // Cached results let the a branch reach its second step before b.
+      const indices = ["a", "b", "a", "b", "new"].map((name) =>
+        history.stepIndex(history.resolveStepName(name)),
+      );
+      expect(indices).toEqual([0, 1, 3, 2, 4]);
+    });
+
+    test("reserves persisted indices before resolving new and legacy steps", () => {
+      const history = new StepHistory({
+        attempts: [
+          createMockStepAttempt({ stepName: "legacy", stepIndex: null }),
+          createMockStepAttempt({ stepName: "saved", stepIndex: 5 }),
+        ],
+      });
+
+      expect(history.stepIndex(history.resolveStepName("new"))).toBe(6);
+      expect(history.stepIndex(history.resolveStepName("legacy"))).toBe(7);
+      expect(history.stepIndex(history.resolveStepName("saved"))).toBe(5);
     });
   });
 
@@ -307,6 +347,7 @@ function createMockStepAttempt(
     id: "step-attempt-id",
     workflowRunId: "workflow-run-id",
     stepName: "step",
+    stepIndex: null,
     kind: "function",
     status,
     config: {},

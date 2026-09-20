@@ -147,6 +147,7 @@ export interface CreateStepAttemptParams {
   workflowRunId: string;
   workerId: string;
   stepName: string;
+  stepIndex?: number | null;
   kind: StepKind;
   config: JsonValue;
   context: StepAttemptContext | null;

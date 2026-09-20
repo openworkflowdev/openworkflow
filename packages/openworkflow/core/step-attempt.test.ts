@@ -368,6 +368,7 @@ function createMockStepAttempt(
     id: "step-1",
     workflowRunId: "workflow-1",
     stepName: "test-step",
+    stepIndex: null,
     kind: "function",
     status: "completed",
     config: {},

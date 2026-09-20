@@ -184,14 +184,22 @@ export class StepHistory {
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
-  private readonly resolvedStepNames = new Set<string>();
+  private readonly persistedStepIndices = new Map<string, number>();
+  private readonly resolvedStepNames = new Map<string, number>();
   private readonly expectedNextStepIndexByName = new Map<string, number>();
+  private nextStepIndex = 0;
   private readonly stepLimit: number;
   private stepCount: number;
 
   constructor(options: Readonly<StepHistoryOptions>) {
     this.stepLimit = Math.max(1, options.stepLimit ?? WORKFLOW_STEP_LIMIT);
     this.stepCount = options.attempts.length;
+
+    for (const attempt of options.attempts) {
+      if (attempt.stepIndex === null) continue;
+      this.persistedStepIndices.set(attempt.stepName, attempt.stepIndex);
+      this.nextStepIndex = Math.max(this.nextStepIndex, attempt.stepIndex + 1);
+    }
 
     const state = createStepExecutionStateFromAttempts(options.attempts);
     this.cache = new Map(state.cache);
@@ -210,8 +218,7 @@ export class StepHistory {
    */
   resolveStepName(baseStepName: string): string {
     if (!this.resolvedStepNames.has(baseStepName)) {
-      this.resolvedStepNames.add(baseStepName);
-      return baseStepName;
+      return this.recordResolvedStepName(baseStepName);
     }
 
     const expectedNextIndex =
@@ -223,13 +230,30 @@ export class StepHistory {
       }
 
       this.expectedNextStepIndexByName.set(baseStepName, index + 1);
-      this.resolvedStepNames.add(resolvedName);
-      return resolvedName;
+      return this.recordResolvedStepName(resolvedName);
     }
+  }
+
+  private recordResolvedStepName(stepName: string): string {
+    const index =
+      this.persistedStepIndices.get(stepName) ?? this.nextStepIndex++;
+    this.resolvedStepNames.set(stepName, index);
+    return stepName;
   }
 
   findCached(stepName: string): StepAttempt | undefined {
     return this.cache.get(stepName);
+  }
+
+  /**
+   * Read the persisted index or the index assigned at invocation, before any awaits.
+   * @param stepName - Resolved step name
+   * @returns Zero-based invocation index
+   */
+  stepIndex(stepName: string): number {
+    const index = this.resolvedStepNames.get(stepName);
+    if (index === undefined) throw new Error(`Unresolved step "${stepName}"`);
+    return index;
   }
 
   findRunning(stepName: string): StepAttempt | undefined {
