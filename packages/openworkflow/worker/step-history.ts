@@ -169,6 +169,7 @@ function getEarliestRunningWait(
  */
 export interface StepHistoryOptions {
   attempts: readonly StepAttempt[];
+  stepIndices?: ReadonlyMap<string, number>;
   stepLimit?: number;
 }
 
@@ -184,7 +185,7 @@ export class StepHistory {
   private readonly failedCountsByStepName: Map<string, number>;
   private readonly failedByStepName: Map<string, StepAttempt>;
   private readonly runningByStepName: Map<string, StepAttempt>;
-  private readonly persistedStepIndices = new Map<string, number>();
+  private readonly persistedStepIndices: Map<string, number>;
   private readonly resolvedStepNames = new Map<string, number>();
   private readonly expectedNextStepIndexByName = new Map<string, number>();
   private nextStepIndex = 0;
@@ -194,11 +195,14 @@ export class StepHistory {
   constructor(options: Readonly<StepHistoryOptions>) {
     this.stepLimit = Math.max(1, options.stepLimit ?? WORKFLOW_STEP_LIMIT);
     this.stepCount = options.attempts.length;
+    this.persistedStepIndices = new Map(options.stepIndices);
 
     for (const attempt of options.attempts) {
       if (attempt.stepIndex === null) continue;
       this.persistedStepIndices.set(attempt.stepName, attempt.stepIndex);
-      this.nextStepIndex = Math.max(this.nextStepIndex, attempt.stepIndex + 1);
+    }
+    for (const index of this.persistedStepIndices.values()) {
+      this.nextStepIndex = Math.max(this.nextStepIndex, index + 1);
     }
 
     const state = createStepExecutionStateFromAttempts(options.attempts);

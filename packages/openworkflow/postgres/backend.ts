@@ -230,39 +230,33 @@ export class BackendPostgres implements Backend {
         FOR UPDATE
       `;
       const stepAttemptsTable = this.stepAttemptsTable(tx);
-      const [boundary] =
+      const steps =
         request.fromStep === null
           ? []
-          : await tx<{ id: string }[]>`
-        SELECT "id" FROM ${stepAttemptsTable}
+          : await tx<Pick<StepAttempt, "stepName" | "stepIndex" | "status">[]>`
+        SELECT "step_name", "step_index", "status" FROM ${stepAttemptsTable}
         WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
-          AND "step_name" = ${request.fromStep}
-        ORDER BY "created_at", "id"
-        LIMIT 1
       `;
-      const params = prepareWorkflowRerun(
+      const { params, stepIndex } = prepareWorkflowRerun(
         source ?? null,
         request,
-        boundary?.id ?? null,
+        steps,
       );
       const run = await this.insertWorkflowRun(tx, params);
-      if (boundary) {
+      if (stepIndex !== null) {
         await tx`
           INSERT INTO ${stepAttemptsTable} (
-            "namespace_id", "id", "workflow_run_id", "step_name", "kind", "status",
+            "namespace_id", "id", "workflow_run_id", "step_name", "step_index", "kind", "status",
             "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
             "started_at", "finished_at", "created_at", "updated_at"
           )
-          SELECT "namespace_id", gen_random_uuid(), ${run.id}, "step_name", "kind", "status",
+          SELECT "namespace_id", gen_random_uuid(), ${run.id}, "step_name", "step_index", "kind", "status",
             "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
             "started_at", "finished_at", "created_at", "updated_at"
           FROM ${stepAttemptsTable}
           WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
             AND "status" IN ('completed', 'succeeded')
-            AND ("created_at", "id") < (
-              SELECT "created_at", "id" FROM ${stepAttemptsTable}
-              WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${boundary.id}
-            )
+            AND "step_index" < ${stepIndex}
         `;
       }
       return run;

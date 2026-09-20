@@ -48,11 +48,8 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     const workflow = client.defineWorkflow<{ value: number }, number>(
       { name: "recover", version: "v1" },
       async ({ step, input }) => {
-        const value = await step.run({ name: "read" }, async () => {
+        const value = await step.run({ name: "read" }, () => {
           calls.read++;
-          await new Promise((resolve) => {
-            setTimeout(resolve, 2);
-          });
           return input.value;
         });
         return await step.run(
@@ -75,6 +72,8 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     const source = await finish(original.workflowRun.id);
     expect(source.status).toBe("failed");
     const sourceHistory = await history(source.id);
+    const read = sourceHistory.find((step) => step.stepName === "read");
+    assert.ok(read);
     const rerun = await client.rerunWorkflowRun(source.id, {
       fromStep: "write",
     });
@@ -93,11 +92,11 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     const copied = await history(rerun.id);
     expect(copied).toHaveLength(1);
     expect(copied[0]).toEqual({
-      ...sourceHistory[0],
+      ...read,
       id: copied[0]?.id,
       workflowRunId: rerun.id,
     });
-    expect(copied[0]?.id).not.toBe(sourceHistory[0]?.id);
+    expect(copied[0]?.id).not.toBe(read.id);
     await expect(finish(rerun.id)).resolves.toMatchObject({ status: "failed" });
     expect(calls).toEqual({ read: 1, write: 4 });
 
@@ -109,6 +108,7 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     expect(calls).toEqual({ read: 1, write: 5 });
     const fresh = await client.rerunWorkflowRun(recovered.id);
     expect(await history(fresh.id)).toEqual([]);
+    expect(fresh.context).toBeNull();
     await expect(finish(fresh.id)).resolves.toMatchObject({ output: 42 });
     expect(calls).toEqual({ read: 2, write: 6 });
     expect(await backend.getWorkflowRun({ workflowRunId: source.id })).toEqual(
@@ -117,7 +117,7 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     expect(await history(source.id)).toEqual(sourceHistory);
   });
 
-  test("copies only successful attempts before the target's first attempt in timestamp and ID order", async () => {
+  test("copies successful steps by index", async () => {
     const source = await backend.createWorkflowRun({
       workflowName: "snapshot",
       version: null,
@@ -134,12 +134,14 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     await backend.claimWorkflowRun({ workerId, leaseDurationMs: 60_000 });
     async function attempt(
       stepName: string,
+      stepIndex: number,
       status: "completed" | "failed" | "running",
     ) {
       const step = await backend.createStepAttempt({
         workflowRunId: source.id,
         workerId,
         stepName,
+        stepIndex,
         kind: "function",
         config: {},
         context: null,
@@ -160,15 +162,16 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
         });
       return step;
     }
-    const failed = await attempt("caught", "failed");
-    const running = await attempt("unfinished", "running");
-    const first = await attempt("first", "completed");
-    const second = await attempt("second", "completed");
-    const third = await attempt("third", "completed");
-    const target = await attempt("target", "failed");
-    await attempt("later", "completed");
-    await attempt("target", "completed");
-    // Fix timestamps to exercise the ID tie-breaker on both databases.
+    await attempt("caught", 0, "failed");
+    await attempt("unfinished", 1, "running");
+    await attempt("first", 2, "failed");
+    const first = await attempt("first", 2, "completed");
+    const second = await attempt("second", 3, "completed");
+    const third = await attempt("third", 4, "completed");
+    await attempt("target", 5, "failed");
+    await attempt("later", 6, "completed");
+    await attempt("target", 5, "completed");
+    // Earlier writes, tied timestamps, and replacement UUIDs cannot change the prefix.
     const early = new Date("2026-01-01T00:00:00Z");
     const late = new Date("2026-01-02T00:00:00Z");
     if (backend instanceof BackendSqlite) {
@@ -177,33 +180,22 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
           'UPDATE "step_attempts" SET "created_at" = ? WHERE "workflow_run_id" = ?',
         )
         .run(late.toISOString(), source.id);
-      for (const id of [
-        failed.id,
-        running.id,
-        first.id,
-        second.id,
-        third.id,
-        target.id,
-      ]) {
-        backend["db"]
-          .prepare('UPDATE "step_attempts" SET "created_at" = ? WHERE "id" = ?')
-          .run(early.toISOString(), id);
-      }
       backend["db"]
         .prepare(
-          'UPDATE "step_attempts" SET "created_at" = ?, "status" = \'succeeded\' WHERE "id" = ?',
+          'UPDATE "step_attempts" SET "status" = \'succeeded\' WHERE "id" = ?',
         )
-        .run(new Date(early.getTime() - 1).toISOString(), first.id);
+        .run(first.id);
       backend["db"]
-        .prepare('UPDATE "step_attempts" SET "created_at" = ? WHERE "id" = ?')
-        .run(new Date(early.getTime() + 1).toISOString(), target.id);
+        .prepare(
+          'UPDATE "step_attempts" SET "created_at" = ? WHERE "workflow_run_id" = ? AND "step_name" = \'target\'',
+        )
+        .run(early.toISOString(), source.id);
     } else {
       const pg = backend["pg"];
       const table = backend["stepAttemptsTable"]();
       await pg`UPDATE ${table} SET "created_at" = ${late} WHERE "workflow_run_id" = ${source.id}`;
-      await pg`UPDATE ${table} SET "created_at" = ${early} WHERE "id" IN ${pg([failed.id, running.id, first.id, second.id, third.id])}`;
-      await pg`UPDATE ${table} SET "created_at" = ${new Date(early.getTime() - 1)}, "status" = 'succeeded' WHERE "id" = ${first.id}`;
-      await pg`UPDATE ${table} SET "created_at" = ${new Date(early.getTime() + 1)} WHERE "id" = ${target.id}`;
+      await pg`UPDATE ${table} SET "status" = 'succeeded' WHERE "id" = ${first.id}`;
+      await pg`UPDATE ${table} SET "created_at" = ${early} WHERE "workflow_run_id" = ${source.id} AND "step_name" = 'target'`;
     }
     await backend.cancelWorkflowRun({ workflowRunId: source.id });
     const sourceHistory = await history(source.id);
@@ -213,6 +205,9 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     );
     const rerun = await client.rerunWorkflowRun(source.id, {
       fromStep: "target",
+    });
+    expect(rerun.context).toEqual({
+      rerunStepIndices: { caught: 0, unfinished: 1 },
     });
     const copies = await history(rerun.id);
     expect(copies.map((step) => step.stepName).toSorted()).toEqual(
@@ -232,22 +227,20 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
       });
     }
     await client.cancelWorkflowRun(rerun.id);
-    const selected = copies[2];
-    assert.ok(selected);
     const chained = await client.rerunWorkflowRun(rerun.id, {
-      fromStep: selected.stepName,
+      fromStep: "third",
     });
+    expect(chained.context).toEqual(rerun.context);
     const chainedHistory = await history(chained.id);
-    expect(chainedHistory.map((step) => step.stepName).toSorted()).toEqual(
-      copies
-        .slice(0, 2)
-        .map((step) => step.stepName)
-        .toSorted(),
-    );
+    expect(chainedHistory.map((step) => step.stepName).toSorted()).toEqual([
+      "first",
+      "second",
+    ]);
   });
 
-  test("runs caught failures again before the selected step", async () => {
+  test("preserves caught-failure order across chained reruns", async () => {
     let failures = 0;
+    let savedCalls = 0;
     const workflow = client.defineWorkflow(
       { name: "caught" },
       async ({ step }) => {
@@ -257,6 +250,7 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
             throw new Error("caught");
           })
           .catch(() => null);
+        await step.run({ name: "saved" }, () => ++savedCalls);
         return await step.run({ name: "target" }, () => "ok");
       },
     );
@@ -265,9 +259,19 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     const rerun = await client.rerunWorkflowRun(source.workflowRun.id, {
       fromStep: "target",
     });
-    expect(await history(rerun.id)).toEqual([]);
+    expect(rerun.context).toEqual({ rerunStepIndices: { error: 0 } });
     await expect(finish(rerun.id)).resolves.toMatchObject({ output: "ok" });
     expect(failures).toBe(2);
+    expect(savedCalls).toBe(1);
+
+    const chained = await client.rerunWorkflowRun(rerun.id, {
+      fromStep: "error",
+    });
+    expect(await history(chained.id)).toEqual([]);
+    expect(chained.context).toBeNull();
+    await expect(finish(chained.id)).resolves.toMatchObject({ output: "ok" });
+    expect(failures).toBe(3);
+    expect(savedCalls).toBe(2);
   });
 
   test("replays saved signal results without deliveries or the source run", async () => {

@@ -6,6 +6,7 @@ import {
   type SerializedError,
 } from "../core/error.js";
 import type { JsonValue } from "../core/json.js";
+import { getRerunStepIndices } from "../core/rerun.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import type {
   StepAttempt,
@@ -1167,7 +1168,10 @@ async function executeWorkflowAttempt(
       backend,
       workflowRun.id,
     );
-    const history = new StepHistory({ attempts });
+    const history = new StepHistory({
+      attempts,
+      stepIndices: getRerunStepIndices(workflowRun.context),
+    });
 
     // Complete any elapsed sleep waits first, then park on the earliest
     // remaining running wait (sleep, signal, or child workflow).

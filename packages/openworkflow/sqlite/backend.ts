@@ -193,36 +193,38 @@ export class BackendSqlite implements Backend {
         )
         .get(this.namespaceId, request.workflowRunId) as
         WorkflowRunRow | undefined;
-      // safety: the query selects the non-null step attempt ID.
-      const boundary =
+      // safety: the query selects step names, nullable indices, and statuses.
+      const steps =
         request.fromStep === null
-          ? undefined
+          ? []
           : (this.db
               .prepare(
                 `
-        SELECT "id" FROM "step_attempts"
-        WHERE "namespace_id" = ? AND "workflow_run_id" = ? AND "step_name" = ?
-        ORDER BY "created_at", "id"
-        LIMIT 1
+        SELECT "step_name", "step_index", "status" FROM "step_attempts"
+        WHERE "namespace_id" = ? AND "workflow_run_id" = ?
       `,
               )
-              .get(
-                this.namespaceId,
-                request.workflowRunId,
-                request.fromStep,
-              ) as { id: string } | undefined);
-      const params = prepareWorkflowRerun(
+              .all(this.namespaceId, request.workflowRunId) as Pick<
+              StepAttemptRow,
+              "step_name" | "step_index" | "status"
+            >[]);
+      const { params, stepIndex } = prepareWorkflowRerun(
         source ? rowToWorkflowRun(source) : null,
         request,
-        boundary?.id ?? null,
+        steps.map((step) => ({
+          stepName: step.step_name,
+          stepIndex: step.step_index,
+          // safety: backend transitions write domain status values.
+          status: step.status as StepAttempt["status"],
+        })),
       );
       const run = this.insertWorkflowRun(params);
-      if (boundary) {
+      if (stepIndex !== null) {
         this.db
           .prepare(
             `
           INSERT INTO "step_attempts" (
-            "namespace_id", "id", "workflow_run_id", "step_name", "kind", "status",
+            "namespace_id", "id", "workflow_run_id", "step_name", "step_index", "kind", "status",
             "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
             "started_at", "finished_at", "created_at", "updated_at"
           )
@@ -230,25 +232,16 @@ export class BackendSqlite implements Backend {
             lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
               substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) ||
               substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))),
-            ?, "step_name", "kind", "status",
+            ?, "step_name", "step_index", "kind", "status",
             "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
             "started_at", "finished_at", "created_at", "updated_at"
           FROM "step_attempts"
           WHERE "namespace_id" = ? AND "workflow_run_id" = ?
             AND "status" IN ('completed', 'succeeded')
-            AND ("created_at", "id") < (
-              SELECT "created_at", "id" FROM "step_attempts"
-              WHERE "namespace_id" = ? AND "id" = ?
-            )
+            AND "step_index" < ?
         `,
           )
-          .run(
-            run.id,
-            this.namespaceId,
-            request.workflowRunId,
-            this.namespaceId,
-            boundary.id,
-          );
+          .run(run.id, this.namespaceId, request.workflowRunId, stepIndex);
       }
       this.db.exec("COMMIT");
       return run;
