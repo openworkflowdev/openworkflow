@@ -197,7 +197,7 @@ export default defineConfig({
       files: [
         "apps/cli/commands.ts",
         "apps/dashboard/src/components/create-run-form.tsx",
-        "apps/dashboard/src/components/run-cancel-action.tsx",
+        "apps/dashboard/src/components/run-action.tsx",
         "apps/dashboard/src/components/run-list.tsx",
         "apps/dashboard/src/routes/index.tsx",
         "apps/dashboard/src/routes/runs/$runId.tsx",

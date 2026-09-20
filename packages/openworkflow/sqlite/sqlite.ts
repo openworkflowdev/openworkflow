@@ -230,16 +230,6 @@ export function migrations(): string[] {
     VALUES (5);
 
     COMMIT;`,
-
-    // 6 - resume marker
-    `BEGIN;
-
-    ALTER TABLE "workflow_runs" ADD COLUMN "resumed_at" TEXT;
-
-    INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (6);
-
-    COMMIT;`,
   ];
 }
 

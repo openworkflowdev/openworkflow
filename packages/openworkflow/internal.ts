@@ -12,3 +12,5 @@ export type {
   StepAttemptStatus,
   StepKind,
 } from "./core/step-attempt.js";
+
+export { rerunWorkflowRun } from "./client/rerun.js";

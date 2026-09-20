@@ -1,5 +1,6 @@
 import { getBackend } from "./backend";
 import { createServerFn } from "@tanstack/react-start";
+import { rerunWorkflowRun } from "openworkflow/internal";
 import type {
   PaginatedResponse,
   PaginationOptions,
@@ -90,16 +91,17 @@ export const cancelWorkflowRunServerFn = createServerFn({ method: "POST" })
     return backend.cancelWorkflowRun({ workflowRunId: data.workflowRunId });
   });
 
-/**
- * Resume a failed workflow run by ID. Flips the run back to `pending` and
- * gives the failing step a fresh retry budget by only counting failures after
- * the resume; completed steps stay cached and history is preserved.
- */
-export const resumeWorkflowRunServerFn = createServerFn({ method: "POST" })
-  .validator(z.object({ workflowRunId: z.string() }))
+/** Rerun a finished workflow with its original input and version. */
+export const rerunWorkflowRunServerFn = createServerFn({ method: "POST" })
+  .validator(
+    z.object({ workflowRunId: z.string(), fromStep: z.string().optional() }),
+  )
   .handler(async ({ data }): Promise<WorkflowRun> => {
-    const backend = await getBackend();
-    return backend.resumeWorkflowRun({ workflowRunId: data.workflowRunId });
+    return await rerunWorkflowRun(
+      await getBackend(),
+      data.workflowRunId,
+      data.fromStep,
+    );
   });
 
 /**

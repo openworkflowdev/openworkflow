@@ -5,10 +5,10 @@ import {
   Backend,
   WorkflowRunCounts,
   CancelWorkflowRunParams,
-  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
+  RerunWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
   ExtendWorkflowRunLeaseParams,
@@ -34,11 +34,11 @@ import {
 } from "../core/cursor.js";
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
+import { prepareWorkflowRerun } from "../core/rerun.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
-  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -217,6 +217,55 @@ export class BackendPostgres implements Backend {
       }
 
       return await this.insertWorkflowRun(tx, params);
+    });
+  }
+
+  async rerunWorkflowRun(
+    request: RerunWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    return await this.withTransaction(async (tx) => {
+      const [source] = await tx<WorkflowRun[]>`
+        SELECT * FROM ${this.workflowRunsTable(tx)}
+        WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${request.workflowRunId}
+        FOR UPDATE
+      `;
+      const stepAttemptsTable = this.stepAttemptsTable(tx);
+      const [boundary] =
+        request.fromStep === null
+          ? []
+          : await tx<{ id: string }[]>`
+        SELECT "id" FROM ${stepAttemptsTable}
+        WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
+          AND "step_name" = ${request.fromStep}
+        ORDER BY "created_at", "id"
+        LIMIT 1
+      `;
+      const params = prepareWorkflowRerun(
+        source ?? null,
+        request,
+        boundary?.id ?? null,
+      );
+      const run = await this.insertWorkflowRun(tx, params);
+      if (boundary) {
+        await tx`
+          INSERT INTO ${stepAttemptsTable} (
+            "namespace_id", "id", "workflow_run_id", "step_name", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          )
+          SELECT "namespace_id", gen_random_uuid(), ${run.id}, "step_name", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          FROM ${stepAttemptsTable}
+          WHERE "namespace_id" = ${this.namespaceId} AND "workflow_run_id" = ${request.workflowRunId}
+            AND "status" IN ('completed', 'succeeded')
+            AND ("created_at", "id") < (
+              SELECT "created_at", "id" FROM ${stepAttemptsTable}
+              WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${boundary.id}
+            )
+        `;
+      }
+      return run;
     });
   }
 
@@ -764,42 +813,6 @@ export class BackendPostgres implements Backend {
     }
 
     await this.wakeParentWorkflowRun(updated);
-
-    return updated;
-  }
-
-  async resumeWorkflowRun(
-    params: ResumeWorkflowRunParams,
-  ): Promise<WorkflowRun> {
-    const workflowRunsTable = this.workflowRunsTable();
-
-    // Stamp the resume marker and requeue. Nothing is deleted and neither
-    // `error` nor `attempts` is touched: step attempts stay (preserving the
-    // failure record and parent/child linkage), and the retry budget is reset
-    // by only counting failures after `resumed_at` during replay.
-    const [updated] = await this.pg<WorkflowRun[]>`
-      UPDATE ${workflowRunsTable}
-      SET
-        "status" = 'pending',
-        "worker_id" = NULL,
-        "started_at" = NULL,
-        "finished_at" = NULL,
-        "available_at" = NOW(),
-        "resumed_at" = NOW(),
-        "updated_at" = NOW()
-      WHERE "namespace_id" = ${this.namespaceId}
-      AND "id" = ${params.workflowRunId}
-      AND "status" = 'failed'
-      AND ("deadline_at" IS NULL OR "deadline_at" > NOW())
-      RETURNING *
-    `;
-
-    if (!updated) {
-      const existing = await this.getWorkflowRun({
-        workflowRunId: params.workflowRunId,
-      });
-      resolveResumeWorkflowRunConflict(params.workflowRunId, existing);
-    }
 
     return updated;
   }

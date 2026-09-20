@@ -28,6 +28,7 @@ import {
   traceOperation,
 } from "../telemetry.js";
 import { Worker } from "../worker/worker.js";
+import { rerunWorkflowRun } from "./rerun.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
 const DEFAULT_RESULT_TIMEOUT_MS = 5 * 60 * 1000; // 5m
@@ -200,21 +201,22 @@ export class OpenWorkflow {
   }
 
   /**
-   * Resume a failed workflow run. The run's status flips back to `pending`
-   * so the next worker tick picks it up. Already-completed steps are served
-   * from history without re-executing. Nothing is deleted: the failing step
-   * starts with a fresh retry budget because only failures recorded after the
-   * resume count against it.
-   * @param workflowRunId - The ID of the failed workflow run to resume
-   * @returns The updated workflow run
-   * @throws {Error} If the run does not exist or is not in `failed` status
-   * @example
-   * ```ts
-   * await ow.resumeWorkflowRun("123");
-   * ```
+   * Rerun a finished workflow with its original input and version.
+   * @param workflowRunId - ID of a failed, completed, or canceled run
+   * @param options - Rerun options
+   * @param options.fromStep - Recorded step name to rerun, reusing earlier
+   * successful results; omit to run every step again
+   * @returns A new pending run, leaving the source run unchanged
    */
-  async resumeWorkflowRun(workflowRunId: string): Promise<WorkflowRun> {
-    return await this.backend.resumeWorkflowRun({ workflowRunId });
+  async rerunWorkflowRun(
+    workflowRunId: string,
+    options?: { fromStep?: string },
+  ): Promise<WorkflowRun> {
+    return await rerunWorkflowRun(
+      this.backend,
+      workflowRunId,
+      options?.fromStep,
+    );
   }
 
   /**

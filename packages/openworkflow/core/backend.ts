@@ -19,6 +19,9 @@ export interface Backend {
   createWorkflowRun(
     params: Readonly<CreateWorkflowRunParams>,
   ): Promise<WorkflowRun>;
+  rerunWorkflowRun(
+    params: Readonly<RerunWorkflowRunParams>,
+  ): Promise<WorkflowRun>;
   getWorkflowRun(
     params: Readonly<GetWorkflowRunParams>,
   ): Promise<WorkflowRun | null>;
@@ -46,9 +49,6 @@ export interface Backend {
   ): Promise<WorkflowRun>;
   cancelWorkflowRun(
     params: Readonly<CancelWorkflowRunParams>,
-  ): Promise<WorkflowRun>;
-  resumeWorkflowRun(
-    params: Readonly<ResumeWorkflowRunParams>,
   ): Promise<WorkflowRun>;
 
   // Step Attempts
@@ -98,6 +98,12 @@ export interface GetWorkflowRunParams {
   workflowRunId: string;
 }
 
+export interface RerunWorkflowRunParams {
+  workflowRunId: string;
+  fromStep: string | null;
+  context: JsonValue | null;
+}
+
 export interface ListWorkflowRunsParams extends PaginationOptions {
   status?: WorkflowRunStatus;
   workflowName?: string;
@@ -143,10 +149,6 @@ export interface RescheduleWorkflowRunAfterFailedStepAttemptParams {
 }
 
 export interface CancelWorkflowRunParams {
-  workflowRunId: string;
-}
-
-export interface ResumeWorkflowRunParams {
   workflowRunId: string;
 }
 

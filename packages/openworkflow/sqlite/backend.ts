@@ -4,10 +4,10 @@ import {
   DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS,
   Backend,
   CancelWorkflowRunParams,
-  ResumeWorkflowRunParams,
   ClaimWorkflowRunParams,
   CreateStepAttemptParams,
   CreateWorkflowRunParams,
+  RerunWorkflowRunParams,
   GetStepAttemptParams,
   GetWorkflowRunParams,
   ExtendWorkflowRunLeaseParams,
@@ -34,11 +34,11 @@ import {
 } from "../core/cursor.js";
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
+import { prepareWorkflowRerun } from "../core/rerun.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
   resolveCancelWorkflowRunConflict,
-  resolveResumeWorkflowRunConflict,
   WorkflowRun,
 } from "../core/workflow-run.js";
 import {
@@ -175,6 +175,86 @@ export class BackendSqlite implements Backend {
       return Promise.reject(
         error instanceof Error ? error : new Error(String(error)),
       );
+    }
+  }
+
+  // oxlint-disable-next-line typescript/require-await -- keep the transaction synchronous
+  async rerunWorkflowRun(
+    request: RerunWorkflowRunParams,
+  ): Promise<WorkflowRun> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      // safety: these queries select rows from the corresponding tables.
+      const source = this.db
+        .prepare(
+          `
+        SELECT * FROM "workflow_runs" WHERE "namespace_id" = ? AND "id" = ?
+      `,
+        )
+        .get(this.namespaceId, request.workflowRunId) as
+        WorkflowRunRow | undefined;
+      // safety: the query selects the non-null step attempt ID.
+      const boundary =
+        request.fromStep === null
+          ? undefined
+          : (this.db
+              .prepare(
+                `
+        SELECT "id" FROM "step_attempts"
+        WHERE "namespace_id" = ? AND "workflow_run_id" = ? AND "step_name" = ?
+        ORDER BY "created_at", "id"
+        LIMIT 1
+      `,
+              )
+              .get(
+                this.namespaceId,
+                request.workflowRunId,
+                request.fromStep,
+              ) as { id: string } | undefined);
+      const params = prepareWorkflowRerun(
+        source ? rowToWorkflowRun(source) : null,
+        request,
+        boundary?.id ?? null,
+      );
+      const run = this.insertWorkflowRun(params);
+      if (boundary) {
+        this.db
+          .prepare(
+            `
+          INSERT INTO "step_attempts" (
+            "namespace_id", "id", "workflow_run_id", "step_name", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          )
+          SELECT "namespace_id",
+            lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+              substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) ||
+              substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))),
+            ?, "step_name", "kind", "status",
+            "config", "context", "output", "child_workflow_run_namespace_id", "child_workflow_run_id",
+            "started_at", "finished_at", "created_at", "updated_at"
+          FROM "step_attempts"
+          WHERE "namespace_id" = ? AND "workflow_run_id" = ?
+            AND "status" IN ('completed', 'succeeded')
+            AND ("created_at", "id") < (
+              SELECT "created_at", "id" FROM "step_attempts"
+              WHERE "namespace_id" = ? AND "id" = ?
+            )
+        `,
+          )
+          .run(
+            run.id,
+            this.namespaceId,
+            request.workflowRunId,
+            this.namespaceId,
+            boundary.id,
+          );
+      }
+      this.db.exec("COMMIT");
+      return run;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
     }
   }
 
@@ -760,54 +840,6 @@ export class BackendSqlite implements Backend {
     return updated;
   }
 
-  async resumeWorkflowRun(
-    params: ResumeWorkflowRunParams,
-  ): Promise<WorkflowRun> {
-    const currentTime = now();
-
-    // Stamp the resume marker and requeue. Nothing is deleted and neither
-    // `error` nor `attempts` is touched: step attempts stay (preserving the
-    // failure record and parent/child linkage), and the retry budget is reset
-    // by only counting failures after `resumed_at` during replay.
-    const updateResult = this.db
-      .prepare(
-        `
-        UPDATE "workflow_runs"
-        SET
-          "status" = 'pending',
-          "worker_id" = NULL,
-          "started_at" = NULL,
-          "finished_at" = NULL,
-          "available_at" = ?,
-          "resumed_at" = ?,
-          "updated_at" = ?
-        WHERE "namespace_id" = ?
-        AND "id" = ?
-        AND "status" = 'failed'
-        AND ("deadline_at" IS NULL OR "deadline_at" > ?)
-      `,
-      )
-      .run(
-        currentTime,
-        currentTime,
-        currentTime,
-        this.namespaceId,
-        params.workflowRunId,
-        currentTime,
-      );
-
-    const updated = await this.getWorkflowRun({
-      workflowRunId: params.workflowRunId,
-    });
-
-    if (updateResult.changes === 0) {
-      resolveResumeWorkflowRunConflict(params.workflowRunId, updated);
-    }
-
-    requireRow(updated, "resume workflow run");
-    return updated;
-  }
-
   /**
    * Return positional placeholders for {@link RUNNING_WORKFLOW_RUN_OWNED_WHERE}
    * in the order the fragment expects: namespace, run id, worker id.
@@ -1182,7 +1214,6 @@ interface WorkflowRunRow extends Record<string, SQLOutputValue> {
   deadline_at: string | null;
   started_at: string | null;
   finished_at: string | null;
-  resumed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1265,7 +1296,6 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     deadlineAt: fromISO(row.deadline_at),
     startedAt: fromISO(row.started_at),
     finishedAt: fromISO(row.finished_at),
-    resumedAt: fromISO(row.resumed_at),
     createdAt,
     updatedAt,
   };

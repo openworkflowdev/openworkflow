@@ -171,9 +171,6 @@ const CANCELABLE_RUN_STATUSES: ReadonlySet<string> = new Set<WorkflowRunStatus>(
   ],
 );
 
-/** Run statuses that can be resumed from the dashboard. */
-const RESUMABLE_RUN_STATUSES: ReadonlySet<string> = new Set(["failed"]);
-
 const fallbackStatusConfig = STATUS_CONFIG.pending;
 
 export function getRunStatusConfig(status: string): StatusConfig {
@@ -203,8 +200,4 @@ export function getStatusStatIconClass(status: string): string {
 
 export function isRunCancelableStatus(status: string): boolean {
   return CANCELABLE_RUN_STATUSES.has(status);
-}
-
-export function isRunResumableStatus(status: string): boolean {
-  return RESUMABLE_RUN_STATUSES.has(status);
 }

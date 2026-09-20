@@ -37,13 +37,10 @@ export interface StepExecutionState {
 /**
  * Build step execution state from loaded attempts in one pass.
  * @param attempts - Loaded step attempts for the workflow run
- * @param resumedAt - Most recent resume timestamp; failures that finished
- * before it are kept as history but not counted against the retry budget
  * @returns Successful cache plus failed-attempt counts by step name
  */
 export function createStepExecutionStateFromAttempts(
   attempts: readonly StepAttempt[],
-  resumedAt: Readonly<Date> | null = null,
 ): StepExecutionState {
   const cache = new Map<string, StepAttempt>();
   const failedCountsByStepName = new Map<string, number>();
@@ -57,14 +54,6 @@ export function createStepExecutionStateFromAttempts(
     }
 
     if (attempt.status === "failed") {
-      // Failures from before the latest resume stay in history (linkage,
-      // diagnostics) but don't count toward the step's retry budget.
-      if (
-        resumedAt !== null &&
-        (attempt.finishedAt === null || attempt.finishedAt < resumedAt)
-      ) {
-        continue;
-      }
       const previousCount = failedCountsByStepName.get(attempt.stepName) ?? 0;
       failedCountsByStepName.set(attempt.stepName, previousCount + 1);
       failedByStepName.set(attempt.stepName, attempt);
@@ -181,7 +170,6 @@ function getEarliestRunningWait(
 export interface StepHistoryOptions {
   attempts: readonly StepAttempt[];
   stepLimit?: number;
-  resumedAt?: Readonly<Date> | null;
 }
 
 /**
@@ -205,10 +193,7 @@ export class StepHistory {
     this.stepLimit = Math.max(1, options.stepLimit ?? WORKFLOW_STEP_LIMIT);
     this.stepCount = options.attempts.length;
 
-    const state = createStepExecutionStateFromAttempts(
-      options.attempts,
-      options.resumedAt ?? null,
-    );
+    const state = createStepExecutionStateFromAttempts(options.attempts);
     this.cache = new Map(state.cache);
     this.failedCountsByStepName = new Map(state.failedCountsByStepName);
     this.failedByStepName = new Map(state.failedByStepName);

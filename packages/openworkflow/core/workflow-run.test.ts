@@ -180,7 +180,6 @@ describe("resolveCancelWorkflowRunConflict", () => {
       deadlineAt: null,
       startedAt: null,
       finishedAt: null,
-      resumedAt: null,
       createdAt: new Date(0),
       updatedAt: new Date(0),
     };
