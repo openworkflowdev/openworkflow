@@ -203,12 +203,17 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
       (step) =>
         step.id === first.id || step.id === second.id || step.id === third.id,
     );
-    const rerun = await client.rerunWorkflowRun(source.id, {
+    const context = { traceContext: { traceparent: "new-trace" } };
+    const rerun = await backend.rerunWorkflowRun({
+      workflowRunId: source.id,
       fromStep: "target",
+      context,
     });
     expect(rerun.context).toEqual({
+      ...context,
       rerunStepIndices: { caught: 0, unfinished: 1 },
     });
+    expect(context).toEqual({ traceContext: { traceparent: "new-trace" } });
     const copies = await history(rerun.id);
     expect(copies.map((step) => step.stepName).toSorted()).toEqual(
       saved.map((step) => step.stepName).toSorted(),
@@ -230,7 +235,9 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     const chained = await client.rerunWorkflowRun(rerun.id, {
       fromStep: "third",
     });
-    expect(chained.context).toEqual(rerun.context);
+    expect(chained.context).toEqual({
+      rerunStepIndices: { caught: 0, unfinished: 1 },
+    });
     const chainedHistory = await history(chained.id);
     expect(chainedHistory.map((step) => step.stepName).toSorted()).toEqual([
       "first",
@@ -488,4 +495,53 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     });
     expect(rerun.status).toBe("pending");
   });
+
+  test.each(["prefix", "target"])(
+    "rejects partial reruns when %s has no recorded order, but permits a full rerun",
+    async (legacyStep) => {
+      let calls = 0;
+      const workflow = client.defineWorkflow(
+        { name: "legacy-step-order" },
+        async ({ step }) => {
+          await step.run({ name: "prefix" }, () => ++calls);
+          return await step.run({ name: "target" }, () => ++calls);
+        },
+      );
+      const original = await workflow.run();
+      const source = await finish(original.workflowRun.id);
+      expect(source.status).toBe("completed");
+      if (backend instanceof BackendSqlite) {
+        backend["db"]
+          .prepare(
+            'UPDATE "step_attempts" SET "step_index" = NULL WHERE "workflow_run_id" = ? AND "step_name" = ?',
+          )
+          .run(source.id, legacyStep);
+      } else {
+        const pg = backend["pg"];
+        await pg`UPDATE ${backend["stepAttemptsTable"]()} SET "step_index" = NULL
+          WHERE "workflow_run_id" = ${source.id} AND "step_name" = ${legacyStep}`;
+      }
+      const sourceHistory = await history(source.id);
+      const before = await backend.listWorkflowRuns({});
+
+      await expect(
+        client.rerunWorkflowRun(source.id, { fromStep: "target" }),
+      ).rejects.toThrow(
+        "Cannot rerun from a step without recorded step order; rerun the entire workflow instead",
+      );
+      expect(await backend.listWorkflowRuns({})).toEqual(before);
+
+      const rerun = await client.rerunWorkflowRun(source.id);
+      expect(await history(rerun.id)).toEqual([]);
+      await expect(finish(rerun.id)).resolves.toMatchObject({
+        status: "completed",
+        output: 4,
+      });
+      expect(calls).toBe(4);
+      expect(
+        await backend.getWorkflowRun({ workflowRunId: source.id }),
+      ).toEqual(source);
+      expect(await history(source.id)).toEqual(sourceHistory);
+    },
+  );
 });

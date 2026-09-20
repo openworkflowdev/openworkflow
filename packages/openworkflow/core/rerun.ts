@@ -35,24 +35,24 @@ export function prepareWorkflowRerun(
       `Step "${request.fromStep}" does not exist in workflow run ${source.id}`,
     );
   }
-  if (boundary && steps.some((step) => step.stepIndex === null)) {
-    throw new Error(
-      "Cannot rerun from a step without recorded step order; rerun the entire workflow instead",
-    );
-  }
-  const stepIndex = boundary?.stepIndex ?? null;
-  let context = request.context;
-  if (stepIndex !== null) {
-    const stepIndices = getRerunStepIndices(source.context);
-    const completed = new Set<string>();
+  const stepIndices = getRerunStepIndices(source.context);
+  const completed = new Set<string>();
+  if (boundary) {
     for (const step of steps) {
-      if (step.stepIndex !== null) {
-        stepIndices.set(step.stepName, step.stepIndex);
+      if (step.stepIndex === null) {
+        throw new Error(
+          "Cannot rerun from a step without recorded step order; rerun the entire workflow instead",
+        );
       }
+      stepIndices.set(step.stepName, step.stepIndex);
       if (step.status === "completed" || step.status === "succeeded") {
         completed.add(step.stepName);
       }
     }
+  }
+  const stepIndex = boundary?.stepIndex ?? null;
+  let context = request.context;
+  if (stepIndex !== null) {
     for (const [name, index] of stepIndices) {
       if (index >= stepIndex || completed.has(name)) stepIndices.delete(name);
     }
