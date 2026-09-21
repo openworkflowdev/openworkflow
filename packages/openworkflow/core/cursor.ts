@@ -13,6 +13,7 @@ export const DEFAULT_PAGINATION_PAGE_SIZE = 100;
  */
 export interface Cursor {
   createdAt: Date;
+  stepIndex?: number | null;
   id: string;
 }
 
@@ -23,7 +24,11 @@ export interface Cursor {
  */
 export function encodeCursor(item: Readonly<Cursor>): string {
   return Buffer.from(
-    JSON.stringify({ createdAt: item.createdAt, id: item.id }),
+    JSON.stringify({
+      createdAt: item.createdAt,
+      stepIndex: item.stepIndex,
+      id: item.id,
+    }),
   ).toString("base64");
 }
 
@@ -40,6 +45,7 @@ export function decodeCursor(cursor: string): Cursor {
   }
   return {
     createdAt: new Date(parsed.createdAt),
+    ...(parsed.stepIndex !== undefined && { stepIndex: parsed.stepIndex }),
     id: parsed.id,
   };
 }
@@ -122,12 +128,17 @@ function trimOverflow<T>(
 
 function isCursorPayload(
   value: unknown,
-): value is { createdAt: string; id: string } {
+): value is { createdAt: string; stepIndex?: number | null; id: string } {
   return (
     value !== null &&
     typeof value === "object" &&
     "createdAt" in value &&
     typeof value.createdAt === "string" &&
+    (!("stepIndex" in value) ||
+      value.stepIndex === null ||
+      (typeof value.stepIndex === "number" &&
+        Number.isSafeInteger(value.stepIndex) &&
+        value.stepIndex >= 0)) &&
     "id" in value &&
     typeof value.id === "string"
   );

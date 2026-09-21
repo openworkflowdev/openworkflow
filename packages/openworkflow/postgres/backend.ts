@@ -944,8 +944,10 @@ export class BackendPostgres implements Backend {
 
     const whereClause = this.buildListStepAttemptsWhere(params, cursor);
     const order = before
-      ? this.pg`ORDER BY "created_at" DESC, "id" DESC`
-      : this.pg`ORDER BY "created_at" ASC, "id" ASC`;
+      ? this
+          .pg`ORDER BY "created_at" DESC, "step_index" DESC NULLS LAST, "id" DESC`
+      : this
+          .pg`ORDER BY "created_at" ASC, "step_index" ASC NULLS FIRST, "id" ASC`;
     const stepAttemptsTable = this.stepAttemptsTable();
 
     const rows = await this.pg<StepAttempt[]>`
@@ -972,7 +974,8 @@ export class BackendPostgres implements Backend {
     if (cursor) {
       const op = after ? this.pg`>` : this.pg`<`;
       conditions.push(
-        this.pg`("created_at", "id") ${op} (${cursor.createdAt}, ${cursor.id})`,
+        this
+          .pg`("created_at", COALESCE("step_index", -1), "id") ${op} (${cursor.createdAt}, ${cursor.stepIndex ?? -1}, ${cursor.id})`,
       );
     }
 

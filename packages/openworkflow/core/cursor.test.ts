@@ -138,6 +138,14 @@ describe("decodeCursor", () => {
     { createdAt: 42 },
     { createdAt: "2026-01-15" },
     { createdAt: "2026-01-15", id: 42 },
+    { createdAt: "2026-01-15", stepIndex: "0", id: "abc123" },
+    { createdAt: "2026-01-15", stepIndex: -1, id: "abc123" },
+    { createdAt: "2026-01-15", stepIndex: 0.5, id: "abc123" },
+    {
+      createdAt: "2026-01-15",
+      stepIndex: Number.MAX_SAFE_INTEGER + 1,
+      id: "abc123",
+    },
   ])("rejects malformed cursor payload %j", (payload) => {
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
     expect(() => decodeCursor(encoded)).toThrow("Invalid cursor payload");
@@ -150,6 +158,11 @@ describe("decodeCursor", () => {
 });
 
 describe("encodeCursor / decodeCursor round-trip", () => {
+  test.each([null, 0, 1])("preserves step index %s", (stepIndex) => {
+    const cursor = { createdAt: new Date(0), stepIndex, id: "step" };
+    expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
+  });
+
   test("round-trips arbitrary cursors", () => {
     const cases: Cursor[] = [
       { createdAt: new Date("2026-01-15T12:34:56.789Z"), id: "abc123" },

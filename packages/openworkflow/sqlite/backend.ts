@@ -28,7 +28,6 @@ import {
 } from "../core/backend.js";
 import {
   buildPaginatedResponse,
-  type Cursor,
   DEFAULT_PAGINATION_PAGE_SIZE,
   decodeListCursor,
 } from "../core/cursor.js";
@@ -935,7 +934,11 @@ export class BackendSqlite implements Backend {
   listWorkflowRuns(
     params: ListWorkflowRunsParams,
   ): Promise<PaginatedResponse<WorkflowRun>> {
-    const conditions: string[] = [`"namespace_id" = ?`];
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const { after, before } = params;
+    const cursor = decodeListCursor(params);
+
+    const conditions = ['"namespace_id" = ?'];
     const values: unknown[] = [this.namespaceId];
 
     if (params.status) {
@@ -947,83 +950,68 @@ export class BackendSqlite implements Backend {
       values.push(params.workflowName);
     }
 
-    return this.listPaginated(params, {
-      table: "workflow_runs",
-      naturalOrder: "DESC",
-      baseWhere: conditions.join(" AND "),
-      baseParams: values,
-      // safety: this query selects workflow_runs columns defined by our SQLite migrations.
-      mapRow: (row) => rowToWorkflowRun(row as WorkflowRunRow),
-    });
+    if (cursor) {
+      const op = before ? ">" : "<";
+      conditions.push(`("created_at", "id") ${op} (?, ?)`);
+      values.push(cursor.createdAt.toISOString(), cursor.id);
+    }
+
+    const order = before ? "ASC" : "DESC";
+    const stmt = this.db.prepare(`
+      SELECT * FROM "workflow_runs"
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY "created_at" ${order}, "id" ${order}
+      LIMIT ?
+    `);
+    // safety: this query selects workflow_runs columns defined by our SQLite migrations.
+    const rows = stmt.all(...values, limit + 1) as WorkflowRunRow[];
+    return Promise.resolve(
+      buildPaginatedResponse(
+        rows.map((row) => rowToWorkflowRun(row)),
+        limit,
+        !!after,
+        !!before,
+      ),
+    );
   }
 
   listStepAttempts(
     params: ListStepAttemptsParams,
   ): Promise<PaginatedResponse<StepAttempt>> {
-    return this.listPaginated(params, {
-      table: "step_attempts",
-      naturalOrder: "ASC",
-      baseWhere: `"namespace_id" = ? AND "workflow_run_id" = ?`,
-      baseParams: [this.namespaceId, params.workflowRunId],
-      // safety: this query selects step_attempts columns defined by our SQLite migrations.
-      mapRow: (row) => rowToStepAttempt(row as StepAttemptRow),
-    });
-  }
-
-  /**
-   * Execute a cursor-paginated SELECT against a namespace-scoped table.
-   * `before` reverses the table's natural order, and the cursor comparison
-   * operator follows the effective direction so over-fetched rows line up
-   * with {@link buildPaginatedResponse}'s expectations.
-   * @param params - Pagination params (limit/after/before)
-   * @param options - Query shape
-   * @param options.table - Table name to select from
-   * @param options.naturalOrder - Default sort direction for this table
-   * @param options.baseWhere - WHERE fragment with `?` placeholders
-   * @param options.baseParams - Values for the placeholders in `baseWhere`
-   * @param options.mapRow - Convert a raw row to the domain type
-   * @returns Paginated response
-   */
-  private listPaginated<T extends Cursor>(
-    params: Readonly<{ after?: string; before?: string; limit?: number }>,
-    options: {
-      readonly table: string;
-      readonly naturalOrder: "ASC" | "DESC";
-      readonly baseWhere: string;
-      readonly baseParams: readonly unknown[];
-      readonly mapRow: (row: Record<string, SQLOutputValue>) => T;
-    },
-  ): Promise<PaginatedResponse<T>> {
     const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
     const { after, before } = params;
     const cursor = decodeListCursor(params);
 
-    const reversedOrder = options.naturalOrder === "ASC" ? "DESC" : "ASC";
-    const effectiveOrder = before ? reversedOrder : options.naturalOrder;
-    const cursorOp = effectiveOrder === "ASC" ? ">" : "<";
+    const conditions = ['"namespace_id" = ?', '"workflow_run_id" = ?'];
+    const values: unknown[] = [this.namespaceId, params.workflowRunId];
+    if (cursor) {
+      const op = before ? "<" : ">";
+      conditions.push(
+        `("created_at", COALESCE("step_index", -1), "id") ${op} (?, ?, ?)`,
+      );
+      values.push(
+        cursor.createdAt.toISOString(),
+        cursor.stepIndex ?? -1,
+        cursor.id,
+      );
+    }
 
-    const whereClause = cursor
-      ? `${options.baseWhere} AND ("created_at", "id") ${cursorOp} (?, ?)`
-      : options.baseWhere;
-    const queryParams: unknown[] = [
-      ...options.baseParams,
-      ...(cursor ? [cursor.createdAt.toISOString(), cursor.id] : []),
-      limit + 1,
-    ];
-
-    const query = `
-      SELECT *
-      FROM "${options.table}"
-      WHERE ${whereClause}
-      ORDER BY "created_at" ${effectiveOrder}, "id" ${effectiveOrder}
+    const order = before ? "DESC" : "ASC";
+    const stmt = this.db.prepare(`
+      SELECT * FROM "step_attempts"
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY "created_at" ${order}, "step_index" ${order}, "id" ${order}
       LIMIT ?
-    `;
-
-    const rawRows = this.db.prepare(query).all(...queryParams);
-    const rows = rawRows.map((row) => options.mapRow(row));
-
+    `);
+    // safety: this query selects step_attempts columns defined by our SQLite migrations.
+    const rows = stmt.all(...values, limit + 1) as StepAttemptRow[];
     return Promise.resolve(
-      buildPaginatedResponse(rows, limit, !!after, !!before),
+      buildPaginatedResponse(
+        rows.map((row) => rowToStepAttempt(row)),
+        limit,
+        !!after,
+        !!before,
+      ),
     );
   }
 
