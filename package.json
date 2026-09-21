@@ -54,7 +54,7 @@
     "@vitest/coverage-v8": "^5.0.1",
     "cspell": "^10.3.3",
     "husky": "^9.1.7",
-    "jscpd": "^5.2.1",
+    "jscpd": "^5.3.0",
     "knip": "^6.36.0",
     "oxlint": "^1.83.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
