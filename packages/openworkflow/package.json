@@ -58,7 +58,7 @@
   "devDependencies": {
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/sdk-trace-node": "^2.11.0",
-    "arktype": "^2.2.3",
+    "arktype": "^2.2.5",
     "valibot": "^1.5.0",
     "vitest": "^5.0.0",
     "yup": "^1.7.1",
