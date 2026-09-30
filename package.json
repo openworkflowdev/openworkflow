@@ -52,7 +52,7 @@
     "@tsconfig/strictest": "^2.0.8",
     "@types/node": "^26.6.3",
     "@vitest/coverage-v8": "^5.0.2",
-    "cspell": "^10.3.4",
+    "cspell": "^10.3.5",
     "husky": "^9.1.7",
     "jscpd": "^5.2.1",
     "knip": "^6.36.0",
