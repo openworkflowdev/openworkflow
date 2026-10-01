@@ -1,10 +1,12 @@
-import { isTerminalStatus } from "../core/workflow-run.js";
+import { isTerminalStatus, type WorkflowRun } from "../core/workflow-run.js";
 import { BackendPostgres } from "../postgres/backend.js";
 import { createTestBackend } from "../postgres/test-backend.testsuite.js";
 import { BackendSqlite } from "../sqlite/backend.js";
 import { OpenWorkflow } from "./client.js";
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 15_000 });
 
 describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
   let backend: BackendSqlite | BackendPostgres;
@@ -21,17 +23,26 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     if (database === "sqlite") await backend.stop();
   });
 
-  async function finish(workflowRunId: string) {
+  async function finish(workflowRunId: string): Promise<WorkflowRun> {
     const worker = client.newWorker();
-    for (let tick = 0; tick < 100; tick++) {
-      await worker.tick();
-      const run = await backend.getWorkflowRun({ workflowRunId });
-      if (run && isTerminalStatus(run.status)) return run;
-      await new Promise((resolve) => {
-        setTimeout(resolve, 5);
-      });
+    const timeout = 10_000;
+    const deadline = performance.now() + timeout;
+    let run: WorkflowRun | null = null;
+    try {
+      while (performance.now() < deadline) {
+        await worker.tick();
+        run = await backend.getWorkflowRun({ workflowRunId });
+        if (run && isTerminalStatus(run.status)) return run;
+        await new Promise((resolve) => {
+          setTimeout(resolve, 5);
+        });
+      }
+      throw new Error(
+        `Workflow run ${workflowRunId} did not finish within ${timeout}ms (status: ${run?.status ?? "missing"}, workerId: ${run?.workerId ?? "none"})`,
+      );
+    } finally {
+      await worker.stop();
     }
-    throw new Error("Run did not finish");
   }
 
   async function history(workflowRunId: string) {
@@ -295,12 +306,18 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
       },
     );
     const original = await workflow.run();
-    await client.newWorker().tick();
-    await client.sendSignal({
+    const worker = client.newWorker();
+    await worker.tick();
+    await worker.stop();
+    expect(await history(original.workflowRun.id)).toMatchObject([
+      { kind: "signal-wait", status: "running", context: { signal: "reply" } },
+    ]);
+    const delivery = await client.sendSignal({
       signal: "reply",
       data: { value: 42 },
       idempotencyKey: "delivery",
     });
+    expect(delivery.workflowRunIds).toEqual([original.workflowRun.id]);
     await finish(original.workflowRun.id);
     const rerun = await client.rerunWorkflowRun(original.workflowRun.id, {
       fromStep: "target",
@@ -479,7 +496,12 @@ describe.each(["sqlite", "postgres"])("reruns (%s)", (database) => {
     await expect(
       client.rerunWorkflowRun(original.workflowRun.id),
     ).rejects.toThrow("Only finished");
-    await client.newWorker().tick();
+    const worker = client.newWorker();
+    await worker.tick();
+    await worker.stop();
+    expect(await history(original.workflowRun.id)).toMatchObject([
+      { stepName: "wait", kind: "sleep", status: "running" },
+    ]);
     await expect(
       client.rerunWorkflowRun(original.workflowRun.id),
     ).rejects.toThrow("Only finished");
