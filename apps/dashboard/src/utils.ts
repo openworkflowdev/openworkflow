@@ -26,8 +26,9 @@ export function computeDuration(
     return `${(durationMs / 1000).toFixed(1)}s`;
   }
 
-  const minutes = Math.floor(durationMs / 60_000);
-  const seconds = Math.round((durationMs % 60_000) / 1000);
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
 
   if (seconds === 0) {
     return `${minutes.toString()}m`;
