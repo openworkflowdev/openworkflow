@@ -19,7 +19,7 @@ services:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   aspire:
-    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6.0
     profiles: [observability]
     environment:
       ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
