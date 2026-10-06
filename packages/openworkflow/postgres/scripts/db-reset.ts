@@ -7,6 +7,9 @@ import {
 } from "../postgres.js";
 
 const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
-await dropSchema(pg, DEFAULT_SCHEMA);
-await migrate(pg, DEFAULT_SCHEMA);
-await pg.end();
+try {
+  await dropSchema(pg, DEFAULT_SCHEMA);
+} finally {
+  await pg.end();
+}
+await migrate(DEFAULT_POSTGRES_URL, DEFAULT_SCHEMA);

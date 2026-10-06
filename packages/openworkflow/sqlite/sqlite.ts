@@ -1,4 +1,8 @@
 import type { JsonValue } from "../core/json.js";
+import {
+  MIGRATION_WAIT_TIMEOUT_MS,
+  pendingStatements,
+} from "../core/migration.js";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type { SQLOutputValue } from "node:sqlite";
@@ -64,21 +68,15 @@ export function newDatabase(path: string): Database {
 export function migrations(): string[] {
   return [
     // 0 - init
-    `BEGIN;
-
-    CREATE TABLE IF NOT EXISTS "openworkflow_migrations" (
+    `CREATE TABLE IF NOT EXISTS "openworkflow_migrations" (
       "version" INTEGER NOT NULL PRIMARY KEY
     );
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (0);
-
-    COMMIT;`,
+    VALUES (0);`,
 
     // 1 - add workflow_runs and step_attempts tables
-    `BEGIN;
-
-    PRAGMA defer_foreign_keys = ON;
+    `PRAGMA defer_foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS "workflow_runs" (
       "namespace_id" TEXT NOT NULL,
@@ -137,36 +135,24 @@ export function migrations(): string[] {
     );
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (1);
-
-    COMMIT;`,
+    VALUES (1);`,
 
     // 2 - foreign keys
-    `BEGIN;
-
-    -- Foreign keys are defined in migration 1 since SQLite requires them during table creation
+    `-- Foreign keys are defined in migration 1 since SQLite requires them during table creation
     -- This migration exists for version parity with PostgreSQL backend
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (2);
-
-    COMMIT;`,
+    VALUES (2);`,
 
     // 3 - validate foreign keys
-    `BEGIN;
-
-    -- Foreign key validation happens automatically in SQLite when PRAGMA foreign_keys = ON
+    `-- Foreign key validation happens automatically in SQLite when PRAGMA foreign_keys = ON
     -- This migration exists for version parity with PostgreSQL backend
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (3);
-
-    COMMIT;`,
+    VALUES (3);`,
 
     // 4 - indexes
-    `BEGIN;
-
-    CREATE INDEX IF NOT EXISTS "workflow_runs_status_available_at_created_at_idx"
+    `CREATE INDEX IF NOT EXISTS "workflow_runs_status_available_at_created_at_idx"
     ON "workflow_runs" ("namespace_id", "status", "available_at", "created_at");
 
     CREATE INDEX IF NOT EXISTS "workflow_runs_workflow_name_idempotency_key_created_at_idx"
@@ -196,14 +182,10 @@ export function migrations(): string[] {
     WHERE child_workflow_run_namespace_id IS NOT NULL AND child_workflow_run_id IS NOT NULL;
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (4);
-
-    COMMIT;`,
+    VALUES (4);`,
 
     // 5 - workflow signals
-    `BEGIN;
-
-    CREATE TABLE IF NOT EXISTS "workflow_signals" (
+    `CREATE TABLE IF NOT EXISTS "workflow_signals" (
       "namespace_id" TEXT NOT NULL,
       "id" TEXT NOT NULL,
       "signal" TEXT NOT NULL,
@@ -227,19 +209,13 @@ export function migrations(): string[] {
     WHERE "kind" = 'signal-wait' AND "status" = 'running';
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (5);
-
-    COMMIT;`,
+    VALUES (5);`,
 
     // 6 - add step index to steps
-    `BEGIN;
-
-    ALTER TABLE "step_attempts" ADD COLUMN "step_index" INTEGER;
+    `ALTER TABLE "step_attempts" ADD COLUMN "step_index" INTEGER;
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
-    VALUES (6);
-
-    COMMIT;`,
+    VALUES (6);`,
   ];
 }
 
@@ -249,21 +225,40 @@ export function migrations(): string[] {
  * @param db - SQLite database
  */
 export function migrate(db: Database): void {
-  const currentMigrationVersion = getCurrentMigrationVersion(db);
+  if (getMigrationVersion(db) >= migrations().length - 1) return;
 
-  for (const [i, migrationSql] of migrations().entries()) {
-    if (i <= currentMigrationVersion) continue; // already applied
-
-    db.exec(migrationSql);
+  // Recheck the version under the writer lock so startup processes cannot race.
+  const busyTimeoutMs = Number(
+    db.prepare("PRAGMA busy_timeout").get()?.["timeout"] ?? 0,
+  );
+  db.exec(`PRAGMA busy_timeout = ${MIGRATION_WAIT_TIMEOUT_MS}`);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+  } finally {
+    db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
+  }
+  try {
+    const version = getMigrationVersion(db);
+    for (const sql of pendingStatements(migrations(), version)) {
+      db.exec(sql);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // The failed statement may have already rolled back its transaction.
+    }
+    throw error;
   }
 }
 
 /**
- * getCurrentMigrationVersion returns the current migration version of the database.
+ * getMigrationVersion returns the current migration version of the database.
  * @param db - SQLite database
  * @returns Current migration version
  */
-function getCurrentMigrationVersion(db: Database): number {
+function getMigrationVersion(db: Database): number {
   // check if migrations table exists
   const existsStmt = db.prepare(`
     SELECT COUNT(*) as count

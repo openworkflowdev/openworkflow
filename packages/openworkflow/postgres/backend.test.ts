@@ -5,6 +5,7 @@ import {
   DEFAULT_SCHEMA,
   DEFAULT_POSTGRES_URL,
   dropSchema,
+  migrate,
   newPostgresMaxOne,
   type Postgres,
 } from "./postgres.js";
@@ -1021,6 +1022,88 @@ describe("BackendPostgres workflow wake-up reconciliation", () => {
       );
     } finally {
       await backend.stop();
+    }
+  });
+});
+
+describe("BackendPostgres online migrations", () => {
+  test("keeps prepared reads and writes valid when columns are added", async () => {
+    const schema = `test_online_${randomUUID().replaceAll("-", "_")}`;
+    const admin = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+    const pg = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+
+    async function exercise(input: number): Promise<void> {
+      const backend = BackendPostgres.fromPool(pg, {
+        schema,
+        namespaceId: String(input),
+      });
+      const run = await backend.createWorkflowRun({
+        workflowName: "online-migration",
+        version: null,
+        idempotencyKey: String(input),
+        input,
+        config: {},
+        context: null,
+        parentStepAttemptNamespaceId: null,
+        parentStepAttemptId: null,
+        availableAt: null,
+        deadlineAt: null,
+      });
+      const workerId = randomUUID();
+      const claimed = await backend.claimWorkflowRun({
+        workerId,
+        leaseDurationMs: 30_000,
+      });
+      expect(claimed).toMatchObject({ id: run.id, input });
+
+      const step = await backend.createStepAttempt({
+        workflowRunId: run.id,
+        workerId,
+        stepName: "double",
+        stepIndex: 0,
+        kind: "function",
+        config: {},
+        context: null,
+      });
+      const completedStep = await backend.completeStepAttempt({
+        workflowRunId: run.id,
+        stepAttemptId: step.id,
+        workerId,
+        output: input * 2,
+      });
+      expect(completedStep).toMatchObject({ id: step.id, output: input * 2 });
+      expect(await backend.getStepAttempt({ stepAttemptId: step.id })).toEqual(
+        completedStep,
+      );
+
+      const completedRun = await backend.completeWorkflowRun({
+        workflowRunId: run.id,
+        workerId,
+        output: input * 2 + 1,
+      });
+      expect(completedRun).toMatchObject({
+        id: run.id,
+        input,
+        output: input * 2 + 1,
+      });
+      expect(await backend.getWorkflowRun({ workflowRunId: run.id })).toEqual(
+        completedRun,
+      );
+    }
+
+    try {
+      await migrate(DEFAULT_POSTGRES_URL, schema);
+      await exercise(0);
+      const before = await pg`SELECT pg_backend_pid() AS pid`;
+      await admin.unsafe(`ALTER TABLE "${schema}".workflow_runs ADD COLUMN future_column TEXT;
+        ALTER TABLE "${schema}".step_attempts ADD COLUMN future_column TEXT`);
+      // Queue work on the same warmed connection, including reserved transactions.
+      await Promise.all([exercise(1), exercise(2)]);
+      expect(await pg`SELECT pg_backend_pid() AS pid`).toEqual(before);
+    } finally {
+      await pg.end({ timeout: 0 });
+      await dropSchema(admin, schema);
+      await admin.end({ timeout: 0 });
     }
   });
 });

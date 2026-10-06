@@ -1,3 +1,8 @@
+import {
+  MIGRATION_WAIT_TIMEOUT_MS,
+  pendingStatements,
+} from "../core/migration.js";
+import { setTimeout } from "node:timers/promises";
 import postgres from "postgres";
 
 export const DEFAULT_POSTGRES_URL =
@@ -43,6 +48,11 @@ export function newPostgresMaxOne(url: string, options?: PostgresOptions) {
 
 /**
  * migrations returns the list of migration SQL statements.
+ * Use -- statement-breakpoint to separate SQL batches that must run
+ * independently. CREATE INDEX CONCURRENTLY needs its own batch outside
+ * BEGIN/COMMIT. Keep each version insert last, after all of that migration's
+ * changes succeed. Keep additions compatible with running releases. Remove or
+ * change existing columns only after workers that depend on them have retired.
  * @param schema - Schema name
  * @returns Migration SQL statements
  */
@@ -82,6 +92,8 @@ export function migrations(schema: string): string[] {
       "input" JSONB,
       "output" JSONB,
       "error" JSONB,
+      -- Attempts count retries of one workflow run, not a global sequence.
+      -- squawk-ignore prefer-bigint-over-int
       "attempts" INTEGER NOT NULL,
       "parent_step_attempt_namespace_id" TEXT,
       "parent_step_attempt_id" TEXT,
@@ -171,36 +183,45 @@ export function migrations(schema: string): string[] {
     COMMIT;`,
 
     // 4 - indexes
-    `BEGIN;
-
-    CREATE INDEX IF NOT EXISTS "workflow_runs_status_available_at_created_at_idx"
+    `CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_status_available_at_created_at_idx"
     ON ${quotedSchema}."workflow_runs" ("namespace_id", "status", "available_at", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_workflow_name_idempotency_key_created_at_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_workflow_name_idempotency_key_created_at_idx"
     ON ${quotedSchema}."workflow_runs" ("namespace_id", "workflow_name", "idempotency_key", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_parent_step_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_parent_step_idx"
     ON ${quotedSchema}."workflow_runs" ("parent_step_attempt_namespace_id", "parent_step_attempt_id")
     WHERE parent_step_attempt_namespace_id IS NOT NULL AND parent_step_attempt_id IS NOT NULL;
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_created_at_desc_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_created_at_desc_idx"
     ON ${quotedSchema}."workflow_runs" ("namespace_id", "created_at" DESC);
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_status_created_at_desc_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_status_created_at_desc_idx"
     ON ${quotedSchema}."workflow_runs" ("namespace_id", "status", "created_at" DESC);
 
-    CREATE INDEX IF NOT EXISTS "workflow_runs_workflow_name_status_created_at_desc_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "workflow_runs_workflow_name_status_created_at_desc_idx"
     ON ${quotedSchema}."workflow_runs" ("namespace_id", "workflow_name", "status", "created_at" DESC);
 
-    CREATE INDEX IF NOT EXISTS "step_attempts_workflow_run_created_at_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "step_attempts_workflow_run_created_at_idx"
     ON ${quotedSchema}."step_attempts" ("namespace_id", "workflow_run_id", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "step_attempts_workflow_run_step_name_created_at_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "step_attempts_workflow_run_step_name_created_at_idx"
     ON ${quotedSchema}."step_attempts" ("namespace_id", "workflow_run_id", "step_name", "created_at");
 
-    CREATE INDEX IF NOT EXISTS "step_attempts_child_workflow_run_idx"
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "step_attempts_child_workflow_run_idx"
     ON ${quotedSchema}."step_attempts" ("child_workflow_run_namespace_id", "child_workflow_run_id")
     WHERE child_workflow_run_namespace_id IS NOT NULL AND child_workflow_run_id IS NOT NULL;
+
+    -- statement-breakpoint
+    BEGIN;
 
     INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
     VALUES (4)
@@ -231,9 +252,15 @@ export function migrations(schema: string): string[] {
     ON ${quotedSchema}."workflow_signals" ("namespace_id", "signal", "sender_idempotency_key")
     WHERE "sender_idempotency_key" IS NOT NULL;
 
-    CREATE INDEX IF NOT EXISTS "step_attempts_signal_wait_idx"
+    COMMIT;
+
+    -- statement-breakpoint
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS "step_attempts_signal_wait_idx"
     ON ${quotedSchema}."step_attempts" ("namespace_id", ("context"->>'signal'))
     WHERE "kind" = 'signal-wait' AND "status" = 'running';
+
+    -- statement-breakpoint
+    BEGIN;
 
     INSERT INTO ${quotedSchema}."openworkflow_migrations"("version")
     VALUES (5)
@@ -245,6 +272,9 @@ export function migrations(schema: string): string[] {
     `BEGIN;
 
     ALTER TABLE ${quotedSchema}."step_attempts"
+
+    -- step indexes are positions within one workflow run, int is big enough
+    -- squawk-ignore prefer-bigint-over-int
     ADD COLUMN "step_index" INTEGER;
 
     INSERT INTO ${quotedSchema}."openworkflow_migrations" ("version")
@@ -255,20 +285,84 @@ export function migrations(schema: string): string[] {
   ];
 }
 
+// Bound table-lock waits and statement execution separately from the wait
+// for another migrator to finish.
+export const migrationSetup = `SET lock_timeout = '1s';
+SET statement_timeout = '5min';`;
+
 /**
- * migrate applies pending migrations to the database. Does nothing if the
- * database is already up to date.
- * @param pg - Postgres client
+ * Apply pending SQL batches, allowing one migrator per schema at a time.
+ * SQL errors stop startup and propagate to the caller. The caller is responsible
+ * for resolving the cause and retrying; this function does not repair indexes.
+ * @param url - Database connection URL
  * @param schema - Schema name
  * @returns Promise resolved when migrations complete
  */
-export async function migrate(pg: Postgres, schema: string) {
-  const currentMigrationVersion = await getCurrentMigrationVersion(pg, schema);
+export async function migrate(url: string, schema: string) {
+  assertValidSchemaName(schema);
+  const connectionState = { disconnected: false };
+  // The advisory lock belongs to one database session. Keep that session alive
+  // for the entire migration, including gaps between SQL batches.
+  const pg = newPostgresMaxOne(url, {
+    // Only built-in types are needed. Skip the driver's type lookup, which can
+    // reject outside the query promise if the connection closes during discovery.
+    fetch_types: false,
+    idle_timeout: 0,
+    max_lifetime: 0,
+    connection: { application_name: `openworkflow:migrate:${schema}` },
+    onclose: () => {
+      // Prevent reconnection: a replacement session would not own the lock.
+      connectionState.disconnected = true;
+      void pg.end({ timeout: 0 });
+    },
+  });
 
-  for (const [i, migrationSql] of migrations(schema).entries()) {
-    if (i <= currentMigrationVersion) continue; // already applied
+  try {
+    await pg.unsafe(migrationSetup);
+    // Poll instead of waiting inside a blocking SQL query. That query could hold
+    // a snapshot that prevents the active migrator's concurrent index build
+    // from finishing, leaving both migrators waiting on each other.
+    const deadline = performance.now() + MIGRATION_WAIT_TIMEOUT_MS;
+    for (;;) {
+      if (connectionState.disconnected)
+        throw new Error(`Migration connection closed for schema "${schema}"`);
+      const [lock] = await pg<{ acquired: boolean }[]>`
+        SELECT pg_try_advisory_lock(hashtextextended(${`openworkflow:migrations:${schema}`}, 0)) AS acquired`;
+      if (lock?.acquired) break;
+      if (performance.now() >= deadline) {
+        throw new Error(
+          `Timed out waiting for migrations in schema "${schema}"`,
+        );
+      }
+      await setTimeout(100);
+    }
 
-    await pg.unsafe(migrationSql);
+    // Another startup may have applied migrations while we waited for the lock.
+    const version = await getMigrationVersion(pg, schema);
+    const statements = pendingStatements(migrations(schema), version);
+    if (statements.length === 0) return;
+
+    // An interrupted concurrent build can leave an index that exists but is invalid.
+    // IF NOT EXISTS would skip it and let the migration be recorded as complete.
+    // Report invalid indexes for manual resolution; do not drop or rebuild them.
+    const invalidIndexes = await pg<{ name: string }[]>`
+      SELECT c.relname AS name FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = ${schema} AND NOT i.indisvalid
+      ORDER BY c.relname`;
+    if (invalidIndexes.length > 0) {
+      throw new Error(
+        `Cannot migrate schema "${schema}" with invalid indexes: ${invalidIndexes.map((index) => index.name).join(", ")}. Resolve them before retrying.`,
+      );
+    }
+
+    for (const sql of statements) {
+      await pg.unsafe(sql);
+    }
+  } finally {
+    // Closing releases the advisory lock and rolls back any unfinished transaction.
+    await pg.end({ timeout: 0 });
   }
 }
 
@@ -284,13 +378,13 @@ export async function dropSchema(pg: Postgres, schema: string) {
 }
 
 /**
- * getCurrentVersion returns the current migration version of the database.
+ * getMigrationVersion returns the current migration version of the database.
  * @param pg - Postgres client
  * @param schema - Schema name
  * @returns Current migration version
  */
-async function getCurrentMigrationVersion(
-  pg: Postgres,
+async function getMigrationVersion(
+  pg: Pick<Postgres, "unsafe">,
   schema: string,
 ): Promise<number> {
   assertValidSchemaName(schema);
@@ -310,10 +404,10 @@ async function getCurrentMigrationVersion(
 
   // get current version
   const quotedSchema = quoteIdentifier(schema);
-  const currentVersionRes = await pg.unsafe<{ version: number }[]>(
+  const currentVersionRes = await pg.unsafe<{ version: string | null }[]>(
     `SELECT MAX("version") AS "version" FROM ${quotedSchema}."openworkflow_migrations";`,
   );
-  return currentVersionRes[0]?.version ?? -1;
+  return Number(currentVersionRes[0]?.version ?? -1);
 }
 
 /**

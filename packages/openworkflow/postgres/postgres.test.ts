@@ -49,11 +49,13 @@ describe("postgres", () => {
   });
 
   describe("migrate()", () => {
-    test("runs database migrations idempotently", async () => {
+    test("serializes startup migrations and can run again", async () => {
       const schema = "test_migrate_idempotent";
       await dropSchema(pg, schema);
-      await migrate(pg, schema);
-      await migrate(pg, schema);
+      await Promise.all(
+        Array.from({ length: 2 }, () => migrate(DEFAULT_POSTGRES_URL, schema)),
+      );
+      await migrate(DEFAULT_POSTGRES_URL, schema);
 
       const versions = await pg.unsafe<{ version: number }[]>(
         `SELECT "version" FROM "${schema}"."openworkflow_migrations" ORDER BY "version";`,
@@ -63,32 +65,149 @@ describe("postgres", () => {
 
     test("applies all migrations when migrations table has no version rows", async () => {
       const schema = "test_empty_migration_rows";
-      const executedMigrations: string[] = [];
+      await dropSchema(pg, schema);
+      const initialMigration = migrations(schema)[0];
+      if (!initialMigration) throw new Error("Missing initial migration");
+      await pg.unsafe(initialMigration);
+      await pg.unsafe(`DELETE FROM "${schema}"."openworkflow_migrations"`);
+      await migrate(DEFAULT_POSTGRES_URL, schema);
 
-      // safety: this migration path only calls unsafe; the fixture supplies all query results it reads.
-      const fakePg = {
-        unsafe: (query: string) => {
-          if (query.includes("SELECT EXISTS")) {
-            return Promise.resolve([{ exists: true }]);
-          }
-          if (query.includes('MAX("version")')) {
-            return Promise.resolve([{ version: null }]);
-          }
-          executedMigrations.push(query);
-          return Promise.resolve([]);
-        },
-      } as Postgres;
+      const versions = await pg.unsafe<{ version: string }[]>(
+        `SELECT version FROM "${schema}"."openworkflow_migrations"`,
+      );
+      expect(versions).toHaveLength(migrations(schema).length);
+      await dropSchema(pg, schema);
+    });
 
-      await migrate(fakePg, schema);
+    test("leaves an interrupted index build for manual resolution", async () => {
+      const schema = "test_migrate_invalid_index";
+      const blocker = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      await dropSchema(pg, schema);
+      try {
+        for (const migration of migrations(schema).slice(0, 4)) {
+          await pg.unsafe(migration);
+        }
+        await pg.unsafe(`INSERT INTO "${schema}"."workflow_runs"
+          (namespace_id, id, workflow_name, status, config, attempts, created_at, updated_at)
+          VALUES ('test', 'one', 'workflow', 'pending', '{}', 0, NOW(), NOW())`);
+        // The writer lets the index build create its catalog entry, then blocks its scan.
+        await blocker.unsafe(`BEGIN;
+          UPDATE "${schema}"."workflow_runs" SET attempts = 1 WHERE id = 'one'`);
+        await expect(
+          migrate(DEFAULT_POSTGRES_URL, schema),
+        ).rejects.toMatchObject({
+          code: "55P03",
+        });
+        await blocker.unsafe("ROLLBACK");
 
-      expect(executedMigrations).toHaveLength(migrations(schema).length);
+        const invalidBefore = await pg`
+          SELECT c.oid, c.relname FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = ${schema} AND NOT i.indisvalid`;
+        expect(invalidBefore).toMatchObject([
+          { relname: "workflow_runs_status_available_at_created_at_idx" },
+        ]);
+        await expect(migrate(DEFAULT_POSTGRES_URL, schema)).rejects.toThrow(
+          `Cannot migrate schema "${schema}" with invalid indexes: workflow_runs_status_available_at_created_at_idx. Resolve them before retrying.`,
+        );
+        const invalidAfter = await pg`
+          SELECT c.oid, c.relname FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = ${schema} AND NOT i.indisvalid`;
+        expect(invalidAfter).toEqual(invalidBefore);
+        const versions = await pg.unsafe<{ version: string }[]>(
+          `SELECT version FROM "${schema}"."openworkflow_migrations" WHERE version >= 4`,
+        );
+        expect(versions).toHaveLength(0);
+
+        await pg.unsafe(
+          `DROP INDEX CONCURRENTLY "${schema}"."workflow_runs_status_available_at_created_at_idx"`,
+        );
+        await migrate(DEFAULT_POSTGRES_URL, schema);
+        const [index] = await pg<{ valid: boolean }[]>`
+          SELECT i.indisvalid AS valid FROM pg_index i
+          JOIN pg_class c ON c.oid = i.indexrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = ${schema}
+            AND c.relname = 'workflow_runs_status_available_at_created_at_idx'`;
+        expect(index?.valid).toBe(true);
+      } finally {
+        await blocker.unsafe("ROLLBACK");
+        await blocker.end();
+        await dropSchema(pg, schema);
+      }
+    });
+
+    test("fails on a lock timeout and can be retried after contention clears", async () => {
+      const schema = "test_migrate_lock_timeout";
+      const blocker = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      await dropSchema(pg, schema);
+      await migrate(DEFAULT_POSTGRES_URL, schema);
+      await pg.unsafe(`ALTER TABLE "${schema}"."step_attempts" DROP COLUMN step_index;
+        DELETE FROM "${schema}"."openworkflow_migrations" WHERE version >= 6`);
+      try {
+        await blocker.unsafe(`BEGIN;
+          LOCK TABLE "${schema}"."step_attempts" IN ACCESS EXCLUSIVE MODE`);
+        await expect(
+          migrate(DEFAULT_POSTGRES_URL, schema),
+        ).rejects.toMatchObject({
+          code: "55P03",
+        });
+        const versions = await pg.unsafe<{ version: string }[]>(
+          `SELECT version FROM "${schema}"."openworkflow_migrations" WHERE version = 6`,
+        );
+        expect(versions).toHaveLength(0);
+
+        await blocker.unsafe("ROLLBACK");
+        await migrate(DEFAULT_POSTGRES_URL, schema);
+        await pg.unsafe(`SELECT step_index FROM "${schema}"."step_attempts"`);
+      } finally {
+        await blocker.unsafe("ROLLBACK");
+        await blocker.end();
+        await dropSchema(pg, schema);
+      }
+    });
+
+    test("fails promptly if its connection closes while waiting for another migrator", async () => {
+      const schema = "test_migrate_disconnected_waiter";
+      const blocker = newPostgresMaxOne(DEFAULT_POSTGRES_URL);
+      try {
+        await blocker`SELECT pg_advisory_lock(hashtextextended(${`openworkflow:migrations:${schema}`}, 0))`;
+        const attempt = Promise.allSettled([
+          migrate(DEFAULT_POSTGRES_URL, schema),
+        ]);
+        let pid: number | undefined;
+        await expect
+          .poll(
+            async () => {
+              const [session] = await pg<{ pid: number }[]>`
+            SELECT pid FROM pg_stat_activity
+            WHERE application_name = ${`openworkflow:migrate:${schema}`}
+              AND state = 'idle' AND query LIKE '%pg_try_advisory_lock%'`;
+              pid = session?.pid;
+              return pid;
+            },
+            { interval: 10 },
+          )
+          .toBeTypeOf("number");
+        if (!pid) throw new Error("Waiting migration connection was not found");
+        await pg`SELECT pg_terminate_backend(${pid})`;
+        expect(await attempt).toMatchObject([{ status: "rejected" }]);
+        await blocker.end();
+        await migrate(DEFAULT_POSTGRES_URL, schema);
+      } finally {
+        await blocker.end();
+        await dropSchema(pg, schema);
+      }
     });
   });
 
   describe("dropSchema()", () => {
     test("drops the schema idempotently", async () => {
       const testSchema = "test_drop_schema_idempotent";
-      await migrate(pg, testSchema);
+      await migrate(DEFAULT_POSTGRES_URL, testSchema);
       await dropSchema(pg, testSchema);
       await dropSchema(pg, testSchema);
 

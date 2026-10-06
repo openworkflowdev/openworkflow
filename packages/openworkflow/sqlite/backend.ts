@@ -120,8 +120,9 @@ export class BackendSqlite implements Backend {
       ...options,
     };
 
+    let db: Database | undefined;
     try {
-      const db = newDatabase(path);
+      db = newDatabase(path);
 
       if (runMigrations) {
         migrate(db);
@@ -129,6 +130,7 @@ export class BackendSqlite implements Backend {
 
       return new BackendSqlite(db, namespaceId);
     } catch (error) {
+      db?.close();
       throw wrapError(
         "SQLite backend failed to open database. Check the path is valid and writable.",
         error,

@@ -1,8 +1,11 @@
 import { Database, migrate, migrations, newDatabase } from "./sqlite.js";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 // Helper to get the current migration version (exported for testing)
@@ -179,6 +182,100 @@ describe("sqlite", () => {
       const expectedLatestVersion = allMigrations.length - 1;
       expect(version).toBe(expectedLatestVersion);
     });
+
+    test("rolls back the whole pending upgrade before retrying", () => {
+      db.exec("PRAGMA busy_timeout = 1234");
+      for (const sql of migrations().slice(0, 5)) db.exec(sql);
+      db.exec("ALTER TABLE step_attempts ADD COLUMN step_index INTEGER");
+
+      expect(() => {
+        migrate(db);
+      }).toThrow(/duplicate column/i);
+      expect(getMigrationVersion(db)).toBe(4);
+      expect(db.prepare("PRAGMA busy_timeout").get()).toEqual({
+        timeout: 1234,
+      });
+      expect(
+        db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE name = 'workflow_signals'",
+          )
+          .all(),
+      ).toEqual([]);
+
+      db.exec("ALTER TABLE step_attempts DROP COLUMN step_index");
+      migrate(db);
+      expect(getMigrationVersion(db)).toBe(6);
+    });
+
+    test.each(["pending", "current"])(
+      "coordinates %s migrations across processes",
+      async (state) => {
+        if (state === "current") migrate(db);
+        db.exec("BEGIN IMMEDIATE");
+        const script = `
+        import { newDatabase, migrate } from ${JSON.stringify(new URL("sqlite.ts", import.meta.url).href)};
+        const db = newDatabase(${JSON.stringify(dbPath)});
+        db.exec("PRAGMA busy_timeout = 1");
+        process.stdout.write("ready");
+        try {
+          migrate(db);
+          if (db.prepare("PRAGMA busy_timeout").get().timeout !== 1) {
+            throw new Error("Migration changed the database's write timeout");
+          }
+        } finally { db.close(); }
+      `;
+        const args = process.versions["bun"]
+          ? ["--eval", script]
+          : ["--import", "tsx", "--input-type=module", "--eval", script];
+        const workers = Array.from({ length: 2 }, () => {
+          const child = spawn(process.execPath, args, {
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          let stderr = "";
+          child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+            stderr += chunk;
+          });
+          const completed = new Promise<void>((resolve, reject) => {
+            child.once("error", reject);
+            child.once("exit", (code) => {
+              if (code === 0) resolve();
+              else
+                reject(
+                  new Error(
+                    `Migration process exited ${String(code)}: ${stderr}`,
+                  ),
+                );
+            });
+          });
+          const ready = Promise.race([
+            once(child.stdout, "data"),
+            completed.then(() => {
+              throw new Error("Migration process exited before becoming ready");
+            }),
+          ]);
+          return { child, completed, ready };
+        });
+        try {
+          await Promise.all(workers.map((worker) => worker.ready));
+          // A current schema must finish while the existing writer still holds its lock.
+          await (state === "current"
+            ? Promise.all(workers.map((worker) => worker.completed))
+            : setTimeout(100));
+          db.exec("COMMIT");
+          await Promise.all(workers.map((worker) => worker.completed));
+          expect(getMigrationVersion(db)).toBe(6);
+        } finally {
+          try {
+            db.exec("ROLLBACK");
+          } catch {
+            /* The writer lock was already released. */
+          }
+          for (const worker of workers) worker.child.kill();
+          await Promise.allSettled(workers.map((worker) => worker.completed));
+        }
+      },
+    );
 
     test("creates all required tables after migration", () => {
       migrate(db);

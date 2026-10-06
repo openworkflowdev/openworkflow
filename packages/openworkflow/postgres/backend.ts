@@ -43,7 +43,6 @@ import {
 } from "../core/workflow-run.js";
 import {
   newPostgres,
-  newPostgresMaxOne,
   Postgres,
   PostgresFragment,
   migrate,
@@ -56,6 +55,50 @@ interface BackendPostgresOptions {
   runMigrations?: boolean;
   schema?: string;
 }
+
+const workflowRunColumns = [
+  "namespace_id",
+  "id",
+  "workflow_name",
+  "version",
+  "status",
+  "idempotency_key",
+  "config",
+  "context",
+  "input",
+  "output",
+  "error",
+  "attempts",
+  "parent_step_attempt_namespace_id",
+  "parent_step_attempt_id",
+  "worker_id",
+  "available_at",
+  "deadline_at",
+  "started_at",
+  "finished_at",
+  "created_at",
+  "updated_at",
+];
+
+const stepAttemptColumns = [
+  "namespace_id",
+  "id",
+  "workflow_run_id",
+  "step_name",
+  "step_index",
+  "kind",
+  "status",
+  "config",
+  "context",
+  "output",
+  "error",
+  "child_workflow_run_namespace_id",
+  "child_workflow_run_id",
+  "started_at",
+  "finished_at",
+  "created_at",
+  "updated_at",
+];
 
 /**
  * Manages a connection to a Postgres database for workflow operations.
@@ -94,9 +137,7 @@ export class BackendPostgres implements Backend {
 
     try {
       if (runMigrations) {
-        const pgForMigrate = newPostgresMaxOne(url);
-        await migrate(pgForMigrate, schema);
-        await pgForMigrate.end();
+        await migrate(url, schema);
       }
 
       const pg = newPostgres(url);
@@ -225,7 +266,7 @@ export class BackendPostgres implements Backend {
   ): Promise<WorkflowRun> {
     return await this.withTransaction(async (tx) => {
       const [source] = await tx<WorkflowRun[]>`
-        SELECT * FROM ${this.workflowRunsTable(tx)}
+        SELECT ${tx(workflowRunColumns)} FROM ${this.workflowRunsTable(tx)}
         WHERE "namespace_id" = ${this.namespaceId} AND "id" = ${request.workflowRunId}
         FOR UPDATE
       `;
@@ -309,7 +350,7 @@ export class BackendPostgres implements Backend {
         date_trunc('milliseconds', NOW()),
         NOW()
       )
-      RETURNING *
+      RETURNING ${pg(workflowRunColumns)}
     `;
 
     requireRow(workflowRun, "create workflow run");
@@ -326,7 +367,7 @@ export class BackendPostgres implements Backend {
     const workflowRunsTable = this.workflowRunsTable(pg);
 
     const [workflowRun] = await pg<WorkflowRun[]>`
-      SELECT *
+      SELECT ${pg(workflowRunColumns)}
       FROM ${workflowRunsTable}
       WHERE "namespace_id" = ${this.namespaceId}
         AND "workflow_name" = ${workflowName}
@@ -345,7 +386,7 @@ export class BackendPostgres implements Backend {
     const workflowRunsTable = this.workflowRunsTable();
 
     const [workflowRun] = await this.pg<WorkflowRun[]>`
-      SELECT *
+      SELECT ${this.pg(workflowRunColumns)}
       FROM ${workflowRunsTable}
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
@@ -473,7 +514,7 @@ export class BackendPostgres implements Backend {
     const workflowRunsTable = this.workflowRunsTable();
 
     const rows = await this.pg<WorkflowRun[]>`
-      SELECT *
+      SELECT ${this.pg(workflowRunColumns)}
       FROM ${workflowRunsTable}
       WHERE ${whereClause}
       ${order}
@@ -570,7 +611,7 @@ export class BackendPostgres implements Backend {
       FROM candidate
       WHERE wr."id" = candidate."id"
         AND wr."namespace_id" = ${this.namespaceId}
-      RETURNING wr.*;
+      RETURNING ${this.pg(workflowRunColumns.map((column) => `wr.${column}`))};
     `;
 
     return claimed ?? null;
@@ -587,7 +628,7 @@ export class BackendPostgres implements Backend {
         "available_at" = ${this.pg`NOW() + ${params.leaseDurationMs} * INTERVAL '1 millisecond'`},
         "updated_at" = NOW()
       WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     requireRow(updated, "extend lease for workflow run");
@@ -613,7 +654,7 @@ export class BackendPostgres implements Backend {
       AND "status" != 'failed'
       AND "status" != 'canceled'
       AND "worker_id" = ${params.workerId}
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     requireRow(updated, "sleep workflow run");
@@ -676,7 +717,7 @@ export class BackendPostgres implements Backend {
           AND sa."status" = 'running'
         )
       )
-      RETURNING wr.*
+      RETURNING ${this.pg(workflowRunColumns.map((column) => `wr.${column}`))}
     `;
 
     return updated ?? null;
@@ -698,7 +739,7 @@ export class BackendPostgres implements Backend {
         "finished_at" = NOW(),
         "updated_at" = NOW()
       WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     requireRow(updated, "mark workflow run completed");
@@ -743,7 +784,7 @@ export class BackendPostgres implements Backend {
         "started_at" = NULL,
         "updated_at" = NOW()
       WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     requireRow(updated, "mark workflow run failed");
@@ -771,7 +812,7 @@ export class BackendPostgres implements Backend {
         "started_at" = NULL,
         "updated_at" = NOW()
       WHERE ${this.runningWorkflowRunOwnedByWorkerWhere(params)}
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     requireRow(updated, "reschedule workflow run after failed step attempt");
@@ -795,7 +836,7 @@ export class BackendPostgres implements Backend {
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.workflowRunId}
       AND "status" IN ('pending', 'running', 'sleeping')
-      RETURNING *
+      RETURNING ${this.pg(workflowRunColumns)}
     `;
 
     if (!updated) {
@@ -887,7 +928,7 @@ export class BackendPostgres implements Backend {
         date_trunc('milliseconds', NOW()),
         NOW()
       FROM owned_workflow_run
-      RETURNING *
+      RETURNING ${this.pg(stepAttemptColumns)}
     `;
 
     requireRow(stepAttempt, "create step attempt");
@@ -912,7 +953,7 @@ export class BackendPostgres implements Backend {
       FROM owned_workflow_run
       WHERE sa."status" = 'running'
       AND ${this.stepAttemptByIdWhere(params)}
-      RETURNING sa.*
+      RETURNING ${this.pg(stepAttemptColumns.map((column) => `sa.${column}`))}
     `;
 
     requireRow(updated, "set step attempt child workflow run");
@@ -926,7 +967,7 @@ export class BackendPostgres implements Backend {
     const stepAttemptsTable = this.stepAttemptsTable();
 
     const [stepAttempt] = await this.pg<StepAttempt[]>`
-      SELECT *
+      SELECT ${this.pg(stepAttemptColumns)}
       FROM ${stepAttemptsTable}
       WHERE "namespace_id" = ${this.namespaceId}
       AND "id" = ${params.stepAttemptId}
@@ -951,7 +992,7 @@ export class BackendPostgres implements Backend {
     const stepAttemptsTable = this.stepAttemptsTable();
 
     const rows = await this.pg<StepAttempt[]>`
-      SELECT *
+      SELECT ${this.pg(stepAttemptColumns)}
       FROM ${stepAttemptsTable}
       WHERE ${whereClause}
       ${order}
@@ -1087,7 +1128,7 @@ export class BackendPostgres implements Backend {
       FROM owned_workflow_run
       WHERE sa."status" IN ('running', 'completed')
       AND ${this.stepAttemptByIdWhere(params)}
-      RETURNING sa.*
+      RETURNING ${this.pg(stepAttemptColumns.map((column) => `sa.${column}`))}
     `;
 
     requireRow(updated, "mark step attempt completed");
@@ -1118,7 +1159,7 @@ export class BackendPostgres implements Backend {
       FROM owned_workflow_run
       WHERE sa."status" IN ('running', 'failed')
       AND ${this.stepAttemptByIdWhere(params)}
-      RETURNING sa.*
+      RETURNING ${this.pg(stepAttemptColumns.map((column) => `sa.${column}`))}
     `;
 
     requireRow(updated, "mark step attempt failed");

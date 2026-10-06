@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "ci": "npm run format && npm run build && npm run lint && npm run lint:duplication && npm run lint:spell && npm run knip && npm run typecheck && npm run test:coverage",
+    "ci": "npm run format && npm run build && npm run lint && npm run squawk && npm run lint:duplication && npm run lint:spell && npm run knip && npm run typecheck && npm run test:coverage",
     "ci:bun": "bun run build && bun run test:bun",
     "db:migrate": "tsx ./packages/openworkflow/postgres/scripts/db-migrate.ts",
     "db:reset": "tsx ./packages/openworkflow/postgres/scripts/db-reset.ts",
@@ -62,6 +62,7 @@
     "prettier": "^3.9.9",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
+    "squawk-cli": "2.65.0",
     "tsx": "^4.23.15",
     "turbo": "^2.11.7",
     "typescript": "^6.0.3",
