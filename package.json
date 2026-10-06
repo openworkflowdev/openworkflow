@@ -62,7 +62,7 @@
     "prettier": "^3.9.9",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
-    "squawk-cli": "2.65.0",
+    "squawk-cli": "2.66.0",
     "tsx": "^4.23.15",
     "turbo": "^2.11.7",
     "typescript": "^6.0.3",
