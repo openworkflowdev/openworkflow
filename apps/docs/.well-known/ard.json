@@ -1,0 +1,32 @@
+{
+  "entries": [
+    {
+      "identifier": "urn:air:openworkflow.dev:server:docs",
+      "displayName": "OpenWorkflow Docs MCP",
+      "type": "application/mcp-server-card+json",
+      "url": "https://openworkflow.dev/.well-known/mcp/server-card.json",
+      "description": "Search and read OpenWorkflow documentation for building durable workflows in TypeScript and JavaScript.",
+      "capabilities": [
+        "search_open_workflow",
+        "query_docs_filesystem_open_workflow"
+      ],
+      "representativeQueries": [
+        "How do I define and run an OpenWorkflow workflow?",
+        "How do I configure retries and durable steps in OpenWorkflow?",
+        "How do I use PostgreSQL or SQLite with OpenWorkflow?"
+      ]
+    },
+    {
+      "identifier": "urn:air:openworkflow.dev:skill:openworkflow",
+      "displayName": "OpenWorkflow Skill",
+      "type": "application/ai-skill+md",
+      "url": "https://openworkflow.dev/skill.md",
+      "description": "Instructions for coding agents to set up OpenWorkflow and build durable workflows with the SDK and CLI.",
+      "representativeQueries": [
+        "Set up OpenWorkflow in my TypeScript project.",
+        "Build a workflow that resumes after a crash with OpenWorkflow.",
+        "Add retries and checkpoints to my background jobs with OpenWorkflow."
+      ]
+    }
+  ]
+}
