@@ -1,6 +1,7 @@
 import type { Backend } from "../core/backend.js";
 import { type BackoffPolicy, computeBackoffDelayMs } from "../core/backoff.js";
 import { parseDuration } from "../core/duration.js";
+import { type Logger, consoleLogger } from "../core/logger.js";
 import type { RetryPolicy, Workflow } from "../core/workflow-definition.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import { WorkflowRegistry } from "../core/workflow-registry.js";
@@ -45,6 +46,11 @@ export interface WorkerOptions {
    * @default 30000 (30 seconds)
    */
   leaseDurationMs?: number | undefined;
+  /**
+   * Logger for worker errors, such as failed polls and heartbeats.
+   * @default console
+   */
+  logger?: Logger | undefined;
 }
 
 /**
@@ -55,6 +61,7 @@ export class Worker {
   private readonly backend: Backend;
   private readonly workerIds: string[];
   private readonly leaseDurationMs: number;
+  private readonly logger: Logger;
   private readonly registry = new WorkflowRegistry();
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
@@ -63,6 +70,7 @@ export class Worker {
 
   constructor(options: WorkerOptions) {
     this.backend = options.backend;
+    this.logger = options.logger ?? consoleLogger;
 
     for (const workflow of options.workflows) {
       this.registry.register(workflow);
@@ -156,7 +164,7 @@ export class Worker {
           await sleep(getPollBackoffDelayMs(this.backoffAttempts));
         }
       } catch (error) {
-        console.error("Worker tick failed:", error);
+        logError(this.logger, "Worker tick failed:", error);
         this.backoffAttempts += 1;
         await sleep(getPollBackoffDelayMs(this.backoffAttempts));
       }
@@ -205,6 +213,7 @@ export class Worker {
       workflowRun,
       workerId,
       leaseDurationMs: this.leaseDurationMs,
+      logger: this.logger,
     });
     this.activeExecutions.add(execution);
 
@@ -246,7 +255,8 @@ export class Worker {
     } catch (error) {
       // specifically for unexpected errors in the execution wrapper itself, not
       // for business logic errors (those are handled inside executeWorkflow)
-      console.error(
+      logError(
+        this.logger,
         `Critical error during workflow execution for run ${execution.workflowRun.id}:`,
         error,
       );
@@ -262,6 +272,7 @@ interface WorkflowExecutionOptions {
   workflowRun: WorkflowRun;
   workerId: string;
   leaseDurationMs: number;
+  logger: Logger;
 }
 
 /**
@@ -273,6 +284,7 @@ class WorkflowExecution {
   workflowRun: WorkflowRun;
   workerId: string;
   private readonly leaseDurationMs: number;
+  private readonly logger: Logger;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(options: WorkflowExecutionOptions) {
@@ -280,6 +292,7 @@ class WorkflowExecution {
     this.workflowRun = options.workflowRun;
     this.workerId = options.workerId;
     this.leaseDurationMs = options.leaseDurationMs;
+    this.logger = options.logger;
   }
 
   /**
@@ -302,7 +315,7 @@ class WorkflowExecution {
             leaseDurationMs,
           })
           .catch((cause: unknown) => {
-            console.error("Heartbeat failed:", cause);
+            logError(this.logger, "Heartbeat failed:", cause);
           });
       }),
       heartbeatIntervalMs,
@@ -317,6 +330,20 @@ class WorkflowExecution {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+}
+
+/**
+ * Log an error without letting a failing logger stop the worker loop or
+ * surface as an unhandled rejection.
+ * @param logger - Logger to write to
+ * @param args - Arguments for `logger.error`
+ */
+function logError(logger: Logger, ...args: Parameters<Logger["error"]>): void {
+  try {
+    logger.error(...args);
+  } catch {
+    // a failing logger must not take down the worker
   }
 }
 

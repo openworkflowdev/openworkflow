@@ -1701,6 +1701,175 @@ describe("Worker", () => {
     }
   });
 
+  describe("logger", () => {
+    test("logs tick failures to console by default", async () => {
+      const error = new Error("boom");
+      const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
+      const worker = new Worker({
+        backend: createStubBackend({
+          claimWorkflowRun: vi.fn().mockRejectedValue(error),
+        }),
+        workflows: [],
+      });
+
+      try {
+        await worker.start();
+        await worker.stop();
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          "Worker tick failed:",
+          error,
+        );
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
+    });
+
+    test("logs tick failures to a custom logger", async () => {
+      const error = new Error("boom");
+      const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue();
+      const logger = createTestLogger();
+      const worker = new Worker({
+        backend: createStubBackend({
+          claimWorkflowRun: vi.fn().mockRejectedValue(error),
+        }),
+        workflows: [],
+        logger,
+      });
+
+      try {
+        await worker.start();
+        await worker.stop();
+
+        expect(logger.error).toHaveBeenCalledWith("Worker tick failed:", error);
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
+    });
+
+    test("logs heartbeat failures to a custom logger", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
+      const backend = await createTestBackend();
+      const error = new Error("heartbeat boom");
+      vi.spyOn(backend, "extendWorkflowRunLease").mockRejectedValue(error);
+      const logger = createTestLogger();
+      const client = new OpenWorkflow({ backend });
+      const stepStarted = Promise.withResolvers<null>();
+      const releaseStep = Promise.withResolvers<null>();
+
+      const workflow = client.defineWorkflow(
+        { name: "heartbeat-logger" },
+        async ({ step }) => {
+          await step.run({ name: "wait" }, async () => {
+            stepStarted.resolve(null);
+            await releaseStep.promise;
+          });
+          return "done";
+        },
+      );
+      const worker = client.newWorker({ logger });
+
+      try {
+        const handle = await workflow.run();
+        await worker.tick();
+        await stepStarted.promise;
+
+        await vi.advanceTimersByTimeAsync(15_000);
+        expect(logger.error).toHaveBeenCalledWith("Heartbeat failed:", error);
+
+        releaseStep.resolve(null);
+        await expect(handle.result()).resolves.toBe("done");
+      } finally {
+        releaseStep.resolve(null);
+        await worker.stop();
+        vi.useRealTimers();
+      }
+    });
+
+    test("logs critical execution failures to a custom logger", async () => {
+      const backend = await createTestBackend();
+      const error = new Error("backend boom");
+      vi.spyOn(backend, "failWorkflowRun").mockRejectedValue(error);
+      const logger = createTestLogger();
+      const client = new OpenWorkflow({ backend });
+      const workflow = client.defineWorkflow(
+        { name: "critical-execution-logger" },
+        () => {
+          throw new Error("workflow boom");
+        },
+      );
+      const worker = client.newWorker({ logger });
+      const handle = await workflow.run();
+
+      await worker.tick();
+      await expect(worker.stop()).resolves.toBeUndefined();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        `Critical error during workflow execution for run ${handle.workflowRun.id}:`,
+        error,
+      );
+      expect(logger.error.mock.calls[0]?.[1]).toBe(error);
+    });
+
+    test("keeps polling when the logger throws", async () => {
+      vi.useFakeTimers();
+
+      const claimWorkflowRun = vi.fn().mockRejectedValue(new Error("boom"));
+      const logger = createTestLogger();
+      logger.error.mockImplementation(() => {
+        throw new Error("logger boom");
+      });
+      const worker = new Worker({
+        backend: createStubBackend({ claimWorkflowRun }),
+        workflows: [],
+        logger,
+      });
+
+      try {
+        await worker.start();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+        expect(logger.error).toHaveBeenCalledTimes(2);
+      } finally {
+        const stopPromise = worker.stop();
+        await vi.runOnlyPendingTimersAsync();
+        await stopPromise;
+        vi.useRealTimers();
+      }
+    });
+
+    test("uses the client logger unless the worker overrides it", async () => {
+      const error = new Error("boom");
+      const backend = createStubBackend({
+        claimWorkflowRun: vi.fn().mockRejectedValue(error),
+      });
+      const clientLogger = createTestLogger();
+      const workerLogger = createTestLogger();
+      const client = new OpenWorkflow({ backend, logger: clientLogger });
+
+      const defaultWorker = client.newWorker();
+      await defaultWorker.start();
+      await defaultWorker.stop();
+      expect(clientLogger.error).toHaveBeenCalledWith(
+        "Worker tick failed:",
+        error,
+      );
+
+      clientLogger.error.mockClear();
+      const overriddenWorker = client.newWorker({ logger: workerLogger });
+      await overriddenWorker.start();
+      await overriddenWorker.stop();
+      expect(workerLogger.error).toHaveBeenCalledWith(
+        "Worker tick failed:",
+        error,
+      );
+      expect(clientLogger.error).not.toHaveBeenCalled();
+    });
+  });
+
   test("respects custom retry policy from spec", async () => {
     const backend = await createTestBackend();
     const client = new OpenWorkflow({ backend });
@@ -2286,6 +2455,10 @@ function retryDelayMs(run: WorkflowRun, fallbackStartMs: number): number {
   if (!run.availableAt) throw new Error("Expected availableAt timestamp");
 
   return run.availableAt.getTime() - fallbackStartMs;
+}
+
+function createTestLogger() {
+  return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 }
 
 function sleep(ms: number): Promise<void> {

@@ -1,6 +1,7 @@
 import type { Backend, SendSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import type { JsonValue } from "../core/json.js";
+import type { Logger } from "../core/logger.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -44,6 +45,11 @@ type WorkflowRunInput<TSchema, Input> = SchemaInput<TSchema, Input>;
  */
 export interface OpenWorkflowOptions {
   backend: Backend;
+  /**
+   * Default logger for workers created with `newWorker()`.
+   * @default console
+   */
+  logger?: Logger | undefined;
 }
 
 /**
@@ -51,10 +57,12 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
+  private logger: Logger | undefined;
   private registry = new WorkflowRegistry();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
+    this.logger = options.logger;
   }
 
   /**
@@ -62,16 +70,18 @@ export class OpenWorkflow {
    * @param options - Worker options
    * @param options.concurrency - Max concurrent workflow runs
    * @param options.leaseDurationMs - Workflow run lease duration
+   * @param options.logger - Logger, overriding the client's logger
    * @returns Worker instance
    */
   newWorker(
-    options?: Pick<WorkerOptions, "concurrency" | "leaseDurationMs">,
+    options?: Pick<WorkerOptions, "concurrency" | "leaseDurationMs" | "logger">,
   ): Worker {
     return new Worker({
       backend: this.backend,
       workflows: this.registry.getAll(),
       concurrency: options?.concurrency,
       leaseDurationMs: options?.leaseDurationMs,
+      logger: options?.logger ?? this.logger,
     });
   }
 
