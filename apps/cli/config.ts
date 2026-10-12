@@ -27,7 +27,7 @@ export interface OpenWorkflowConfig {
 
 export type WorkerConfig = Pick<
   WorkerOptions,
-  "concurrency" | "leaseDurationMs"
+  Extract<"concurrency" | "leaseDurationMs", keyof WorkerOptions>
 >;
 
 /**
