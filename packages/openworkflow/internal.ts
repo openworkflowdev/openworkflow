@@ -6,6 +6,7 @@ export { isWorkflow } from "./core/workflow-definition.js";
 export * from "./core/backend.js";
 
 // core
+export type { WorkflowScheduleDefinition } from "./core/schedule.js";
 export type { WorkflowRun, WorkflowRunStatus } from "./core/workflow-run.js";
 export type {
   StepAttempt,

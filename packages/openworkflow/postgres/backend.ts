@@ -25,6 +25,9 @@ import {
   SendSignalParams,
   SendSignalResult,
   GetSignalDeliveryParams,
+  type EnqueueScheduledRunsParams,
+  type PaginationOptions,
+  type WorkflowScheduleIdParams,
 } from "../core/backend.js";
 import {
   buildPaginatedResponse,
@@ -35,6 +38,11 @@ import {
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { prepareWorkflowRerun } from "../core/rerun.js";
+import {
+  nextScheduleOccurrence,
+  type WorkflowSchedule,
+  type WorkflowScheduleDefinition,
+} from "../core/schedule.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
@@ -57,6 +65,7 @@ interface BackendPostgresOptions {
 }
 
 const workflowRunColumns = [
+  "workflow_schedule_id",
   "namespace_id",
   "id",
   "workflow_name",
@@ -225,6 +234,122 @@ export class BackendPostgres implements Backend {
         reserved.release();
       }
     }
+  }
+
+  async upsertWorkflowSchedule(
+    params: WorkflowScheduleDefinition,
+  ): Promise<WorkflowSchedule> {
+    const pg = this.pg;
+    const now = new Date();
+    const [row] = await pg<WorkflowSchedule[]>`
+      INSERT INTO ${pg(this.schema)}."workflow_schedules" AS s
+        (namespace_id,id,workflow_name,input,cron,timezone,next_run_at,created_at,updated_at)
+      VALUES (${this.namespaceId},${params.id},${params.workflowName},${pg.json(params.input)},
+        ${params.cron},${params.timezone},${nextScheduleOccurrence(params, now)},${now},${now})
+      ON CONFLICT(namespace_id,id) DO UPDATE SET
+        workflow_name=excluded.workflow_name, input=excluded.input,
+        cron=excluded.cron, timezone=excluded.timezone, updated_at=excluded.updated_at,
+        next_run_at=CASE WHEN s.next_run_at IS NOT NULL
+          AND (s.cron<>excluded.cron OR s.timezone<>excluded.timezone)
+          THEN excluded.next_run_at ELSE s.next_run_at END
+      RETURNING *
+    `;
+    requireRow(row, "register schedule");
+    return row;
+  }
+
+  async getWorkflowSchedule(
+    params: WorkflowScheduleIdParams,
+  ): Promise<WorkflowSchedule | null> {
+    const pg = this.pg;
+    const [row] = await pg<WorkflowSchedule[]>`
+      SELECT * FROM ${pg(this.schema)}."workflow_schedules"
+      WHERE namespace_id=${this.namespaceId} AND id=${params.workflowScheduleId}`;
+    return row ?? null;
+  }
+
+  async listWorkflowSchedules(
+    params: PaginationOptions,
+  ): Promise<PaginatedResponse<WorkflowSchedule>> {
+    const pg = this.pg;
+    const cursor = decodeListCursor(params);
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const where = cursor
+      ? pg`AND (created_at,id) ${params.before ? pg`<` : pg`>`} (${cursor.createdAt},${cursor.id})`
+      : pg``;
+    const order = params.before ? pg`DESC` : pg`ASC`;
+    const rows = await pg<WorkflowSchedule[]>`
+      SELECT * FROM ${pg(this.schema)}."workflow_schedules"
+      WHERE namespace_id=${this.namespaceId} ${where}
+      ORDER BY created_at ${order},id ${order} LIMIT ${limit + 1}`;
+    return buildPaginatedResponse(rows, limit, !!params.after, !!params.before);
+  }
+
+  async pauseWorkflowSchedule(
+    params: WorkflowScheduleIdParams & { paused: boolean },
+  ): Promise<WorkflowSchedule> {
+    return await this.withTransaction(async (tx) => {
+      const [schedule] = await tx<WorkflowSchedule[]>`
+        SELECT * FROM ${tx(this.schema)}."workflow_schedules"
+        WHERE namespace_id=${this.namespaceId} AND id=${params.workflowScheduleId} FOR UPDATE`;
+      requireRow(schedule, "change schedule pause state");
+      if ((schedule.nextRunAt === null) === params.paused) return schedule;
+      const now = new Date();
+      const next = params.paused ? null : nextScheduleOccurrence(schedule, now);
+      const [updated] = await tx<WorkflowSchedule[]>`
+        UPDATE ${tx(this.schema)}."workflow_schedules"
+        SET next_run_at=${next},updated_at=${now}
+        WHERE namespace_id=${this.namespaceId} AND id=${params.workflowScheduleId} RETURNING *`;
+      requireRow(updated, "read updated schedule");
+      return updated;
+    });
+  }
+
+  async deleteWorkflowSchedule(
+    params: WorkflowScheduleIdParams,
+  ): Promise<void> {
+    const pg = this.pg;
+    await pg`DELETE FROM ${pg(this.schema)}."workflow_schedules"
+      WHERE namespace_id=${this.namespaceId} AND id=${params.workflowScheduleId}`;
+  }
+
+  async enqueueScheduledRuns(
+    params: EnqueueScheduledRunsParams,
+  ): Promise<number> {
+    return await this.withTransaction(async (tx) => {
+      const schedules = await tx<
+        Pick<WorkflowSchedule, "id" | "cron" | "timezone">[]
+      >`
+        SELECT id,cron,timezone FROM ${tx(this.schema)}."workflow_schedules"
+        WHERE namespace_id=${this.namespaceId} AND next_run_at<=${params.before}
+        ORDER BY next_run_at,id LIMIT ${params.limit} FOR UPDATE SKIP LOCKED`;
+      if (schedules.length === 0) return 0;
+      const advances = schedules.map((schedule) => ({
+        id: schedule.id,
+        next_run_at: nextScheduleOccurrence(
+          schedule,
+          params.before,
+        ).toISOString(),
+      }));
+      await tx`
+        WITH advances AS (
+          SELECT * FROM jsonb_to_recordset(${tx.json(advances)})
+            AS a(id TEXT,next_run_at TIMESTAMPTZ)
+        ), advanced AS (
+          UPDATE ${tx(this.schema)}."workflow_schedules" s
+          SET next_run_at=a.next_run_at,updated_at=${params.before}
+          FROM advances a WHERE s.namespace_id=${this.namespaceId} AND s.id=a.id
+          RETURNING s.namespace_id,s.id,s.workflow_name,s.input
+        )
+        INSERT INTO ${tx(this.schema)}."workflow_runs"
+          (namespace_id,id,workflow_name,status,config,input,attempts,
+           workflow_schedule_id,available_at,created_at,updated_at)
+        SELECT namespace_id,gen_random_uuid(),workflow_name,'pending','{}'::jsonb,input,0,
+          id,${params.before},date_trunc('milliseconds',clock_timestamp()),clock_timestamp()
+        FROM advanced
+      `;
+      return schedules.length;
+    });
   }
 
   async createWorkflowRun(

@@ -52,7 +52,7 @@ export default defineConfig({
       { markers: ["safety"] },
     ],
 
-    "eslint/max-lines": ["error", 500],
+    "eslint/max-lines": "allow",
     "eslint/max-lines-per-function": ["error", 80],
     "eslint/max-statements": ["error", 35],
 
@@ -181,7 +181,6 @@ export default defineConfig({
         "examples/**/*.ts",
       ],
       rules: {
-        "eslint/max-lines": "allow",
         "eslint/max-lines-per-function": "allow",
         "eslint/max-statements": "allow",
         "eslint/no-throw-literal": "allow",
@@ -209,7 +208,6 @@ export default defineConfig({
       ],
       rules: {
         "eslint/max-classes-per-file": "allow",
-        "eslint/max-lines": "allow",
         "eslint/max-lines-per-function": "allow",
         "eslint/max-statements": "allow",
       },

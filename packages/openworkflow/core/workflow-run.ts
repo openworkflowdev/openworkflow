@@ -59,6 +59,7 @@ export function resolveCancelWorkflowRunConflict(
  * WorkflowRun represents a single execution instance of a workflow.
  */
 export interface WorkflowRun {
+  workflowScheduleId: string | null;
   namespaceId: string;
   id: string;
   workflowName: string;

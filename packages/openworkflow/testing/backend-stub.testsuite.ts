@@ -7,6 +7,12 @@ import type { Backend } from "../core/backend.js";
  */
 export function createStubBackend(overrides: Partial<Backend>): Backend {
   return {
+    upsertWorkflowSchedule: unexpectedBackendCall,
+    getWorkflowSchedule: unexpectedBackendCall,
+    listWorkflowSchedules: unexpectedBackendCall,
+    pauseWorkflowSchedule: unexpectedBackendCall,
+    deleteWorkflowSchedule: unexpectedBackendCall,
+    enqueueScheduledRuns: unexpectedBackendCall,
     createWorkflowRun: unexpectedBackendCall,
     rerunWorkflowRun: unexpectedBackendCall,
     getWorkflowRun: unexpectedBackendCall,

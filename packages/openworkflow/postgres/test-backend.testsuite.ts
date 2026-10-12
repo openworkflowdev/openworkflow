@@ -6,6 +6,9 @@ import {
 } from "./postgres.js";
 import { randomUUID } from "node:crypto";
 
+export const TEST_POSTGRES_URL =
+  process.env["OPENWORKFLOW_TEST_POSTGRES_URL"] ?? DEFAULT_POSTGRES_URL;
+
 const SHARED_POOL = Symbol.for("openworkflow.postgres.pool");
 
 /**
@@ -29,7 +32,7 @@ function getSharedPool(): Postgres {
     return sharedPool;
   }
 
-  const nextSharedPool = newPostgres(DEFAULT_POSTGRES_URL);
+  const nextSharedPool = newPostgres(TEST_POSTGRES_URL);
   processWithSharedTestPool[SHARED_POOL] = nextSharedPool;
 
   return nextSharedPool;

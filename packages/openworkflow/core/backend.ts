@@ -1,6 +1,10 @@
 import type { SerializedError } from "./error.js";
 import { JsonValue } from "./json.js";
 import type {
+  WorkflowSchedule,
+  WorkflowScheduleDefinition,
+} from "./schedule.js";
+import type {
   StepAttempt,
   StepAttemptContext,
   StepKind,
@@ -15,6 +19,25 @@ export const DEFAULT_RUN_IDEMPOTENCY_PERIOD_MS = 24 * 60 * 60 * 1000;
  * Backend is the interface for backend providers to implement.
  */
 export interface Backend {
+  // Recurring schedules
+  upsertWorkflowSchedule(
+    params: Readonly<WorkflowScheduleDefinition>,
+  ): Promise<WorkflowSchedule>;
+  getWorkflowSchedule(
+    params: Readonly<WorkflowScheduleIdParams>,
+  ): Promise<WorkflowSchedule | null>;
+  listWorkflowSchedules(
+    params: Readonly<PaginationOptions>,
+  ): Promise<PaginatedResponse<WorkflowSchedule>>;
+  pauseWorkflowSchedule(
+    params: Readonly<WorkflowScheduleIdParams & { paused: boolean }>,
+  ): Promise<WorkflowSchedule>;
+  deleteWorkflowSchedule(
+    params: Readonly<WorkflowScheduleIdParams>,
+  ): Promise<void>;
+  enqueueScheduledRuns(
+    params: Readonly<EnqueueScheduledRunsParams>,
+  ): Promise<number>;
   // Workflow Runs
   createWorkflowRun(
     params: Readonly<CreateWorkflowRunParams>,
@@ -92,6 +115,15 @@ export interface CreateWorkflowRunParams {
   parentStepAttemptId: string | null;
   availableAt: Date | null; // null = immediately
   deadlineAt: Date | null; // null = no deadline
+}
+
+export interface WorkflowScheduleIdParams {
+  workflowScheduleId: string;
+}
+
+export interface EnqueueScheduledRunsParams {
+  before: Date;
+  limit: number;
 }
 
 export interface GetWorkflowRunParams {

@@ -55,6 +55,9 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
+  "dependencies": {
+    "cron-parser": "5.10.1"
+  },
   "devDependencies": {
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/sdk-trace-node": "^2.12.0",

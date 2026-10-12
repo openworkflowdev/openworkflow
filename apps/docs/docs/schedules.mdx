@@ -1,0 +1,175 @@
+---
+title: Recurring schedules
+description: Run workflows on a recurring schedule using cron expressions and your existing workers
+---
+
+Recurring schedules create workflow runs at times defined by a cron expression.
+Your existing workers create and execute these runs like any other workflow.
+Schedules and their progress are stored in PostgreSQL or SQLite, so they survive
+worker restarts.
+
+## Defining a Schedule
+
+Add `schedules` to your workflow spec. When a worker starts, it saves these
+schedules before polling for work:
+
+```ts
+import { defineWorkflow } from "openworkflow";
+
+export const report = defineWorkflow<{ accountId: string }, void>(
+  {
+    name: "daily-report",
+    schedules: [
+      {
+        id: "daily-report:acme",
+        cron: "0 9 * * 1-5",
+        timezone: "America/Chicago",
+        input: { accountId: "acme" },
+      },
+    ],
+  },
+  async ({ input, step }) => {
+    await step.run({ name: "send-report" }, async () => {
+      await sendReport(input.accountId);
+    });
+  },
+);
+```
+
+This schedules a report for 9 a.m. every weekday in Chicago.
+
+Register the workflow with a worker as described in [Workers](/docs/workers).
+You can also define schedules with `ow.defineWorkflow(...)` or
+`defineWorkflowSpec(...)`.
+
+Each schedule has an ID, which defaults to the exact workflow name. To define
+multiple schedules for the same workflow, give each one a different ID.
+
+## Scheduling at Runtime
+
+Use `ow.scheduleWorkflow()` to create or replace a schedule from your
+application:
+
+```ts
+await ow.scheduleWorkflow(
+  report.spec,
+  { accountId: "acme" },
+  {
+    id: "daily-report:acme",
+    cron: "0 9 * * 1-5",
+    timezone: "America/Chicago",
+  },
+);
+```
+
+If you define a workflow with `ow.defineWorkflow(...)`, you can call
+`.schedule(input, options)` on it directly.
+
+Both methods return the saved schedule, including its `id` and `nextRunAt`. A
+`null` value for `nextRunAt` means the schedule is paused.
+
+If the workflow has an input schema, OpenWorkflow validates and transforms the
+input when you register the schedule. The resulting input is stored and reused
+for each scheduled run.
+
+## Schedule Options
+
+| Option     | Description                                                                      |
+| ---------- | -------------------------------------------------------------------------------- |
+| `id`       | Schedule ID. Defaults to the exact workflow name.                                |
+| `cron`     | Required cron expression. Accepts five fields, or six fields with seconds first. |
+| `timezone` | IANA time zone. Defaults to `UTC`.                                               |
+
+Randomized `H` fields and shorthand aliases are not supported.
+
+## Timing
+
+A new schedule starts at the next scheduled time after registration. Workers
+check for due schedules about once per second. At least one worker must be
+running to create runs on time.
+
+After downtime, OpenWorkflow creates one run for each overdue schedule, then
+advances it to the next future occurrence. It does not create a separate run for
+every missed occurrence.
+
+Time zones and daylight saving time follow `cron-parser`'s default behavior. For
+example, a Chicago schedule set to 2:30 a.m. runs at 3:30 a.m. on the day clocks
+move forward.
+
+Each scheduled run is independent. A new run can start while a previous run is
+still in progress. Runs start when a worker has capacity, so the scheduled time
+is not a guaranteed start time.
+
+Scheduled runs use the workflow's existing [workflow and step retry
+policies](/docs/retries).
+
+## Managing Schedules
+
+Use `ow.schedules` to get, list, pause, resume, or delete schedules:
+
+```ts
+const schedule = await ow.schedules.get("daily-report:acme");
+const page = await ow.schedules.list({ limit: 100 });
+
+await ow.schedules.pause("daily-report:acme");
+await ow.schedules.resume("daily-report:acme");
+await ow.schedules.delete("daily-report:acme");
+```
+
+All operations use the client's [namespace](/docs/namespaces).
+
+`get` returns `null` if the schedule does not exist. `list` returns `data` and
+`pagination`. To get another page, pass a returned cursor as `after` or
+`before`.
+
+### Pausing and Resuming
+
+Pausing a schedule sets `nextRunAt` to `null` and stops it from creating new
+runs. It does not cancel runs that are already queued or running.
+
+Resuming a schedule sets its next run to the first scheduled time strictly after
+the resume time. Times missed while paused are skipped.
+
+Pausing an already paused schedule or resuming an already active schedule leaves
+its state and schedule progress unchanged. Both methods throw an error if the
+schedule does not exist.
+
+Registering or updating a paused schedule does not resume it. Use `resume` to
+start it again.
+
+### Deleting Schedules
+
+Deleting a schedule stops it from creating new runs. It does not cancel runs
+that are already queued or running. Deleting a schedule that does not exist
+succeeds.
+
+Removing a schedule from your code does not delete it from the database. To
+retire a schedule, remove its declaration and delete it with
+`ow.schedules.delete()`.
+
+If the declaration remains in your code, the next worker startup recreates the
+deleted schedule.
+
+## Updating Schedules
+
+Call `.schedule()` or `ow.scheduleWorkflow()` with an existing ID to replace
+that schedule. These methods replace the full definition, not just the fields
+you provide. Omitted options use their defaults.
+
+What happens next depends on what changed:
+
+| Change                                 | Behavior                                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Same cron expression and time zone     | Preserves the schedule's current progress.                                               |
+| Different cron expression or time zone | Moves an active schedule to its next future occurrence. A paused schedule stays paused.  |
+| Different input                        | Preserves the next scheduled time. Runs that have not yet been queued use the new input. |
+
+Runs that have already been created keep their original input.
+
+## Identifying Scheduled Runs
+
+Workflow run records include `workflowScheduleId`. For scheduled runs, this is
+the schedule's ID. For other runs, it is `null`.
+
+The ID stays on the run after retries or schedule deletion, so you can still
+associate past runs with their schedule.

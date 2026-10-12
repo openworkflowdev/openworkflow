@@ -4289,6 +4289,7 @@ function createMockWorkflowRun(
   overrides: Partial<WorkflowRun> = {},
 ): WorkflowRun {
   return {
+    workflowScheduleId: null,
     namespaceId: "default",
     id: "workflow-run-id",
     workflowName: "workflow-name",
