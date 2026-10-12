@@ -1788,6 +1788,31 @@ describe("Worker", () => {
       }
     });
 
+    test("logs critical execution failures to a custom logger", async () => {
+      const backend = await createTestBackend();
+      const error = new Error("backend boom");
+      vi.spyOn(backend, "failWorkflowRun").mockRejectedValue(error);
+      const logger = createTestLogger();
+      const client = new OpenWorkflow({ backend });
+      const workflow = client.defineWorkflow(
+        { name: "critical-execution-logger" },
+        () => {
+          throw new Error("workflow boom");
+        },
+      );
+      const worker = client.newWorker({ logger });
+      const handle = await workflow.run();
+
+      await worker.tick();
+      await expect(worker.stop()).resolves.toBeUndefined();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        `Critical error during workflow execution for run ${handle.workflowRun.id}:`,
+        error,
+      );
+      expect(logger.error.mock.calls[0]?.[1]).toBe(error);
+    });
+
     test("keeps polling when the logger throws", async () => {
       vi.useFakeTimers();
 
