@@ -151,7 +151,7 @@ export class Worker {
           await sleep(getPollBackoffDelayMs(this.backoffAttempts));
         }
       } catch (error) {
-        this.logger.error("Worker tick failed:", error);
+        logError(this.logger, "Worker tick failed:", error);
         this.backoffAttempts += 1;
         await sleep(getPollBackoffDelayMs(this.backoffAttempts));
       }
@@ -241,7 +241,8 @@ export class Worker {
     } catch (error) {
       // specifically for unexpected errors in the execution wrapper itself, not
       // for business logic errors (those are handled inside executeWorkflow)
-      this.logger.error(
+      logError(
+        this.logger,
         `Critical error during workflow execution for run ${execution.workflowRun.id}:`,
         error,
       );
@@ -294,7 +295,7 @@ class WorkflowExecution {
             leaseDurationMs,
           })
           .catch((cause: unknown) => {
-            this.logger.error("Heartbeat failed:", cause);
+            logError(this.logger, "Heartbeat failed:", cause);
           });
       }),
       heartbeatIntervalMs,
@@ -309,6 +310,20 @@ class WorkflowExecution {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+}
+
+/**
+ * Log an error without letting a failing logger stop the worker loop or
+ * surface as an unhandled rejection.
+ * @param logger - Logger to write to
+ * @param args - Arguments for `logger.error`
+ */
+function logError(logger: Logger, ...args: Parameters<Logger["error"]>): void {
+  try {
+    logger.error(...args);
+  } catch {
+    // a failing logger must not take down the worker
   }
 }
 

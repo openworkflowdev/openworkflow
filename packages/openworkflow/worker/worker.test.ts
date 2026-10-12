@@ -1676,6 +1676,34 @@ describe("Worker", () => {
       }
     });
 
+    test("keeps polling when the logger throws", async () => {
+      vi.useFakeTimers();
+
+      const claimWorkflowRun = vi.fn().mockRejectedValue(new Error("boom"));
+      const logger = createTestLogger();
+      logger.error.mockImplementation(() => {
+        throw new Error("logger boom");
+      });
+      const worker = new Worker({
+        backend: createStubBackend({ claimWorkflowRun }),
+        workflows: [],
+        logger,
+      });
+
+      try {
+        await worker.start();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(claimWorkflowRun).toHaveBeenCalledTimes(2);
+        expect(logger.error).toHaveBeenCalledTimes(2);
+      } finally {
+        const stopPromise = worker.stop();
+        await vi.runOnlyPendingTimersAsync();
+        await stopPromise;
+        vi.useRealTimers();
+      }
+    });
+
     test("uses the client logger unless the worker overrides it", async () => {
       const error = new Error("boom");
       const backend = createStubBackend({

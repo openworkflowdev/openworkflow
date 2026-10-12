@@ -190,7 +190,8 @@ const ow = new OpenWorkflow({
     debug: (message, ...args) => log.debug({ args }, message),
     info: (message, ...args) => log.info({ args }, message),
     warn: (message, ...args) => log.warn({ args }, message),
-    error: (message, ...args) => log.error({ args }, message),
+    // workers pass the error after the message; `err` gets pino's serializer
+    error: (message, err, ...args) => log.error({ err, args }, message),
   },
 });
 ```
