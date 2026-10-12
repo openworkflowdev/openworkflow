@@ -4,6 +4,10 @@ export { OpenWorkflow } from "./client/client.js";
 
 // core
 export type { Logger } from "./core/logger.js";
+export type {
+  WorkflowScheduleOptions,
+  WorkflowSchedule,
+} from "./core/schedule.js";
 export type { RetryPolicy, Workflow } from "./core/workflow-definition.js";
 export type { WorkflowRunMetadata } from "./core/workflow-function.js";
 export {
