@@ -173,6 +173,31 @@ bunx @openworkflow/cli worker start
 
 </CodeGroup>
 
+## Logging
+
+Workers log operational errors, such as failed polls and heartbeats, to
+`console` by default. Pass a `logger` with `debug`, `info`, `warn`, and `error`
+methods to send them somewhere else, such as a structured logger:
+
+```ts
+import pino from "pino";
+
+const log = pino();
+
+const ow = new OpenWorkflow({
+  backend,
+  logger: {
+    debug: (message, ...args) => log.debug({ args }, message),
+    info: (message, ...args) => log.info({ args }, message),
+    warn: (message, ...args) => log.warn({ args }, message),
+    error: (message, ...args) => log.error({ args }, message),
+  },
+});
+```
+
+Workers created with `ow.newWorker()` use the client's logger. You can also
+pass `logger` to `newWorker()` or to `new Worker()` directly.
+
 ## Workflow Discovery
 
 The CLI automatically discovers workflows from directories specified in your

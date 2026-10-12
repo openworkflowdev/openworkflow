@@ -1,6 +1,7 @@
 import type { Backend, SendSignalResult } from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import type { JsonValue } from "../core/json.js";
+import type { Logger } from "../core/logger.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -27,7 +28,7 @@ import {
   SPAN_NAMES,
   traceOperation,
 } from "../telemetry.js";
-import { Worker } from "../worker/worker.js";
+import { Worker, type WorkerOptions } from "../worker/worker.js";
 import { rerunWorkflowRun } from "./rerun.js";
 
 const DEFAULT_RESULT_POLL_INTERVAL_MS = 1000; // 1s
@@ -44,6 +45,11 @@ type WorkflowRunInput<TSchema, Input> = SchemaInput<TSchema, Input>;
  */
 export interface OpenWorkflowOptions {
   backend: Backend;
+  /**
+   * Default logger for workers created with `newWorker()`.
+   * @default console
+   */
+  logger?: Logger | undefined;
 }
 
 /**
@@ -51,23 +57,27 @@ export interface OpenWorkflowOptions {
  */
 export class OpenWorkflow {
   private backend: Backend;
+  private logger: Logger | undefined;
   private registry = new WorkflowRegistry();
 
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
+    this.logger = options.logger;
   }
 
   /**
    * Create a new Worker with this client's backend and workflows.
    * @param options - Worker options
    * @param options.concurrency - Max concurrent workflow runs
+   * @param options.logger - Logger, overriding the client's logger
    * @returns Worker instance
    */
-  newWorker(options?: { concurrency?: number | undefined }): Worker {
+  newWorker(options?: Pick<WorkerOptions, "concurrency" | "logger">): Worker {
     return new Worker({
       backend: this.backend,
       workflows: this.registry.getAll(),
       concurrency: options?.concurrency,
+      logger: options?.logger ?? this.logger,
     });
   }
 
