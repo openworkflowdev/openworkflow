@@ -1,5 +1,12 @@
 # @openworkflow/cli
 
+## 0.6.0
+
+- Add `worker.leaseDurationMs` to configure workflow run leases with
+  `openworkflow` v0.11.0 (#878) (thanks @cliftonc!)
+- Raise the minimum `openworkflow` version to v0.6.1
+- Raise the minimum Node.js version to 22.22
+
 ## 0.5.2
 
 - Fix generated worker and dashboard commands missing the custom config path

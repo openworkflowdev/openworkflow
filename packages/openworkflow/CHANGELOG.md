@@ -1,5 +1,19 @@
 # openworkflow
 
+## 0.11.0
+
+- Add recurring [cron schedules](https://openworkflow.dev/docs/schedules) (#892)
+- Add `rerunWorkflowRun` to rerun finished workflows in full or from a saved
+  step, reusing earlier successful results (#624) (thanks @vudc!)
+- Add configurable worker lease durations with `leaseDurationMs` (#878)
+  (thanks @cliftonc!)
+- Add a console-compatible `logger` option for clients and workers (#879)
+  (thanks @cliftonc!)
+- Exclude canceled workflow runs from new signal deliveries
+- Prevent stale step completions during replay
+- Many improvements to database migrations
+- Raise the minimum Node.js version to 22.22
+
 ## 0.10.1
 
 - Fix `result()` returning a timeout error when polling finds a completed,

@@ -1,6 +1,6 @@
 {
   "name": "@openworkflow/cli",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "type": "module",
   "exports": {
     ".": {
@@ -13,7 +13,7 @@
     }
   },
   "bin": {
-    "openworkflow": "./dist/cli.js"
+    "openworkflow": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -40,6 +40,9 @@
     "vitest": "^5.0.0"
   },
   "peerDependencies": {
-    "openworkflow": "^0.6.1 || ^0.7.0 || ^0.8.0 || ^0.9.0 || ^0.10.0"
+    "openworkflow": "^0.6.1 || ^0.7.0 || ^0.8.0 || ^0.9.0 || ^0.10.0 || ^0.11.0"
+  },
+  "engines": {
+    "node": ">=22.22.0"
   }
 }

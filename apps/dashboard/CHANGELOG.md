@@ -1,5 +1,13 @@
 # @openworkflow/dashboard
 
+## 0.1.11
+
+- Add full and from-step reruns for finished workflows, reusing successful
+  results recorded before the selected step (#624) (thanks @vudc!)
+- Fix duration formatting when rounded seconds roll over into the next minute
+  (#827) (thanks @arloives!)
+- Raise the minimum Node.js version to 22.22
+
 ## 0.1.10
 
 - Fix transient invalid step selections when pages change or steps disappear,

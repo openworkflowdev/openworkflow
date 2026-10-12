@@ -14,7 +14,7 @@
       "- AI workflows with multiple model or tool calls that need durable checkpoints.",
       "- Workflows that wait for a human approval, a webhook, or a timer before continuing.",
       "",
-      "OpenWorkflow runs on Node.js 22.5+ or Bun, with PostgreSQL or SQLite storing workflow state. Your app enqueues runs, and a worker executes them.",
+      "OpenWorkflow runs on Node.js 22.22+ or Bun, with PostgreSQL or SQLite storing workflow state. Your app enqueues runs, and a worker executes them.",
       "",
       "### How to use OpenWorkflow",
       "",
