@@ -127,6 +127,8 @@ Worker configuration options:
 worker: {
   // Number of concurrent workflow executions (default: 1)
   concurrency: 4,
+  // How long a claimed run stays leased without a heartbeat (default: 30000)
+  leaseDurationMs: 30_000,
 },
 ```
 
