@@ -25,7 +25,10 @@ export interface OpenWorkflowConfig {
   ignorePatterns?: string[];
 }
 
-export type WorkerConfig = Pick<WorkerOptions, "concurrency">;
+export type WorkerConfig = Pick<
+  WorkerOptions,
+  "concurrency" | "leaseDurationMs"
+>;
 
 /**
  * Create a typed OpenWorkflow configuration.
