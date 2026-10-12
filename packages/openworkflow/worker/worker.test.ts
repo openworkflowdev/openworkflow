@@ -617,32 +617,75 @@ describe("Worker", () => {
   );
 
   test("heartbeats at half the custom lease duration", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
     const backend = await createTestBackend();
     const extendWorkflowRunLease = vi.spyOn(backend, "extendWorkflowRunLease");
     const client = new OpenWorkflow({ backend });
+    const stepStarted = Promise.withResolvers<null>();
+    const releaseStep = Promise.withResolvers<null>();
 
     const workflow = client.defineWorkflow(
       { name: "custom-lease-heartbeat" },
       async ({ step }) => {
-        await step.run({ name: "slow" }, async () => {
-          await sleep(300);
+        await step.run({ name: "wait" }, async () => {
+          stepStarted.resolve(null);
+          await releaseStep.promise;
         });
         return "done";
       },
     );
     const worker = client.newWorker({ leaseDurationMs: 100 });
 
-    const handle = await workflow.run();
-    await worker.tick();
-    await expect(handle.result()).resolves.toBe("done");
-    await worker.stop();
+    try {
+      const handle = await workflow.run();
+      await worker.tick();
+      await stepStarted.promise;
 
-    expect(extendWorkflowRunLease.mock.calls.length).toBeGreaterThanOrEqual(2);
-    for (const [params] of extendWorkflowRunLease.mock.calls) {
-      expect(params).toMatchObject({
+      await vi.advanceTimersByTimeAsync(49);
+      expect(extendWorkflowRunLease).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(extendWorkflowRunLease).toHaveBeenCalledTimes(1);
+      expect(extendWorkflowRunLease.mock.calls[0]?.[0]).toMatchObject({
         workflowRunId: handle.workflowRun.id,
         leaseDurationMs: 100,
       });
+
+      releaseStep.resolve(null);
+      await expect(handle.result()).resolves.toBe("done");
+    } finally {
+      releaseStep.resolve(null);
+      await worker.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test("caps the heartbeat interval at the maximum timer delay", async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "long-lease-heartbeat" },
+      () => "done",
+    );
+    const worker = client.newWorker({
+      leaseDurationMs: 60 * 24 * 60 * 60 * 1000, // 60 days
+    });
+
+    try {
+      const handle = await workflow.run();
+      await worker.tick();
+      await expect(handle.result()).resolves.toBe("done");
+
+      const heartbeatDelays = setIntervalSpy.mock.calls.map(
+        ([, delay]) => delay,
+      );
+      expect(heartbeatDelays).toContain(2_147_483_647);
+    } finally {
+      await worker.stop();
+      setIntervalSpy.mockRestore();
     }
   });
 

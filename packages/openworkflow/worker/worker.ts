@@ -11,6 +11,8 @@ import { randomUUID } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
 const DEFAULT_LEASE_DURATION_MS = 30 * 1000; // 30s
+// Node runs any longer timer delay after 1ms instead
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const DEFAULT_POLL_BACKOFF_POLICY: BackoffPolicy = {
   initialInterval: "100ms",
   backoffCoefficient: 2,
@@ -282,11 +284,14 @@ class WorkflowExecution {
 
   /**
    * Start the heartbeat loop for this execution, heartbeating at half the lease
-   * duration.
+   * duration (capped at the maximum timer delay).
    */
   startHeartbeat(): void {
     const leaseDurationMs = this.leaseDurationMs;
-    const heartbeatIntervalMs = leaseDurationMs / 2;
+    const heartbeatIntervalMs = Math.min(
+      leaseDurationMs / 2,
+      MAX_TIMER_DELAY_MS,
+    );
 
     this.heartbeatTimer = setInterval(
       bindActiveTraceContext(() => {
