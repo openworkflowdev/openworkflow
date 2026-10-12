@@ -1841,11 +1841,15 @@ describe("StepExecutor", () => {
       });
 
       // Reuse the worker slot while the previous pass still has a pending write.
-      const replay = await backend.claimWorkflowRun({
-        workerId,
-        leaseDurationMs: 5000,
-      });
-      if (!replay) throw new Error("Expected parent replay to be claimed");
+      // Wait for the sleep to become due according to the database clock.
+      const replay = await vi.waitUntil(
+        () =>
+          backend.claimWorkflowRun({
+            workerId,
+            leaseDurationMs: 5000,
+          }),
+        { timeout: 3000, interval: 10 },
+      );
       expect(replay.id).toBe(handle.workflowRun.id);
 
       await executeWorkflow({
