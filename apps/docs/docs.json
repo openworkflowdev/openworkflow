@@ -60,6 +60,7 @@
         "group": "Guides",
         "pages": [
           "docs/sleeping",
+          "docs/schedules",
           "docs/parallel-steps",
           "docs/dynamic-steps",
           "docs/child-workflows",

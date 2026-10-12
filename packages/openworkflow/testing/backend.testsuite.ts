@@ -6,6 +6,7 @@ import {
 import type { StepAttempt } from "../core/step-attempt.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
+import { testWorkflowSchedules } from "./schedules.testsuite.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
@@ -28,6 +29,7 @@ export interface TestBackendOptions {
  * @param options - Test suite options
  */
 export function testBackend(options: TestBackendOptions): void {
+  testWorkflowSchedules(options);
   const { setup, teardown } = options;
   const RESCHEDULING_RETRY_POLICY = {
     ...DEFAULT_WORKFLOW_RETRY_POLICY,
@@ -48,6 +50,7 @@ export function testBackend(options: TestBackendOptions): void {
     describe("createWorkflowRun()", () => {
       test("creates a workflow run", async () => {
         const expected: WorkflowRun = {
+          workflowScheduleId: null,
           namespaceId: "", // -
           id: "", // -
           workflowName: randomUUID(),

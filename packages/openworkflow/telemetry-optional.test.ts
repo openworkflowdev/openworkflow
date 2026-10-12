@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -22,6 +22,11 @@ describe("optional OpenTelemetry API", () => {
       );
       // Prevent Bun from auto-installing the optional peer in this fixture.
       await mkdir(path.join(directory, "node_modules"));
+      await symlink(
+        new URL(".", import.meta.resolve("cron-parser/package.json")),
+        path.join(directory, "node_modules", "cron-parser"),
+        "junction",
+      );
       await expect(
         execFileAsync(
           process.execPath,

@@ -205,7 +205,7 @@ describe("sqlite", () => {
 
       db.exec("ALTER TABLE step_attempts DROP COLUMN step_index");
       migrate(db);
-      expect(getMigrationVersion(db)).toBe(6);
+      expect(getMigrationVersion(db)).toBe(migrations().length - 1);
     });
 
     test.each(["pending", "current"])(
@@ -264,7 +264,7 @@ describe("sqlite", () => {
             : setTimeout(100));
           db.exec("COMMIT");
           await Promise.all(workers.map((worker) => worker.completed));
-          expect(getMigrationVersion(db)).toBe(6);
+          expect(getMigrationVersion(db)).toBe(migrations().length - 1);
         } finally {
           try {
             db.exec("ROLLBACK");

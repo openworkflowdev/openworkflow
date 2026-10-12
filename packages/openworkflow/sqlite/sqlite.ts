@@ -53,6 +53,7 @@ export function newDatabase(path: string): Database {
     };
     db = new NodeDatabase(path);
   }
+  db.exec("PRAGMA busy_timeout = 5000;");
   // Only enable WAL mode for file-based databases
   if (path !== ":memory:") {
     db.exec("PRAGMA journal_mode = WAL;");
@@ -216,6 +217,27 @@ export function migrations(): string[] {
 
     INSERT OR IGNORE INTO "openworkflow_migrations" ("version")
     VALUES (6);`,
+
+    // 7 - recurring schedules
+    `ALTER TABLE "workflow_runs" ADD COLUMN "workflow_schedule_id" TEXT;
+    CREATE TABLE "workflow_schedules" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      --
+      "workflow_name" TEXT NOT NULL,
+      "input" TEXT,
+      "cron" TEXT NOT NULL,
+      "timezone" TEXT NOT NULL,
+      "next_run_at" TEXT,
+      "created_at" TEXT NOT NULL,
+      "updated_at" TEXT NOT NULL,
+      PRIMARY KEY ("namespace_id", "id")
+    );
+    CREATE INDEX "workflow_schedules_due_idx"
+      ON "workflow_schedules" ("namespace_id", "next_run_at", "id") WHERE "next_run_at" IS NOT NULL;
+    CREATE INDEX "workflow_schedules_created_at_idx"
+      ON "workflow_schedules" ("namespace_id", "created_at", "id");
+    INSERT INTO "openworkflow_migrations" ("version") VALUES (7);`,
   ];
 }
 

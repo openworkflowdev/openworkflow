@@ -1,5 +1,4 @@
 import {
-  DEFAULT_POSTGRES_URL,
   DEFAULT_SCHEMA,
   Postgres,
   newPostgresMaxOne,
@@ -7,6 +6,7 @@ import {
   migrate,
   dropSchema,
 } from "./postgres.js";
+import { TEST_POSTGRES_URL as DEFAULT_POSTGRES_URL } from "./test-backend.testsuite.js";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 describe("postgres", () => {

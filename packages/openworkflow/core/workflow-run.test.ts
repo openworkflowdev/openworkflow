@@ -161,6 +161,7 @@ describe("validateInput", () => {
 describe("resolveCancelWorkflowRunConflict", () => {
   function makeWorkflowRun(status: WorkflowRunStatus): WorkflowRun {
     return {
+      workflowScheduleId: null,
       namespaceId: "ns",
       id: "wr-1",
       workflowName: "wf",

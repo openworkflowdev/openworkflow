@@ -25,6 +25,9 @@ import {
   SendSignalResult,
   GetSignalDeliveryParams,
   toWorkflowRunCounts,
+  type EnqueueScheduledRunsParams,
+  type PaginationOptions,
+  type WorkflowScheduleIdParams,
 } from "../core/backend.js";
 import {
   buildPaginatedResponse,
@@ -34,6 +37,11 @@ import {
 import { requireRow, wrapError } from "../core/error.js";
 import { JsonValue } from "../core/json.js";
 import { prepareWorkflowRerun } from "../core/rerun.js";
+import {
+  nextScheduleOccurrence,
+  type WorkflowSchedule,
+  type WorkflowScheduleDefinition,
+} from "../core/schedule.js";
 import { StepAttempt } from "../core/step-attempt.js";
 import { computeFailedWorkflowRunUpdate } from "../core/workflow-definition.js";
 import {
@@ -137,6 +145,175 @@ export class BackendSqlite implements Backend {
       );
     }
   }
+
+  /* oxlint-disable typescript/require-await -- SQLite operations must finish synchronously, while this interface returns rejected promises on failure. */
+  async upsertWorkflowSchedule(
+    params: WorkflowScheduleDefinition,
+  ): Promise<WorkflowSchedule> {
+    const now = new Date();
+    // safety: RETURNING selects the schedule columns defined by our migration.
+    const row = this.db
+      .prepare(
+        `
+      INSERT INTO workflow_schedules
+        (namespace_id,id,workflow_name,input,cron,timezone,next_run_at,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(namespace_id,id) DO UPDATE SET
+        workflow_name=excluded.workflow_name, input=excluded.input,
+        cron=excluded.cron, timezone=excluded.timezone, updated_at=excluded.updated_at,
+        next_run_at=CASE WHEN workflow_schedules.next_run_at IS NOT NULL
+          AND (workflow_schedules.cron<>excluded.cron OR workflow_schedules.timezone<>excluded.timezone)
+          THEN excluded.next_run_at ELSE workflow_schedules.next_run_at END
+      RETURNING *
+    `,
+      )
+      .get(
+        this.namespaceId,
+        params.id,
+        params.workflowName,
+        toJSON(params.input),
+        params.cron,
+        params.timezone,
+        nextScheduleOccurrence(params, now).toISOString(),
+        now.toISOString(),
+        now.toISOString(),
+      ) as WorkflowScheduleRow;
+    return rowToWorkflowSchedule(row);
+  }
+
+  async getWorkflowSchedule(
+    params: WorkflowScheduleIdParams,
+  ): Promise<WorkflowSchedule | null> {
+    // safety: SELECT reads a persisted schedule row.
+    const row = this.db
+      .prepare("SELECT * FROM workflow_schedules WHERE namespace_id=? AND id=?")
+      .get(this.namespaceId, params.workflowScheduleId) as
+      WorkflowScheduleRow | undefined;
+    return row ? rowToWorkflowSchedule(row) : null;
+  }
+
+  async listWorkflowSchedules(
+    params: PaginationOptions,
+  ): Promise<PaginatedResponse<WorkflowSchedule>> {
+    const cursor = decodeListCursor(params);
+    const limit = params.limit ?? DEFAULT_PAGINATION_PAGE_SIZE;
+    const values: unknown[] = [this.namespaceId];
+    let where = "namespace_id=?";
+    if (cursor) {
+      where += ` AND (created_at,id) ${params.before ? "<" : ">"} (?,?)`;
+      values.push(cursor.createdAt.toISOString(), cursor.id);
+    }
+    const order = params.before ? "DESC" : "ASC";
+    // safety: SELECT reads schedule rows in cursor order.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM workflow_schedules WHERE ${where}
+      ORDER BY created_at ${order},id ${order} LIMIT ?`,
+      )
+      .all(...values, limit + 1) as WorkflowScheduleRow[];
+    return buildPaginatedResponse(
+      rows.map((row) => rowToWorkflowSchedule(row)),
+      limit,
+      !!params.after,
+      !!params.before,
+    );
+  }
+
+  async pauseWorkflowSchedule(
+    params: WorkflowScheduleIdParams & { paused: boolean },
+  ): Promise<WorkflowSchedule> {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      // safety: SELECT reads the schedule while holding the writer lock.
+      let row = this.db
+        .prepare(
+          "SELECT * FROM workflow_schedules WHERE namespace_id=? AND id=?",
+        )
+        .get(this.namespaceId, params.workflowScheduleId) as
+        WorkflowScheduleRow | undefined;
+      requireRow(row, "change schedule pause state");
+      if ((row.next_run_at === null) !== params.paused) {
+        const now = new Date();
+        const next = params.paused ? null : nextScheduleOccurrence(row, now);
+        // safety: the locked schedule exists and UPDATE returns its columns.
+        row = this.db
+          .prepare(
+            `UPDATE workflow_schedules SET next_run_at=?,updated_at=?
+          WHERE namespace_id=? AND id=? RETURNING *`,
+          )
+          .get(
+            toISO(next),
+            now.toISOString(),
+            this.namespaceId,
+            params.workflowScheduleId,
+          ) as WorkflowScheduleRow;
+      }
+      this.db.exec("COMMIT");
+      return rowToWorkflowSchedule(row);
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async deleteWorkflowSchedule(
+    params: WorkflowScheduleIdParams,
+  ): Promise<void> {
+    this.db
+      .prepare("DELETE FROM workflow_schedules WHERE namespace_id=? AND id=?")
+      .run(this.namespaceId, params.workflowScheduleId);
+  }
+
+  async enqueueScheduledRuns(
+    params: EnqueueScheduledRunsParams,
+  ): Promise<number> {
+    const before = params.before.toISOString();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      // safety: SELECT reads due schedules while holding the writer lock.
+      const rows = this.db
+        .prepare(
+          `SELECT id,workflow_name,input,cron,timezone FROM workflow_schedules
+        WHERE namespace_id=? AND next_run_at<=? ORDER BY next_run_at,id LIMIT ?`,
+        )
+        .all(this.namespaceId, before, params.limit) as Pick<
+        WorkflowScheduleRow,
+        "id" | "workflow_name" | "input" | "cron" | "timezone"
+      >[];
+      const update = this.db
+        .prepare(`UPDATE workflow_schedules SET next_run_at=?,updated_at=?
+        WHERE namespace_id=? AND id=?`);
+      const insert = this.db.prepare(`INSERT INTO workflow_runs
+        (namespace_id,id,workflow_name,status,config,input,attempts,
+         workflow_schedule_id,available_at,created_at,updated_at)
+        VALUES (?,?,?,'pending','{}',?,0,?,?,?,?)`);
+      for (const row of rows) {
+        update.run(
+          nextScheduleOccurrence(row, params.before).toISOString(),
+          before,
+          this.namespaceId,
+          row.id,
+        );
+        const currentTime = now();
+        insert.run(
+          this.namespaceId,
+          generateUUID(),
+          row.workflow_name,
+          row.input,
+          row.id,
+          before,
+          currentTime,
+          currentTime,
+        );
+      }
+      this.db.exec("COMMIT");
+      return rows.length;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  /* oxlint-enable typescript/require-await */
 
   // oxlint-disable-next-line typescript/require-await
   async stop(): Promise<void> {
@@ -1180,6 +1357,7 @@ export class BackendSqlite implements Backend {
 
 // Row types for SQLite results
 interface WorkflowRunRow extends Record<string, SQLOutputValue> {
+  workflow_schedule_id: string | null;
   namespace_id: string;
   id: string;
   workflow_name: string;
@@ -1264,6 +1442,7 @@ function rowToWorkflowRun(row: WorkflowRunRow): WorkflowRun {
     namespaceId: row.namespace_id,
     id: row.id,
     workflowName: row.workflow_name,
+    workflowScheduleId: row.workflow_schedule_id,
     version: row.version,
     // safety: the status column is written by backend transitions using the domain status values.
     status: row.status as WorkflowRun["status"],
@@ -1317,5 +1496,36 @@ function rowToStepAttempt(row: StepAttemptRow): StepAttempt {
     finishedAt: fromISO(row.finished_at),
     createdAt,
     updatedAt,
+  };
+}
+
+interface WorkflowScheduleRow extends Record<string, SQLOutputValue> {
+  namespace_id: string;
+  id: string;
+  workflow_name: string;
+  input: string | null;
+  cron: string;
+  timezone: string;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Convert a SQLite row to a schedule.
+ * @param row - Persisted schedule
+ * @returns Schedule with parsed JSON and timestamps
+ */
+function rowToWorkflowSchedule(row: WorkflowScheduleRow): WorkflowSchedule {
+  return {
+    namespaceId: row.namespace_id,
+    id: row.id,
+    workflowName: row.workflow_name,
+    input: fromJSON(row.input),
+    cron: row.cron,
+    timezone: row.timezone,
+    nextRunAt: fromISO(row.next_run_at),
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
   };
 }

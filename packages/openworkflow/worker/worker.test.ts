@@ -1635,6 +1635,7 @@ describe("Worker", () => {
     const worker = new Worker({
       backend: createStubBackend({
         claimWorkflowRun,
+        enqueueScheduledRuns: () => Promise.resolve(0),
       }),
       workflows: [],
     });
@@ -1672,6 +1673,7 @@ describe("Worker", () => {
     const worker = new Worker({
       backend: createStubBackend({
         claimWorkflowRun,
+        enqueueScheduledRuns: () => Promise.resolve(0),
       }),
       workflows: [],
     });
@@ -1708,6 +1710,7 @@ describe("Worker", () => {
       const worker = new Worker({
         backend: createStubBackend({
           claimWorkflowRun: vi.fn().mockRejectedValue(error),
+          enqueueScheduledRuns: () => Promise.resolve(0),
         }),
         workflows: [],
       });
@@ -1732,6 +1735,7 @@ describe("Worker", () => {
       const worker = new Worker({
         backend: createStubBackend({
           claimWorkflowRun: vi.fn().mockRejectedValue(error),
+          enqueueScheduledRuns: () => Promise.resolve(0),
         }),
         workflows: [],
         logger,
@@ -1822,7 +1826,10 @@ describe("Worker", () => {
         throw new Error("logger boom");
       });
       const worker = new Worker({
-        backend: createStubBackend({ claimWorkflowRun }),
+        backend: createStubBackend({
+          claimWorkflowRun,
+          enqueueScheduledRuns: () => Promise.resolve(0),
+        }),
         workflows: [],
         logger,
       });
@@ -1845,6 +1852,7 @@ describe("Worker", () => {
       const error = new Error("boom");
       const backend = createStubBackend({
         claimWorkflowRun: vi.fn().mockRejectedValue(error),
+        enqueueScheduledRuns: () => Promise.resolve(0),
       });
       const clientLogger = createTestLogger();
       const workerLogger = createTestLogger();

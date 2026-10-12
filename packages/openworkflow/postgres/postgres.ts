@@ -282,6 +282,38 @@ export function migrations(schema: string): string[] {
     ON CONFLICT DO NOTHING;
 
     COMMIT;`,
+
+    // 7 - recurring schedules
+    `BEGIN;
+    ALTER TABLE ${quotedSchema}."workflow_runs"
+      ADD COLUMN IF NOT EXISTS "workflow_schedule_id" TEXT;
+
+    CREATE TABLE IF NOT EXISTS ${quotedSchema}."workflow_schedules" (
+      "namespace_id" TEXT NOT NULL,
+      "id" TEXT NOT NULL,
+      --
+      "workflow_name" TEXT NOT NULL,
+      "input" JSONB,
+      "cron" TEXT NOT NULL,
+      "timezone" TEXT NOT NULL,
+      "next_run_at" TIMESTAMPTZ,
+      "created_at" TIMESTAMPTZ NOT NULL,
+      "updated_at" TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY ("namespace_id", "id")
+    );
+    -- same transaction as new, empty table.
+    -- squawk-ignore require-concurrent-index-creation
+    CREATE INDEX IF NOT EXISTS "workflow_schedules_due_idx"
+      ON ${quotedSchema}."workflow_schedules" ("namespace_id", "next_run_at", "id")
+      WHERE "next_run_at" IS NOT NULL;
+    -- same transaction as new, empty table.
+    -- squawk-ignore require-concurrent-index-creation
+    CREATE INDEX IF NOT EXISTS "workflow_schedules_created_at_idx"
+      ON ${quotedSchema}."workflow_schedules" ("namespace_id", "created_at", "id");
+
+    INSERT INTO ${quotedSchema}."openworkflow_migrations" ("version")
+    VALUES (7) ON CONFLICT DO NOTHING;
+    COMMIT;`,
   ];
 }
 

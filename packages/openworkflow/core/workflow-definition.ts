@@ -1,5 +1,6 @@
 import { type BackoffPolicy, computeBackoffDelayMs } from "./backoff.js";
 import type { SerializedError } from "./error.js";
+import type { WorkflowScheduleOptions } from "./schedule.js";
 import type { StandardSchemaV1 } from "./standard-schema.js";
 import type { WorkflowFunction } from "./workflow-function.js";
 
@@ -15,6 +16,10 @@ export interface WorkflowSpec<Input, Output, RawInput> {
   readonly schema?: StandardSchemaV1<RawInput, Input>;
   /** The retry policy for the workflow. */
   readonly retryPolicy?: Partial<RetryPolicy>;
+  /** Persist these schedules when a worker starts; the last declaration wins. */
+  readonly schedules?: readonly (WorkflowScheduleOptions & {
+    input?: RawInput;
+  })[];
   /** Phantom type carrier - won't exist at runtime. */
   readonly __types?: {
     output: Output;

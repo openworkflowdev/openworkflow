@@ -1,7 +1,18 @@
-import type { Backend, SendSignalResult } from "../core/backend.js";
+import type {
+  Backend,
+  PaginatedResponse,
+  PaginationOptions,
+  SendSignalResult,
+} from "../core/backend.js";
 import type { DurationString } from "../core/duration.js";
 import type { JsonValue } from "../core/json.js";
 import type { Logger } from "../core/logger.js";
+import {
+  prepareWorkflowSchedule,
+  validateWorkflowScheduleId,
+  type WorkflowSchedule,
+  type WorkflowScheduleOptions,
+} from "../core/schedule.js";
 import type { StandardSchemaV1 } from "../core/standard-schema.js";
 import { calculateDateFromDuration } from "../core/step-attempt.js";
 import {
@@ -56,6 +67,7 @@ export interface OpenWorkflowOptions {
  * Client used to register workflows and start runs.
  */
 export class OpenWorkflow {
+  readonly schedules: ScheduleManager;
   private backend: Backend;
   private logger: Logger | undefined;
   private registry = new WorkflowRegistry();
@@ -63,6 +75,23 @@ export class OpenWorkflow {
   constructor(options: OpenWorkflowOptions) {
     this.backend = options.backend;
     this.logger = options.logger;
+    this.schedules = new ScheduleManager(options.backend);
+  }
+
+  /**
+   * Register or replace a recurring schedule. The last declaration for its ID wins.
+   * @param spec - Target workflow specification
+   * @param input - Workflow input, validated and transformed once
+   * @param options - Schedule declaration; omitted ID defaults to the workflow name
+   * @returns Persisted schedule, preserving administrative pause state
+   */
+  async scheduleWorkflow<Input, Output, RunInput = Input>(
+    spec: WorkflowSpec<Input, Output, RunInput>,
+    input: RunInput | undefined,
+    options: WorkflowScheduleOptions,
+  ): Promise<WorkflowSchedule> {
+    const definition = await prepareWorkflowSchedule(spec, input, options);
+    return this.backend.upsertWorkflowSchedule(definition);
   }
 
   /**
@@ -301,6 +330,60 @@ class RunnableWorkflow<Input, Output, RunInput = Input> {
     options?: WorkflowRunOptions,
   ): Promise<WorkflowRunHandle<Output>> {
     return this.ow.runWorkflow(this.workflow.spec, input, options);
+  }
+
+  /**
+   * Register or replace a recurring schedule for this workflow.
+   * @param input - Workflow input
+   * @param options - Schedule declaration
+   * @returns Persisted schedule
+   */
+  schedule(
+    input: RunInput | undefined,
+    options: WorkflowScheduleOptions,
+  ): Promise<WorkflowSchedule> {
+    return this.ow.scheduleWorkflow(this.workflow.spec, input, options);
+  }
+}
+
+/** Inspect and manage schedules in this client's backend namespace. */
+class ScheduleManager {
+  private readonly backend: Backend;
+
+  constructor(backend: Backend) {
+    this.backend = backend;
+  }
+
+  get(id: string): Promise<WorkflowSchedule | null> {
+    validateWorkflowScheduleId(id);
+    return this.backend.getWorkflowSchedule({ workflowScheduleId: id });
+  }
+
+  list(
+    options: PaginationOptions = {},
+  ): Promise<PaginatedResponse<WorkflowSchedule>> {
+    return this.backend.listWorkflowSchedules(options);
+  }
+
+  pause(id: string): Promise<WorkflowSchedule> {
+    validateWorkflowScheduleId(id);
+    return this.backend.pauseWorkflowSchedule({
+      workflowScheduleId: id,
+      paused: true,
+    });
+  }
+
+  resume(id: string): Promise<WorkflowSchedule> {
+    validateWorkflowScheduleId(id);
+    return this.backend.pauseWorkflowSchedule({
+      workflowScheduleId: id,
+      paused: false,
+    });
+  }
+
+  delete(id: string): Promise<void> {
+    validateWorkflowScheduleId(id);
+    return this.backend.deleteWorkflowSchedule({ workflowScheduleId: id });
   }
 }
 

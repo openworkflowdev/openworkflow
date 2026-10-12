@@ -3,12 +3,12 @@ import { testBackend } from "../testing/backend.testsuite.js";
 import { BackendPostgres } from "./backend.js";
 import {
   DEFAULT_SCHEMA,
-  DEFAULT_POSTGRES_URL,
   dropSchema,
   migrate,
   newPostgresMaxOne,
   type Postgres,
 } from "./postgres.js";
+import { TEST_POSTGRES_URL as DEFAULT_POSTGRES_URL } from "./test-backend.testsuite.js";
 import { randomUUID } from "node:crypto";
 import { describe, expect, test, vi } from "vitest";
 

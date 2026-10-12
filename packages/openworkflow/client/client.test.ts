@@ -4,12 +4,11 @@ import {
   defineWorkflowSpec,
 } from "../core/workflow-definition.js";
 import type { WorkflowRun } from "../core/workflow-run.js";
+import { DEFAULT_SCHEMA, newPostgresMaxOne } from "../postgres/postgres.js";
 import {
-  DEFAULT_POSTGRES_URL,
-  DEFAULT_SCHEMA,
-  newPostgresMaxOne,
-} from "../postgres/postgres.js";
-import { createTestBackend } from "../postgres/test-backend.testsuite.js";
+  createTestBackend,
+  TEST_POSTGRES_URL as DEFAULT_POSTGRES_URL,
+} from "../postgres/test-backend.testsuite.js";
 import { createStubBackend } from "../testing/backend-stub.testsuite.js";
 import { OpenWorkflow } from "./client.js";
 import { type as arkType } from "arktype";
@@ -829,6 +828,7 @@ function createMockWorkflowRun(
 ): WorkflowRun {
   const currentTime = new Date();
   return {
+    workflowScheduleId: null,
     namespaceId: randomUUID(),
     id: randomUUID(),
     workflowName: "mock-workflow",

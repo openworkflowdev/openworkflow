@@ -2,6 +2,10 @@ import type { Backend } from "../core/backend.js";
 import { type BackoffPolicy, computeBackoffDelayMs } from "../core/backoff.js";
 import { parseDuration } from "../core/duration.js";
 import { type Logger, consoleLogger } from "../core/logger.js";
+import {
+  prepareWorkflowSchedule,
+  type WorkflowScheduleDefinition,
+} from "../core/schedule.js";
 import type { RetryPolicy, Workflow } from "../core/workflow-definition.js";
 import { DEFAULT_WORKFLOW_RETRY_POLICY } from "../core/workflow-definition.js";
 import { WorkflowRegistry } from "../core/workflow-registry.js";
@@ -65,6 +69,8 @@ export class Worker {
   private readonly registry = new WorkflowRegistry();
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
+  private startPromise: Promise<void> | null = null;
+  private stopPromise: Promise<void> | null = null;
   private loopPromise: Promise<void> | null = null;
   private backoffAttempts = 0;
 
@@ -91,13 +97,41 @@ export class Worker {
    * Start the worker. It will begin polling for and executing workflows.
    * @returns Promise resolved when started
    */
-  async start(): Promise<void> {
-    if (this.running) return;
+  start(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise.then(() => this.start());
+    this.startPromise ??= this.startWorker();
+    return this.startPromise;
+  }
+
+  private async startWorker(): Promise<void> {
     this.running = true;
     this.backoffAttempts = 0;
-    // Background polls should not accumulate in the trace that started the worker.
-    this.loopPromise = withoutActiveSpan(() => this.runLoop());
-    await Promise.resolve();
+    try {
+      const schedules = new Map<string, WorkflowScheduleDefinition>();
+      for (const workflow of this.registry.getAll()) {
+        for (const declaration of workflow.spec.schedules ?? []) {
+          const schedule = await prepareWorkflowSchedule(
+            workflow.spec,
+            declaration.input,
+            declaration,
+          );
+          schedules.set(schedule.id, schedule);
+        }
+      }
+      for (const schedule of schedules.values()) {
+        await this.backend.upsertWorkflowSchedule(schedule);
+      }
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- stop() can cancel startup while declarations are being persisted.
+      if (!this.running) return;
+      // Background polls should not accumulate in the trace that started the worker.
+      this.loopPromise = withoutActiveSpan(async () => {
+        await Promise.all([this.runLoop(), this.runScheduleLoop()]);
+      });
+    } catch (error) {
+      this.running = false;
+      this.startPromise = null;
+      throw error;
+    }
   }
 
   /**
@@ -105,14 +139,40 @@ export class Worker {
    * before returning.
    * @returns Promise resolved when stopped
    */
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.stopPromise ??= this.stopWorker();
+    return this.stopPromise;
+  }
+
+  private async stopWorker(): Promise<void> {
     this.running = false;
+    try {
+      await this.startPromise;
+    } finally {
+      await this.loopPromise;
+      while (this.activeExecutions.size > 0) await sleep(100);
+      this.startPromise = null;
+      this.stopPromise = null;
+    }
+  }
 
-    // wait for the poll loop to stop
-    if (this.loopPromise) await this.loopPromise;
-
-    // wait for all active executions to finish
-    while (this.activeExecutions.size > 0) await sleep(100);
+  private async runScheduleLoop(): Promise<void> {
+    const batchSize = 100;
+    while (this.running) {
+      let hasMore = false;
+      try {
+        const inserted = await this.backend.enqueueScheduledRuns({
+          before: new Date(),
+          limit: batchSize,
+        });
+        hasMore = inserted === batchSize;
+      } catch (error) {
+        logError(this.logger, "Worker schedule tick failed:", error);
+      }
+      // Yield between full batches so scheduling does not monopolize the event loop.
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- stop() can change running during the awaited tick.
+      if (this.running) await sleep(hasMore ? 0 : 1000);
+    }
   }
 
   /**
