@@ -35,6 +35,14 @@ export interface WorkerOptions {
   backend: Backend;
   workflows: Workflow<unknown, unknown, unknown>[];
   concurrency?: number | undefined;
+  /**
+   * How long a claimed workflow run stays leased to this worker without a
+   * heartbeat. Heartbeats run at half this interval. If the worker stops
+   * heartbeating (e.g. it crashes), another worker can reclaim the run once
+   * the lease expires.
+   * @default 30000 (30 seconds)
+   */
+  leaseDurationMs?: number | undefined;
 }
 
 /**
@@ -44,6 +52,7 @@ export interface WorkerOptions {
 export class Worker {
   private readonly backend: Backend;
   private readonly workerIds: string[];
+  private readonly leaseDurationMs: number;
   private readonly registry = new WorkflowRegistry();
   private readonly activeExecutions = new Set<WorkflowExecution>();
   private running = false;
@@ -61,6 +70,8 @@ export class Worker {
       DEFAULT_CONCURRENCY,
       options.concurrency ?? DEFAULT_CONCURRENCY,
     );
+
+    this.leaseDurationMs = resolveLeaseDurationMs(options.leaseDurationMs);
 
     // generate worker IDs for every concurrency slot
     this.workerIds = Array.from({ length: concurrency }, () => randomUUID());
@@ -161,7 +172,7 @@ export class Worker {
     // claim workflow run
     const workflowRun = await this.backend.claimWorkflowRun({
       workerId,
-      leaseDurationMs: DEFAULT_LEASE_DURATION_MS,
+      leaseDurationMs: this.leaseDurationMs,
     });
     if (!workflowRun) return null;
 
@@ -191,6 +202,7 @@ export class Worker {
       backend: this.backend,
       workflowRun,
       workerId,
+      leaseDurationMs: this.leaseDurationMs,
     });
     this.activeExecutions.add(execution);
 
@@ -247,6 +259,7 @@ interface WorkflowExecutionOptions {
   backend: Backend;
   workflowRun: WorkflowRun;
   workerId: string;
+  leaseDurationMs: number;
 }
 
 /**
@@ -257,12 +270,14 @@ class WorkflowExecution {
   private backend: Backend;
   workflowRun: WorkflowRun;
   workerId: string;
+  private readonly leaseDurationMs: number;
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(options: WorkflowExecutionOptions) {
     this.backend = options.backend;
     this.workflowRun = options.workflowRun;
     this.workerId = options.workerId;
+    this.leaseDurationMs = options.leaseDurationMs;
   }
 
   /**
@@ -270,7 +285,7 @@ class WorkflowExecution {
    * duration.
    */
   startHeartbeat(): void {
-    const leaseDurationMs = DEFAULT_LEASE_DURATION_MS;
+    const leaseDurationMs = this.leaseDurationMs;
     const heartbeatIntervalMs = leaseDurationMs / 2;
 
     this.heartbeatTimer = setInterval(
@@ -328,6 +343,20 @@ function getPollBackoffDelayMs(backoffAttempts: number): number {
   );
 
   return Math.max(1, Math.round((cappedBackoffMs * jitterScale) / 1000));
+}
+
+/**
+ * Resolve the worker lease duration, falling back to the default when the
+ * value is missing or not a positive finite number.
+ * @param leaseDurationMs - Lease duration from worker options
+ * @returns A valid lease duration in milliseconds
+ */
+function resolveLeaseDurationMs(leaseDurationMs: number | undefined): number {
+  return leaseDurationMs !== undefined &&
+    Number.isFinite(leaseDurationMs) &&
+    leaseDurationMs > 0
+    ? leaseDurationMs
+    : DEFAULT_LEASE_DURATION_MS;
 }
 
 /**

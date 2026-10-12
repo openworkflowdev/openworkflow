@@ -577,6 +577,75 @@ describe("Worker", () => {
     });
   });
 
+  test("claims workflow runs with a custom lease duration", async () => {
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+    const worker = new Worker({
+      backend: createStubBackend({
+        claimWorkflowRun,
+      }),
+      workflows: [],
+      leaseDurationMs: 5000,
+    });
+
+    await worker.tick();
+
+    expect(claimWorkflowRun.mock.calls[0]?.[0]).toMatchObject({
+      leaseDurationMs: 5000,
+    });
+  });
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back to the default lease duration for invalid value %s",
+    async (leaseDurationMs) => {
+      const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+      const worker = new Worker({
+        backend: createStubBackend({
+          claimWorkflowRun,
+        }),
+        workflows: [],
+        leaseDurationMs,
+      });
+
+      await worker.tick();
+
+      expect(claimWorkflowRun.mock.calls[0]?.[0]).toMatchObject({
+        leaseDurationMs: 30 * 1000,
+      });
+    },
+  );
+
+  test("heartbeats at half the custom lease duration", async () => {
+    const backend = await createTestBackend();
+    const extendWorkflowRunLease = vi.spyOn(backend, "extendWorkflowRunLease");
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "custom-lease-heartbeat" },
+      async ({ step }) => {
+        await step.run({ name: "slow" }, async () => {
+          await sleep(300);
+        });
+        return "done";
+      },
+    );
+    const worker = client.newWorker({ leaseDurationMs: 100 });
+
+    const handle = await workflow.run();
+    await worker.tick();
+    await expect(handle.result()).resolves.toBe("done");
+    await worker.stop();
+
+    expect(extendWorkflowRunLease.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const [params] of extendWorkflowRunLease.mock.calls) {
+      expect(params).toMatchObject({
+        workflowRunId: handle.workflowRun.id,
+        leaseDurationMs: 100,
+      });
+    }
+  });
+
   test(
     "worker only sleeps between claims when no work is available",
     { timeout: 15_000 },
