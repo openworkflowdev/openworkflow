@@ -69,14 +69,18 @@ export class OpenWorkflow {
    * Create a new Worker with this client's backend and workflows.
    * @param options - Worker options
    * @param options.concurrency - Max concurrent workflow runs
+   * @param options.leaseDurationMs - Workflow run lease duration
    * @param options.logger - Logger, overriding the client's logger
    * @returns Worker instance
    */
-  newWorker(options?: Pick<WorkerOptions, "concurrency" | "logger">): Worker {
+  newWorker(
+    options?: Pick<WorkerOptions, "concurrency" | "leaseDurationMs" | "logger">,
+  ): Worker {
     return new Worker({
       backend: this.backend,
       workflows: this.registry.getAll(),
       concurrency: options?.concurrency,
+      leaseDurationMs: options?.leaseDurationMs,
       logger: options?.logger ?? this.logger,
     });
   }

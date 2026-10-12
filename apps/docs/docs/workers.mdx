@@ -101,6 +101,21 @@ Workers maintain their claim on workflow runs through a heartbeat mechanism:
 
 This ensures workflows are never stuck if a worker crashes.
 
+The lease lasts 30 seconds by default, and workers heartbeat at half the lease
+duration. Configure it with `leaseDurationMs`:
+
+```ts
+export default defineConfig({
+  backend,
+  worker: {
+    leaseDurationMs: 60_000, // Reclaim runs from crashed workers after 60s
+  },
+});
+```
+
+A shorter lease recovers crashed runs sooner, at the cost of more frequent
+heartbeat writes to the database.
+
 ## High Availability
 
 For production, run multiple worker instances:

@@ -577,6 +577,118 @@ describe("Worker", () => {
     });
   });
 
+  test("claims workflow runs with a custom lease duration", async () => {
+    const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+    const worker = new Worker({
+      backend: createStubBackend({
+        claimWorkflowRun,
+      }),
+      workflows: [],
+      leaseDurationMs: 5000,
+    });
+
+    await worker.tick();
+
+    expect(claimWorkflowRun.mock.calls[0]?.[0]).toMatchObject({
+      leaseDurationMs: 5000,
+    });
+  });
+
+  test.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back to the default lease duration for invalid value %s",
+    async (leaseDurationMs) => {
+      const claimWorkflowRun = vi.fn().mockResolvedValue(null);
+
+      const worker = new Worker({
+        backend: createStubBackend({
+          claimWorkflowRun,
+        }),
+        workflows: [],
+        leaseDurationMs,
+      });
+
+      await worker.tick();
+
+      expect(claimWorkflowRun.mock.calls[0]?.[0]).toMatchObject({
+        leaseDurationMs: 30 * 1000,
+      });
+    },
+  );
+
+  test("heartbeats at half the custom lease duration", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
+    const backend = await createTestBackend();
+    const extendWorkflowRunLease = vi.spyOn(backend, "extendWorkflowRunLease");
+    const client = new OpenWorkflow({ backend });
+    const stepStarted = Promise.withResolvers<null>();
+    const releaseStep = Promise.withResolvers<null>();
+
+    const workflow = client.defineWorkflow(
+      { name: "custom-lease-heartbeat" },
+      async ({ step }) => {
+        await step.run({ name: "wait" }, async () => {
+          stepStarted.resolve(null);
+          await releaseStep.promise;
+        });
+        return "done";
+      },
+    );
+    const worker = client.newWorker({ leaseDurationMs: 100 });
+
+    try {
+      const handle = await workflow.run();
+      await worker.tick();
+      await stepStarted.promise;
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(extendWorkflowRunLease).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(extendWorkflowRunLease).toHaveBeenCalledTimes(1);
+      expect(extendWorkflowRunLease.mock.calls[0]?.[0]).toMatchObject({
+        workflowRunId: handle.workflowRun.id,
+        leaseDurationMs: 100,
+      });
+
+      releaseStep.resolve(null);
+      await expect(handle.result()).resolves.toBe("done");
+    } finally {
+      releaseStep.resolve(null);
+      await worker.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test("caps the heartbeat interval at the maximum timer delay", async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const backend = await createTestBackend();
+    const client = new OpenWorkflow({ backend });
+
+    const workflow = client.defineWorkflow(
+      { name: "long-lease-heartbeat" },
+      () => "done",
+    );
+    const worker = client.newWorker({
+      leaseDurationMs: 60 * 24 * 60 * 60 * 1000, // 60 days
+    });
+
+    try {
+      const handle = await workflow.run();
+      await worker.tick();
+      await expect(handle.result()).resolves.toBe("done");
+
+      const heartbeatDelays = setIntervalSpy.mock.calls.map(
+        ([, delay]) => delay,
+      );
+      expect(heartbeatDelays).toContain(2_147_483_647);
+    } finally {
+      await worker.stop();
+      setIntervalSpy.mockRestore();
+    }
+  });
+
   test(
     "worker only sleeps between claims when no work is available",
     { timeout: 15_000 },
