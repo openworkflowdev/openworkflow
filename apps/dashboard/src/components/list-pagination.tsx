@@ -1,4 +1,5 @@
 import { CursorPaginationControls } from "./cursor-pagination-controls";
+import { Button } from "./ui/button";
 import {
   RUNS_PAGE_SIZE_OPTIONS,
   resolveRunsPageSize,
@@ -22,6 +23,22 @@ export function ListPagination({
   itemName,
   onChange,
 }: ListPaginationProps) {
+  if (itemCount === 0 && (search.after ?? search.before)) {
+    return (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            onChange({ limit: search.limit });
+          }}
+        >
+          Back to first page
+        </Button>
+      </div>
+    );
+  }
   if (!shouldShowPaginationControls(pagination)) return null;
   return (
     <CursorPaginationControls

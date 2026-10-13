@@ -25,6 +25,7 @@ export const Route = createFileRoute("/schedules/")({
 function SchedulesPage() {
   const { data: schedules, pagination } = Route.useLoaderData();
   const search = Route.useSearch();
+  const hasCursor = !!(search.after ?? search.before);
   const navigate = Route.useNavigate();
   usePolling();
 
@@ -43,9 +44,13 @@ function SchedulesPage() {
         {schedules.length === 0 ? (
           <Card className="flex items-center gap-3 px-6 py-16 text-center">
             <CalendarDotsIcon className="text-muted-foreground size-12" />
-            <h3 className="text-lg font-semibold">No schedules yet</h3>
+            <h3 className="text-lg font-semibold">
+              {hasCursor ? "No schedules on this page" : "No schedules yet"}
+            </h3>
             <p className="text-muted-foreground max-w-md text-sm">
-              Create a recurring schedule for an existing workflow.
+              {hasCursor
+                ? "Return to the first page to view schedules."
+                : "Create a recurring schedule for an existing workflow."}
             </p>
           </Card>
         ) : (
