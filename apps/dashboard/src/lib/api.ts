@@ -1,4 +1,6 @@
 import { getBackend } from "./backend";
+import { parseWorkflowInput } from "./input";
+import { saveWorkflowSchedule, scheduleInputSchema } from "./schedules.server";
 import { createServerFn } from "@tanstack/react-start";
 import { rerunWorkflowRun } from "openworkflow/internal";
 import type {
@@ -158,22 +160,8 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
     const version =
       versionValue === undefined || versionValue === "" ? null : versionValue;
 
-    const inputValue = data.input?.trim();
-    const normalizedInputValue =
-      inputValue === undefined || inputValue === "" ? null : inputValue;
-
     const availableAt = parseOptionalDate(data.availableAt, "Schedule for");
     const deadlineAt = parseOptionalDate(data.deadlineAt, "Deadline");
-
-    let parsedInput: WorkflowRun["input"] = null;
-    if (normalizedInputValue) {
-      try {
-        // safety: JSON.parse without a reviver returns the JSON values accepted by workflow input.
-        parsedInput = JSON.parse(normalizedInputValue) as WorkflowRun["input"];
-      } catch {
-        throw new TypeError("Input must be valid JSON");
-      }
-    }
 
     return backend.createWorkflowRun({
       workflowName: data.workflowName,
@@ -181,10 +169,46 @@ export const createWorkflowRunServerFn = createServerFn({ method: "POST" })
       idempotencyKey: null,
       config: {},
       context: null,
-      input: parsedInput,
+      input: parseWorkflowInput(data.input),
       parentStepAttemptNamespaceId: null,
       parentStepAttemptId: null,
       availableAt,
       deadlineAt,
     });
+  });
+
+export const listWorkflowSchedulesServerFn = createServerFn({ method: "GET" })
+  .validator(z.object(paginationInputFields))
+  .handler(async ({ data }) => {
+    const backend = await getBackend();
+    return backend.listWorkflowSchedules(getPaginationOptions(data));
+  });
+
+const scheduleIdInput = z.object({ workflowScheduleId: z.string().min(1) });
+
+export const getWorkflowScheduleServerFn = createServerFn({ method: "GET" })
+  .validator(scheduleIdInput)
+  .handler(async ({ data }) => {
+    const backend = await getBackend();
+    return backend.getWorkflowSchedule(data);
+  });
+
+export const saveWorkflowScheduleServerFn = createServerFn({ method: "POST" })
+  .validator(scheduleInputSchema)
+  .handler(async ({ data }) => saveWorkflowSchedule(await getBackend(), data));
+
+export const setWorkflowSchedulePausedServerFn = createServerFn({
+  method: "POST",
+})
+  .validator(scheduleIdInput.extend({ paused: z.boolean() }))
+  .handler(async ({ data }) => {
+    const backend = await getBackend();
+    return backend.pauseWorkflowSchedule(data);
+  });
+
+export const deleteWorkflowScheduleServerFn = createServerFn({ method: "POST" })
+  .validator(scheduleIdInput)
+  .handler(async ({ data }) => {
+    const backend = await getBackend();
+    return backend.deleteWorkflowSchedule(data);
   });
