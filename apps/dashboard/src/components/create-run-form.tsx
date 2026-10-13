@@ -45,6 +45,7 @@ export function CreateRunForm({ onCancel, onSuccess }: CreateRunFormProps) {
   const [workflowName, setWorkflowName] = useState("");
   const [version, setVersion] = useState("");
   const [input, setInput] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [availableAt, setAvailableAt] = useState("");
   const [deadlineAt, setDeadlineAt] = useState("");
   const [inputError, setInputError] = useState<string | null>(null);
@@ -94,6 +95,7 @@ export function CreateRunForm({ onCancel, onSuccess }: CreateRunFormProps) {
           workflowName: workflowName.trim(),
           version: normalizeOptionalField(version),
           input: normalizedInput,
+          idempotencyKey: idempotencyKey || null,
           availableAt: availableAtIso,
           deadlineAt: deadlineAtIso,
         },
@@ -163,6 +165,29 @@ export function CreateRunForm({ onCancel, onSuccess }: CreateRunFormProps) {
               <span className="font-mono"> {'{"key":"value"}'}</span>.
             </FieldDescription>
             <FieldError>{inputError}</FieldError>
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="create-run-idempotency-key">
+              Idempotency Key
+            </FieldLabel>
+            <Input
+              id="create-run-idempotency-key"
+              name="idempotencyKey"
+              value={idempotencyKey}
+              onChange={(event) => {
+                setIdempotencyKey(event.currentTarget.value);
+              }}
+              placeholder="e.g. welcome-email:user_123"
+              aria-describedby="create-run-idempotency-key-description"
+              autoComplete="off"
+              disabled={isSubmitting}
+            />
+            <FieldDescription id="create-run-idempotency-key-description">
+              Reusing a key for the same workflow name in this namespace opens
+              the existing run for 24 hours after creation, even with different
+              input or version. Leave empty to create a new run.
+            </FieldDescription>
           </Field>
 
           <div className="grid gap-5 sm:grid-cols-2">
