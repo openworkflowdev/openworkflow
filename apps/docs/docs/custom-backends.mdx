@@ -66,3 +66,24 @@ way:
 | `toWorkflowRunCounts`              | Turn `GROUP BY "status"` rows into counts for every status                  |
 | `requireRow`                       | Throw `Failed to <operation>` when a mutation matched no row                |
 | `wrapError`                        | Wrap a driver error with a message, keeping the cause                       |
+
+## Testing Your Backend
+
+`openworkflow/testing` exports the test suite that the built-in backends run.
+It requires [Vitest](https://vitest.dev):
+
+```ts
+import { MyBackend } from "./my-backend";
+import { randomUUID } from "node:crypto";
+import { testBackend } from "openworkflow/testing";
+
+testBackend({
+  setup: async () => new MyBackend({ namespaceId: randomUUID() }),
+  teardown: async (backend) => {
+    await backend.stop();
+  },
+});
+```
+
+Each `setup()` should return a backend on its own namespace, so tests don't see
+each other's runs. Run the suite against each OpenWorkflow version you support.

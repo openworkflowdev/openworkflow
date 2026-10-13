@@ -45,12 +45,18 @@
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
       "default": "./dist/sqlite.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [
     "dist",
     "!*.test.*",
     "!*.testsuite.*",
+    "dist/testing/backend.testsuite.*",
+    "dist/testing/schedules.testsuite.*",
     "!*.tsbuildinfo",
     "!vitest.global-setup.*"
   ],
@@ -73,13 +79,17 @@
   },
   "peerDependencies": {
     "@opentelemetry/api": "1",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "vitest": "^5.0.0"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api": {
       "optional": true
     },
     "postgres": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },
