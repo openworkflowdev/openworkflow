@@ -30,6 +30,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./backend": {
+      "types": "./dist/backend.d.ts",
+      "default": "./dist/backend.js"
+    },
     "./internal": {
       "types": "./dist/internal.d.ts",
       "default": "./dist/internal.js"

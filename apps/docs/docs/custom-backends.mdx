@@ -1,0 +1,68 @@
+---
+title: Custom Backends
+description: Implement the Backend interface to store workflow state in your own database or driver, and check it with the backend test suite
+---
+
+OpenWorkflow ships with [PostgreSQL](/docs/postgres) and [SQLite](/docs/sqlite)
+backends. To store workflow state somewhere else, implement the `Backend`
+interface from `openworkflow/backend` and pass it to the client and worker like
+any other backend:
+
+```ts
+import { MyBackend } from "./my-backend";
+import { OpenWorkflow } from "openworkflow";
+
+const backend = new MyBackend();
+const ow = new OpenWorkflow({ backend });
+```
+
+<Warning>
+  The backend API is experimental. It can change in a minor release before 1.0
+  (for example, when a feature adds new backend methods), so pin the
+  `openworkflow` versions your backend supports, such as `>=0.11.0 <0.12.0`.
+</Warning>
+
+## The Backend Interface
+
+`openworkflow/backend` exports the `Backend` interface and the types its methods
+take and return:
+
+```ts
+import type {
+  Backend,
+  ClaimWorkflowRunParams,
+  WorkflowRun,
+} from "openworkflow/backend";
+
+export class MyBackend implements Backend {
+  async claimWorkflowRun(
+    params: ClaimWorkflowRunParams,
+  ): Promise<WorkflowRun | null> {
+    // ...
+  }
+
+  // ...
+}
+```
+
+A backend owns its connections and its schema. `stop()` is called when the
+client or worker shuts down.
+
+## Shared Helpers
+
+The built-in backends keep the rules that don't depend on storage in shared
+helpers. Custom backends should use the same helpers, so they behave the same
+way:
+
+| Helper                             | Use                                                                         |
+| ---------------------------------- | --------------------------------------------------------------------------- |
+| `computeFailedWorkflowRunUpdate`   | Decide whether a failed run is retried, and when, or fails                  |
+| `prepareWorkflowRerun`             | Validate a rerun and build the new run's parameters from the source run     |
+| `resolveCancelWorkflowRunConflict` | Choose the result when a cancel matched no row (already canceled, or final) |
+| `nextScheduleOccurrence`           | Compute a schedule's next run time from its cron and timezone               |
+| `isTerminalStatus`                 | Check whether a run status is final                                         |
+| `decodeListCursor`                 | Decode the `after` / `before` cursor of a list call                         |
+| `buildPaginatedResponse`           | Build a list response, with cursors, from `limit + 1` fetched rows          |
+| `toWorkflowRunCounts`              | Turn `GROUP BY "status"` rows into counts for every status                  |
+| `requireRow`                       | Throw `Failed to <operation>` when a mutation matched no row                |
+| `wrapError`                        | Wrap a driver error with a message, keeping the cause                       |
