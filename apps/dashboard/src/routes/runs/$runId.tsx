@@ -284,6 +284,18 @@ function RunDetailsPage() {
                 className="mt-2"
               />
             )}
+            {run.workflowScheduleId !== null && (
+              <p className="text-muted-foreground mt-2 text-sm">
+                Schedule:{" "}
+                <Link
+                  to="/schedules/$scheduleId"
+                  params={{ scheduleId: run.workflowScheduleId }}
+                  className="text-foreground underline underline-offset-4"
+                >
+                  {run.workflowScheduleId}
+                </Link>
+              </p>
+            )}
           </div>
           <div className="flex gap-2 sm:shrink-0">
             <RunAction action="rerun" runId={run.id} status={run.status} />

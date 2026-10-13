@@ -1,6 +1,6 @@
 import { AppLayout } from "@/components/app-layout";
 import { CreateRunForm } from "@/components/create-run-form";
-import { CursorPaginationControls } from "@/components/cursor-pagination-controls";
+import { ListPagination } from "@/components/list-pagination";
 import { RunList, type ChildRunRelation } from "@/components/run-list";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,10 +18,7 @@ import {
   listWorkflowRunsServerFn,
 } from "@/lib/api";
 import {
-  RUNS_PAGE_SIZE_OPTIONS,
-  type RunsPaginationSearch,
   resolveRunsPageSize,
-  shouldShowPaginationControls,
   validateRunsPaginationSearch,
 } from "@/lib/runs-page-pagination";
 import { usePolling } from "@/lib/use-polling";
@@ -110,50 +107,7 @@ function HomePage() {
   const navigate = Route.useNavigate();
 
   const [isCreateRunOpen, setIsCreateRunOpen] = useState(false);
-  const pageSize = resolveRunsPageSize(search.limit);
   const runs = data;
-  const showRunsPagination = shouldShowPaginationControls(pagination);
-
-  function updateRunsSearch(next: Partial<RunsPaginationSearch>) {
-    void navigate({
-      to: "/",
-      search: (previous) => ({
-        ...previous,
-        ...next,
-      }),
-    });
-  }
-
-  function handlePageSizeChange(nextPageSize: number) {
-    const limit = resolveRunsPageSize(nextPageSize);
-    updateRunsSearch({
-      limit,
-      after: undefined,
-      before: undefined,
-    });
-  }
-
-  function goToNextPage() {
-    if (!pagination.next) {
-      return;
-    }
-
-    updateRunsSearch({
-      after: pagination.next,
-      before: undefined,
-    });
-  }
-
-  function goToPreviousPage() {
-    if (!pagination.prev) {
-      return;
-    }
-
-    updateRunsSearch({
-      before: pagination.prev,
-      after: undefined,
-    });
-  }
 
   usePolling();
 
@@ -165,7 +119,7 @@ function HomePage() {
             <div>
               <h2 className="text-2xl font-semibold">Workflow Runs</h2>
               <p className="text-muted-foreground mt-1 text-sm">
-                Monitor and trigger workflow runs.
+                Start workflows and check their progress.
               </p>
             </div>
             <Button
@@ -187,19 +141,15 @@ function HomePage() {
               showHeader={false}
             />
 
-            {showRunsPagination && (
-              <CursorPaginationControls
-                hasNextPage={!!pagination.next}
-                hasPreviousPage={!!pagination.prev}
-                itemCount={runs.length}
-                itemName="run"
-                onNextPage={goToNextPage}
-                onPageSizeChange={handlePageSizeChange}
-                onPreviousPage={goToPreviousPage}
-                pageSize={pageSize}
-                pageSizeOptions={RUNS_PAGE_SIZE_OPTIONS}
-              />
-            )}
+            <ListPagination
+              pagination={pagination}
+              search={search}
+              itemCount={runs.length}
+              itemName="run"
+              onChange={(next) => {
+                void navigate({ search: next });
+              }}
+            />
           </div>
         </div>
 
@@ -207,7 +157,7 @@ function HomePage() {
           <DialogHeader className="border-border border-b px-4 py-3">
             <DialogTitle>Create Workflow Run</DialogTitle>
             <DialogDescription>
-              Trigger a new workflow run directly from the dashboard.
+              Choose a workflow and enter its input.
             </DialogDescription>
           </DialogHeader>
           <div className="p-4">

@@ -23,10 +23,27 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </h1>
               </Link>
             </div>
-            <nav className="shrink-0 text-sm">
+            <div className="shrink-0 text-sm">
               <ModeSwitcher />
-            </nav>
+            </div>
           </div>
+          <nav aria-label="Main navigation" className="mt-4 flex gap-1 text-sm">
+            <Link
+              to="/"
+              activeOptions={{ exact: true }}
+              activeProps={{ className: "bg-muted text-foreground" }}
+              className="text-muted-foreground hover:text-foreground rounded-md px-3 py-2"
+            >
+              Runs
+            </Link>
+            <Link
+              to="/schedules"
+              activeProps={{ className: "bg-muted text-foreground" }}
+              className="text-muted-foreground hover:text-foreground rounded-md px-3 py-2"
+            >
+              Schedules
+            </Link>
+          </nav>
         </div>
       </header>
 

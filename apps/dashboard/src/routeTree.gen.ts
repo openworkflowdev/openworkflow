@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as RunsRunIdRouteImport } from './routes/runs/$runId'
+import { Route as SchedulesIndexRouteImport } from './routes/schedules.index'
+import { Route as SchedulesScheduleIdRouteImport } from './routes/schedules.$scheduleId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +30,61 @@ const RunsRunIdRoute = RunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SchedulesIndexRoute = SchedulesIndexRouteImport.update({
+  id: '/schedules/',
+  path: '/schedules/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SchedulesScheduleIdRoute = SchedulesScheduleIdRouteImport.update({
+  id: '/schedules/$scheduleId',
+  path: '/schedules/$scheduleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
   '/runs/$runId': typeof RunsRunIdRoute
+  '/schedules/$scheduleId': typeof SchedulesScheduleIdRoute
+  '/schedules/': typeof SchedulesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
   '/runs/$runId': typeof RunsRunIdRoute
+  '/schedules/$scheduleId': typeof SchedulesScheduleIdRoute
+  '/schedules': typeof SchedulesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/metrics': typeof MetricsRoute
   '/runs/$runId': typeof RunsRunIdRoute
+  '/schedules/$scheduleId': typeof SchedulesScheduleIdRoute
+  '/schedules/': typeof SchedulesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/metrics' | '/runs/$runId'
+  fullPaths:
+    '/' | '/metrics' | '/runs/$runId' | '/schedules/$scheduleId' | '/schedules/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/metrics' | '/runs/$runId'
-  id: '__root__' | '/' | '/metrics' | '/runs/$runId'
+  to:
+    '/' | '/metrics' | '/runs/$runId' | '/schedules/$scheduleId' | '/schedules'
+  id:
+    | '__root__'
+    | '/'
+    | '/metrics'
+    | '/runs/$runId'
+    | '/schedules/$scheduleId'
+    | '/schedules/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   MetricsRoute: typeof MetricsRoute
   RunsRunIdRoute: typeof RunsRunIdRoute
+  SchedulesScheduleIdRoute: typeof SchedulesScheduleIdRoute
+  SchedulesIndexRoute: typeof SchedulesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +110,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RunsRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/schedules/': {
+      id: '/schedules/'
+      path: '/schedules'
+      fullPath: '/schedules/'
+      preLoaderRoute: typeof SchedulesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/schedules/$scheduleId': {
+      id: '/schedules/$scheduleId'
+      path: '/schedules/$scheduleId'
+      fullPath: '/schedules/$scheduleId'
+      preLoaderRoute: typeof SchedulesScheduleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +131,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   MetricsRoute: MetricsRoute,
   RunsRunIdRoute: RunsRunIdRoute,
+  SchedulesScheduleIdRoute: SchedulesScheduleIdRoute,
+  SchedulesIndexRoute: SchedulesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

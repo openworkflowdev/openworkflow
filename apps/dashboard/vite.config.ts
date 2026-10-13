@@ -9,7 +9,10 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 const config = defineConfig({
   plugins: [
     devtools(),
-    nitro(),
+    nitro({
+      // Jiti resolves its transformer at runtime, so keep the config loader external.
+      rollupConfig: { external: ["@openworkflow/cli/internal"] },
+    }),
     // this is the plugin that enables path aliases
     viteTsConfigPaths({
       projects: ["./tsconfig.json"],
