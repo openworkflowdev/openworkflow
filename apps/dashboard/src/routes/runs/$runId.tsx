@@ -535,6 +535,17 @@ function RunOverviewPanel({
           <span className="text-muted-foreground shrink-0 text-xs">Run ID</span>
           <IdentifierValue value={run.id} />
         </div>
+        {run.idempotencyKey !== null && (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="text-muted-foreground shrink-0 text-xs">
+              Idempotency Key
+            </span>
+            <IdentifierValue
+              value={run.idempotencyKey}
+              className="whitespace-pre-wrap"
+            />
+          </div>
+        )}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-muted-foreground shrink-0 text-xs">Status</span>
           <Tooltip>
