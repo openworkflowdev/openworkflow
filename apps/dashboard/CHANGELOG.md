@@ -1,5 +1,13 @@
 # @openworkflow/dashboard
 
+## 0.1.12
+
+- Add schedule creation, editing, pausing, resuming, and deletion, with schedule
+  details and links from scheduled runs (#895)
+- Recover from empty pages in the runs and schedules lists
+- Fix workflow configuration loading in the production dashboard
+- Update TanStack dependencies (#896)
+
 ## 0.1.11
 
 - Add full and from-step reruns for finished workflows, reusing successful
