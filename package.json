@@ -58,7 +58,7 @@
     "knip": "^6.41.0",
     "oxlint": "^1.87.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
-    "oxlint-tsgolint": "^7.0.2001",
+    "oxlint-tsgolint": "^7.0.2004",
     "prettier": "^3.9.10",
     "prettier-plugin-packagejson": "^3.0.2",
     "prettier-plugin-tailwindcss": "^0.8.1",
