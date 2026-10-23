@@ -6,12 +6,12 @@
     "start": "tsx --import ./instrumentation.ts index.ts"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.9.1",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
-    "@opentelemetry/instrumentation": "^0.223.0",
-    "@opentelemetry/instrumentation-http": "^0.223.0",
-    "@opentelemetry/instrumentation-undici": "^0.33.0",
-    "@opentelemetry/sdk-node": "^0.223.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
+    "@opentelemetry/instrumentation": "^0.300.0",
+    "@opentelemetry/instrumentation-http": "^0.300.0",
+    "@opentelemetry/instrumentation-undici": "^0.34.0",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "@opentelemetry/sdk-trace-base": "^2.11.0",
     "@sentry/node-core": "^10.75.2",
     "openworkflow": "*"
