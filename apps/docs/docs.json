@@ -74,7 +74,12 @@
       },
       {
         "group": "Backends",
-        "pages": ["docs/postgres", "docs/sqlite", "docs/namespaces"]
+        "pages": [
+          "docs/postgres",
+          "docs/sqlite",
+          "docs/namespaces",
+          "docs/custom-backends"
+        ]
       },
       {
         "group": "Reference",
