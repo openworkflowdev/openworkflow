@@ -33,7 +33,7 @@
     "dotenv": "^18.0.9",
     "jiti": "^2.7.0",
     "nypm": "^0.6.11",
-    "posthog-node": "~5.55.3"
+    "posthog-node": "~5.57.1"
   },
   "devDependencies": {
     "openworkflow": "*",
