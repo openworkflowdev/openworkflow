@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/app-layout";
 import { CreateRunForm } from "@/components/create-run-form";
 import { ListPagination } from "@/components/list-pagination";
+import { RunFiltersForm } from "@/components/run-filters-form";
 import { RunList, type ChildRunRelation } from "@/components/run-list";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,10 +18,8 @@ import {
   getWorkflowRunServerFn,
   listWorkflowRunsServerFn,
 } from "@/lib/api";
-import {
-  resolveRunsPageSize,
-  validateRunsPaginationSearch,
-} from "@/lib/runs-page-pagination";
+import { validateRunsSearch, type RunFilters } from "@/lib/run-filters";
+import { resolveRunsPageSize } from "@/lib/runs-page-pagination";
 import { usePolling } from "@/lib/use-polling";
 import { PlusIcon } from "@phosphor-icons/react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -28,7 +27,7 @@ import type { StepAttempt, WorkflowRun } from "openworkflow/internal";
 import { useState } from "react";
 
 export const Route = createFileRoute("/")({
-  validateSearch: validateRunsPaginationSearch,
+  validateSearch: validateRunsSearch,
   loaderDeps: ({ search }) => search,
   component: HomePage,
   loader: async ({ deps }) => {
@@ -40,6 +39,8 @@ export const Route = createFileRoute("/")({
           limit,
           after: deps.after,
           before: deps.before,
+          status: deps.status,
+          workflowName: deps.workflowName,
         },
       }),
       getWorkflowRunCountsServerFn(),
@@ -108,6 +109,18 @@ function HomePage() {
 
   const [isCreateRunOpen, setIsCreateRunOpen] = useState(false);
   const runs = data;
+  let emptyMessage = "No workflow runs have been created yet.";
+  if (search.after ?? search.before) {
+    emptyMessage =
+      "No runs on this page. Return to the first page to view runs.";
+  } else if (search.status || search.workflowName) {
+    emptyMessage =
+      "No runs match these filters. Try changing or clearing them.";
+  }
+
+  function updateFilters(filters: RunFilters) {
+    void navigate({ search: { limit: search.limit, ...filters } });
+  }
 
   usePolling();
 
@@ -133,12 +146,29 @@ function HomePage() {
             </Button>
           </div>
 
-          <WorkflowStats workflowRunCounts={workflowRunCounts} />
+          <div className="space-y-3">
+            <p className="text-muted-foreground text-xs">
+              All runs in this namespace
+            </p>
+            <WorkflowStats
+              workflowRunCounts={workflowRunCounts}
+              selectedStatus={search.status}
+              onStatusChange={(status) => {
+                updateFilters({ status, workflowName: search.workflowName });
+              }}
+            />
+          </div>
           <div className="space-y-4">
+            <RunFiltersForm
+              key={`${search.status ?? "all"}:${search.workflowName ?? ""}`}
+              filters={search}
+              onChange={updateFilters}
+            />
             <RunList
               runs={runs}
               childRunRelationsByRunId={childRunRelationsByRunId}
               showHeader={false}
+              emptyMessage={emptyMessage}
             />
 
             <ListPagination
@@ -147,7 +177,13 @@ function HomePage() {
               itemCount={runs.length}
               itemName="run"
               onChange={(next) => {
-                void navigate({ search: next });
+                void navigate({
+                  search: {
+                    ...next,
+                    status: search.status,
+                    workflowName: search.workflowName,
+                  },
+                });
               }}
             />
           </div>
