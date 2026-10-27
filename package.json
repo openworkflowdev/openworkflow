@@ -55,7 +55,7 @@
     "cspell": "^10.3.6",
     "husky": "^9.1.7",
     "jscpd": "^5.4.2",
-    "knip": "^6.41.0",
+    "knip": "^6.43.0",
     "oxlint": "^1.87.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
     "oxlint-tsgolint": "^7.0.2001",
