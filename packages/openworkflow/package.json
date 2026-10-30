@@ -59,7 +59,7 @@
     "cron-parser": "5.10.2"
   },
   "devDependencies": {
-    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/sdk-trace-node": "^2.12.0",
     "arktype": "^2.2.8",
     "valibot": "^1.5.0",
