@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { RUN_FILTER_STATUSES, type RunFilterStatus } from "@/lib/run-filters";
 import {
   getRunStatusConfig,
   getStatusStatCardClass,
@@ -9,18 +10,16 @@ import type { WorkflowRunCounts } from "openworkflow/internal";
 
 export interface WorkflowStatsProps {
   workflowRunCounts: WorkflowRunCounts;
+  selectedStatus: RunFilterStatus | undefined;
+  onStatusChange: (status: RunFilterStatus | undefined) => void;
 }
 
-const STATS_STATUS_ORDER = [
-  "pending",
-  "running",
-  "completed",
-  "failed",
-  "canceled",
-] as const satisfies readonly (keyof WorkflowRunCounts)[];
-
-export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
-  const stats = STATS_STATUS_ORDER.map((status) => {
+export function WorkflowStats({
+  workflowRunCounts,
+  selectedStatus,
+  onStatusChange,
+}: WorkflowStatsProps) {
+  const stats = RUN_FILTER_STATUSES.map((status) => {
     const config = getRunStatusConfig(status);
 
     return {
@@ -41,21 +40,32 @@ export function WorkflowStats({ workflowRunCounts }: WorkflowStatsProps) {
           <Card
             key={stat.label}
             className={cn(
-              "bg-card p-3 transition-colors sm:p-5",
+              "bg-card p-0 transition-colors",
               stat.cardClass,
+              selectedStatus === stat.status && "ring-foreground/60 ring-2",
             )}
           >
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="text-muted-foreground text-xs sm:text-sm">
+            <button
+              type="button"
+              aria-label={`Filter ${stat.label.toLowerCase()} runs`}
+              aria-pressed={selectedStatus === stat.status}
+              className="hover:bg-foreground/5 focus-visible:ring-ring flex w-full cursor-pointer items-start justify-between p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset sm:p-5"
+              onClick={() => {
+                onStatusChange(
+                  selectedStatus === stat.status ? undefined : stat.status,
+                );
+              }}
+            >
+              <span className="space-y-1">
+                <span className="text-muted-foreground block text-xs sm:text-sm">
                   {stat.label}
-                </p>
-                <p className="font-mono text-2xl font-semibold sm:text-3xl">
+                </span>
+                <span className="block font-mono text-2xl font-semibold sm:text-3xl">
                   {stat.value}
-                </p>
-              </div>
+                </span>
+              </span>
               <Icon className={cn("size-4 sm:size-5", stat.iconClass)} />
-            </div>
+            </button>
           </Card>
         );
       })}
