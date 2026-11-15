@@ -62,6 +62,7 @@ let databasePath: string;
 
 describe("native OpenTelemetry instrumentation", () => {
   beforeAll(async () => {
+    // https://github.com/open-telemetry/opentelemetry-js/blob/v3.1.1/doc/3.x/migration-guide.md#-opentelemetrysdk-trace-node-package-removed
     trace.setGlobalTracerProvider(provider);
     context.setGlobalContextManager(
       new AsyncLocalStorageContextManager().enable(),
