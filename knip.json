@@ -8,6 +8,7 @@
     }
   },
   "ignoreDependencies": [
+    "@opentelemetry/exporter-trace-otlp-http",
     "@openworkflow/cli",
     "@tanstack/react-router-ssr-query",
     "@tanstack/router-plugin",

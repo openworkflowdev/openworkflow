@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 
 const execFileAsync = promisify(execFile);
 
+// The root dependency supplies Sentry's optional SDK 2 exporter peer.
 describe("OpenTelemetry example", () => {
   test("exports example spans through OTLP and Sentry", async () => {
     const destinations = new Set<string>();
