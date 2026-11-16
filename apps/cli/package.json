@@ -27,7 +27,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@clack/prompts": "^1.8.1",
+    "@clack/prompts": "^1.9.0",
     "commander": "^15.1.0",
     "consola": "^3.4.2",
     "dotenv": "^18.0.10",
