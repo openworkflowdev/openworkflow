@@ -25,17 +25,11 @@ import {
   TraceFlags,
   trace,
 } from "@opentelemetry/api";
-import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import {
-  CompositePropagator,
-  W3CBaggagePropagator,
-  W3CTraceContextPropagator,
-} from "@opentelemetry/core";
 import {
   InMemorySpanExporter,
+  NodeTracerProvider,
   SimpleSpanProcessor,
-  TracerProvider,
-} from "@opentelemetry/sdk-trace";
+} from "@opentelemetry/sdk-trace-node";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -52,8 +46,8 @@ import {
 } from "vitest";
 
 const exporter = new InMemorySpanExporter();
-const provider = new TracerProvider({
-  spanProcessors: [new SimpleSpanProcessor({ exporter })],
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
 });
 const tracer = trace.getTracer("test-application");
 let backend: BackendSqlite;
@@ -62,19 +56,7 @@ let databasePath: string;
 
 describe("native OpenTelemetry instrumentation", () => {
   beforeAll(async () => {
-    // https://github.com/open-telemetry/opentelemetry-js/blob/v3.1.1/doc/3.x/migration-guide.md#-opentelemetrysdk-trace-node-package-removed
-    trace.setGlobalTracerProvider(provider);
-    context.setGlobalContextManager(
-      new AsyncLocalStorageContextManager().enable(),
-    );
-    propagation.setGlobalPropagator(
-      new CompositePropagator({
-        propagators: [
-          new W3CTraceContextPropagator(),
-          new W3CBaggagePropagator(),
-        ],
-      }),
-    );
+    provider.register();
     await getOtelApi();
   });
   beforeEach(async () => {
