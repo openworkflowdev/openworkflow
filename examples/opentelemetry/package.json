@@ -12,8 +12,8 @@
     "@opentelemetry/instrumentation-http": "^0.301.1",
     "@opentelemetry/instrumentation-undici": "^0.35.0",
     "@opentelemetry/sdk-node": "^0.301.1",
-    "@opentelemetry/sdk-trace-base": "^2.11.0",
-    "@sentry/node-core": "^10.75.2",
+    "@opentelemetry/sdk-trace": "^3.1.1",
+    "@sentry/node": "^11.13.0",
     "openworkflow": "*"
   },
   "devDependencies": {

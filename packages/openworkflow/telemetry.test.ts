@@ -18,6 +18,7 @@ import { executeWorkflow } from "./worker/execution.js";
 import {
   context,
   INVALID_SPAN_CONTEXT,
+  logs,
   propagation,
   ROOT_CONTEXT,
   SpanKind,
@@ -25,11 +26,11 @@ import {
   TraceFlags,
   trace,
 } from "@opentelemetry/api";
+import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   InMemorySpanExporter,
-  NodeTracerProvider,
   SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-node";
+} from "@opentelemetry/sdk-trace";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -46,8 +47,12 @@ import {
 } from "vitest";
 
 const exporter = new InMemorySpanExporter();
-const provider = new NodeTracerProvider({
-  spanProcessors: [new SimpleSpanProcessor(exporter)],
+const spanProcessor = new SimpleSpanProcessor({ exporter });
+const sdk = new NodeSDK({
+  autoDetectResources: false,
+  logRecordProcessors: [],
+  metricReaders: [],
+  spanProcessors: [spanProcessor],
 });
 const tracer = trace.getTracer("test-application");
 let backend: BackendSqlite;
@@ -56,7 +61,8 @@ let databasePath: string;
 
 describe("native OpenTelemetry instrumentation", () => {
   beforeAll(async () => {
-    provider.register();
+    // https://github.com/open-telemetry/opentelemetry-js/blob/v3.1.1/doc/3.x/migration-guide.md#-opentelemetrysdk-trace-node-package-removed
+    sdk.start();
     await getOtelApi();
   });
   beforeEach(async () => {
@@ -74,9 +80,10 @@ describe("native OpenTelemetry instrumentation", () => {
   });
 
   afterAll(async () => {
-    await provider.shutdown();
+    await sdk.shutdown();
     trace.disable();
     context.disable();
+    logs.disable();
     propagation.disable();
   });
 
@@ -104,7 +111,7 @@ describe("native OpenTelemetry instrumentation", () => {
       workerId,
       retryPolicy,
     });
-    await provider.forceFlush();
+    await spanProcessor.forceFlush();
     return workflowRun;
   }
 
@@ -1116,7 +1123,7 @@ describe("native OpenTelemetry instrumentation", () => {
     async (when) => {
       const span = trace.wrapSpanContext(INVALID_SPAN_CONTEXT);
       vi.spyOn(
-        provider.getTracer("openworkflow"),
+        trace.getTracer("openworkflow"),
         "startActiveSpan",
       ).mockImplementation((_name, _options, _context, callback) => {
         if (when === "after") {
@@ -1161,7 +1168,7 @@ describe("native OpenTelemetry instrumentation", () => {
       });
     }
     vi.spyOn(
-      provider.getTracer("openworkflow"),
+      trace.getTracer("openworkflow"),
       "startActiveSpan",
     ).mockImplementation((_name, _options, _context, callback) =>
       callback(span),
