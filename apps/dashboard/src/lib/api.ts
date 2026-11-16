@@ -1,9 +1,11 @@
 import { getBackend } from "./backend";
 import { parseWorkflowInput } from "./input";
+import { runFiltersSchema } from "./run-filters";
 import { saveWorkflowSchedule, scheduleInputSchema } from "./schedules.server";
 import { createServerFn } from "@tanstack/react-start";
 import { rerunWorkflowRun } from "openworkflow/internal";
 import type {
+  ListWorkflowRunsParams,
   PaginatedResponse,
   PaginationOptions,
   StepAttempt,
@@ -50,13 +52,17 @@ function parseOptionalDate(
 }
 
 /**
- * List workflow runs from the backend with optional pagination.
+ * List workflow runs from the backend with optional filters and pagination.
  */
 export const listWorkflowRunsServerFn = createServerFn({ method: "GET" })
-  .validator(z.object(paginationInputFields))
+  .validator(z.object({ ...paginationInputFields, ...runFiltersSchema.shape }))
   .handler(async ({ data }): Promise<PaginatedResponse<WorkflowRun>> => {
     const backend = await getBackend();
-    const result = await backend.listWorkflowRuns(getPaginationOptions(data));
+    const params: ListWorkflowRunsParams = getPaginationOptions(data);
+    if (data.status !== undefined) params.status = data.status;
+    if (data.workflowName !== undefined)
+      params.workflowName = data.workflowName;
+    const result = await backend.listWorkflowRuns(params);
     return result;
   });
 

@@ -18,6 +18,7 @@ export interface RunListProps {
   title?: string;
   showHeader?: boolean;
   showCount?: boolean;
+  emptyMessage?: string;
 }
 
 export function RunList({
@@ -26,6 +27,7 @@ export function RunList({
   title = "Workflow Runs",
   showHeader = true,
   showCount = true,
+  emptyMessage = "No workflow runs have been created yet.",
 }: RunListProps) {
   if (runs.length === 0) {
     return (
@@ -39,9 +41,7 @@ export function RunList({
           </div>
         )}
         <Card className="bg-card border-border p-8 text-center">
-          <p className="text-muted-foreground">
-            No workflow runs have been created yet.
-          </p>
+          <p className="text-muted-foreground">{emptyMessage}</p>
         </Card>
       </div>
     );
