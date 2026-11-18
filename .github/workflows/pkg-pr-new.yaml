@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
       - run: npm ci
       - run: npm run build
       - run: >
