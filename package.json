@@ -57,7 +57,7 @@
     "jscpd": "^5.4.3",
     "jsdom": "^31.0.1",
     "knip": "^6.45.1",
-    "oxlint": "^1.93.0",
+    "oxlint": "^1.94.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.10.1",
