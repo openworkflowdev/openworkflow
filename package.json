@@ -56,7 +56,7 @@
     "husky": "^9.1.7",
     "jscpd": "^5.4.3",
     "jsdom": "^31.0.1",
-    "knip": "^6.45.1",
+    "knip": "^6.47.0",
     "oxlint": "^1.93.0",
     "oxlint-plugin-anti-slop": "github:dmmulroy/anti-slop#main",
     "oxlint-tsgolint": "^7.0.2001",
