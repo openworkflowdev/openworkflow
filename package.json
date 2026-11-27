@@ -51,7 +51,7 @@
     "@tsconfig/node22": "^22",
     "@tsconfig/strictest": "^2.0.9",
     "@types/node": "^26.6.7",
-    "@vitest/coverage-v8": "^5.1.0",
+    "@vitest/coverage-v8": "^5.1.1",
     "cspell": "^10.5.2",
     "husky": "^9.1.7",
     "jscpd": "^5.4.3",
